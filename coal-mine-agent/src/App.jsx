@@ -1,107 +1,30 @@
 import { useState, useRef, useEffect } from "react";
 import * as mammoth from "mammoth";
+import * as pdfjsLib from "pdfjs-dist";
+import Fuse from "fuse.js";
 
 const LONGCAT_API_KEY = "ak_2ho0is8Y064o6Bd1UI80m0Ab1mL5n";
 const LONGCAT_BASE_URL = "https://api.longcat.chat/anthropic";
 const LONGCAT_MODEL = "LongCat-Flash-Thinking-2601";
 
-const AGENT_SYSTEM_PROMPTS = {
-  knowledge: {
-    name: "知识图谱智能体",
-    prompt: (docs) => `你是煤矿应急救援系统中的【知识图谱智能体】(🧠)。
-你的职责是：快速检索和提取与用户问题相关的专业知识。
+const BASE_SYSTEM_PROMPT = `你是一个专业的煤矿应急救援决策知识问答AI智能体，基于中国矿业大学袁冠团队的研究成果构建。
 
-核心任务：
-1. 从上传的规程文档中精准提取相关条例、规范、案例
-2. 整理知识点的层级关系（法律→规程→具体操作）
-3. 标注引用源（文档名+条款号）
-4. 如无相关文档，调用领域基础知识
+你的核心能力包括：
+1. **应急知识问答**：基于煤矿作业规程、事故案例、应急预案等专业知识，快速精准回答应急相关问题
+2. **灾害风险识别**：识别矿井水灾、火灾、瓦斯爆炸等典型灾害场景的风险特征
+3. **救援决策支持**：依据法律法规与历史救援案例，智能生成自适应救援策略
+4. **安全态势感知**：分析灾变场景态势，提供"人-地-险-策"的精准协同决策支持
+5. **跨域知识融合**：整合多源异构专业知识，打通信息孤岛
 
-回答格式（务必遵循）：
-📚 知识检索结果：
-- 相关条款或规范（注明来源）
-- 关键概念定义
-- 历史案例引用
+回答规则：
+- 回答要专业、准确、具有可操作性
+- 针对紧急情况，优先给出立即行动步骤，再给出详细分析
+- 如果用户上传了参考文档，优先基于文档内容作答，并注明引用来源文件名
+- 引用相关法律法规和历史案例支撑建议
+- 使用清晰的结构化格式（如步骤、风险等级、负责部门等）
+- 对于超出知识范围的问题，明确说明并建议联系专业机构
 
-${docs.length > 0 ? `\n备注：用户上传了${docs.length}份规程文档，优先从中提取知识。` : ""}`,
-  },
-  
-  perception: {
-    name: "态势感知智能体",
-    prompt: () => `你是煤矿应急救援系统中的【态势感知智能体】(📡)。
-你的职责是：全面分析灾害场景的态势。
-
-分析维度（必须覆盖）：
-1. 【灾害类型】：识别具体灾害 + 触发原因
-2. 【危害程度】：人数影响、区域范围、扩散速度（红/橙/黄/绿）
-3. 【环境因素】：井深、通风系统、地质特征、逃生通道
-4. 【资源评估】：现有人员、设备、物资的应对能力
-5. 【时间压力】：黄金救援窗口（小时级/分钟级）
-
-回答格式（务必遵循）：
-📡 态势分析：
-- 灾害分类：[类型] | 危害等级：[红/橙/黄/绿]
-- 影响范围：[区域] | 指挥级别：[日常/重大/特别重大]
-- 核心制约：[最紧迫的3个问题]`,
-  },
-  
-  decision: {
-    name: "决策推理智能体",
-    prompt: () => `你是煤矿应急救援系统中的【决策推理智能体】(⚡)。
-你的职责是：基于态势感知结果，生成科学的救援方案。
-
-方案设计规则：
-1. 优先级排序：立即救人 > 防止扩散 > 善后处理
-2. 可操作性：每步都明确责任部门、时间窗口、资源需求
-3. 备选方案：至少2个方案（主方案+备选）
-4. 风险识别：每步的潜在二次风险
-
-回答格式（务必遵循）：
-⚡ 救援方案决策：
-【主方案】
-- 第1步（当下）：[行动] | 责任部门：[部门] | 时间窗口：[时间]
-- 第2步：...
-- 第3步：...
-
-【备选方案】
-- 如果[条件]则执行：[方案]
-
-【风险提示】
-- 需要警惕的二次灾害：[风险]`,
-  },
-  
-  coordination: {
-    name: "协同指挥智能体",
-    prompt: () => `你是煤矿应急救援系统中的【协同指挥智能体】(🎯)。
-你的职责是：整合各智能体的分析结果，给出完整的指挥协同方案。
-
-协同内容（必须包含）：
-1. 【指挥层级】：明确指挥官、副指挥、各专业组长
-2. 【部门分工】：安全科、调度室、救援队、医疗组各自职责
-3. 【信息流】：每5分钟汇报的关键指标
-4. 【资源调配】：人员、装备、物资的调度优先级
-5. 【应急预警】：如何及时升级/降级指挥等级
-
-回答格式（务必遵循）：
-🎯 协同指挥方案（5分钟内启动）：
-│
-├─ 现场指挥官：[职务名称] → 目标：[核心目标]
-├─ 汇报链条：现场 → [中间级] → 矿长 → 政府部门
-│
-├─ 分工执行表：
-│   ├─ 救援队（组长：___）：第1步___ → 第2步___ → 第3步___
-│   ├─ 调度室（组长：___）：通风调整 → 人员清点 → 情报汇总
-│   ├─ 医疗组（组长：___）：待机位置 → 伤员分类标准 → 转运路线
-│   ├─ 安全科（组长：___）：全面停工 → 风险评估 → 撤离范围确定
-│
-├─ 5分钟汇报关键指标：[指标1]、[指标2]、[指标3]
-│
-└─ 升级条件：如果___ 则上升为___ 级指挥`,
-  }
-};
-
-const BASE_SYSTEM_PROMPT = `你是一个专业的煤矿应急救援决策AI协同系统，基于中国矿业大学袁冠团队的研究成果构建。
-系统由4个专业智能体组成，各自独立分析、协同输出。请严格按照各智能体的角色要求和回答格式进行响应。`;
+你服务于煤矿指挥中心管理人员、带班队长和一线救援队员，目标是成为他们的"随身专家"。`;
 
 const QUICK_QUESTIONS = [
   { icon: "💨", text: "瓦斯浓度超标如何处置？" },
@@ -121,42 +44,159 @@ const AGENTS = [
 
 async function extractText(file) {
   const name = file.name.toLowerCase();
-  if (name.endsWith(".txt")) {
-    return await file.text();
-  }
-  if (name.endsWith(".docx")) {
-    const arrayBuffer = await file.arrayBuffer();
-    const result = await mammoth.extractRawText({ arrayBuffer });
-    return result.value;
-  }
-  if (name.endsWith(".pdf")) {
-    return await new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const bytes = new Uint8Array(e.target.result);
-          let text = "";
-          for (let i = 0; i < bytes.length; i++) {
-            if (bytes[i] >= 32 && bytes[i] < 127) text += String.fromCharCode(bytes[i]);
-            else if (bytes[i] === 10 || bytes[i] === 13) text += "\n";
-          }
-          const lines = text.split("\n")
-            .map(l => l.trim())
-            .filter(l => l.length > 5 && /[\u4e00-\u9fa5a-zA-Z]/.test(l));
-          resolve(lines.join("\n") || "（PDF内容提取有限，建议转为TXT或DOCX格式上传）");
-        } catch {
-          resolve("（PDF解析失败，建议转为TXT或DOCX格式上传）");
-        }
-      };
-      reader.readAsArrayBuffer(file);
+  
+  // 使用Python后端解析PDF
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  try {
+    let endpoint = '';
+    if (name.endsWith('.pdf')) {
+      endpoint = '/api/parse-pdf';
+    } else if (name.endsWith('.docx')) {
+      endpoint = '/api/parse-docx';
+    } else if (name.endsWith('.txt')) {
+      endpoint = '/api/parse-text';
+    } else {
+      return "（不支持的文件格式，请上传 TXT、DOCX 或 PDF）";
+    }
+    
+    // 调用Flask后端
+    const response = await fetch(`http://localhost:5001${endpoint}`, {
+      method: 'POST',
+      body: formData
     });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      return result.text;
+    } else {
+      return `（文件解析失败：${result.error}）`;
+    }
+  } catch (err) {
+    // 如果后端不可用，显示提示信息
+    console.error('后端连接失败:', err);
+    return "（请确保Python后端服务已启动：python server/pdf_parser.py）";
   }
-  return "（不支持的文件格式，请上传 TXT、DOCX 或 PDF）";
 }
 
-function truncate(text, max = 5000) {
+function truncate(text, max = 8000) {
   if (text.length <= max) return text;
-  return text.slice(0, max) + "\n...[文档内容较长，已截取前部分]";
+  return text.slice(0, max) + "\n\n...[文档内容较长，已截取前部分]";
+}
+
+// 文档分块函数 - 优先按条款编号分块
+function chunkText(text, chunkSize = 800) {
+  const chunks = [];
+  
+  // 第一步：按"第X条"分段（优先级最高）
+  const articlePattern = /(?=第[一二三四五六七八九十百千万\d]+条)/;
+  const articles = text.split(articlePattern).filter(p => p.trim());
+  
+  // 第二步：对每个条款进行细分
+  articles.forEach(article => {
+    if (article.length <= chunkSize) {
+      // 如果条款本身不超长，直接加入
+      if (article.trim()) chunks.push({
+        text: article.trim(),
+        index: chunks.length
+      });
+    } else {
+      // 条款过长，按句号分段
+      const sentences = article.split(/(?<=[。；！？])/);
+      let currentChunk = '';
+      
+      sentences.forEach(sentence => {
+        if ((currentChunk + sentence).length > chunkSize && currentChunk.length > 0) {
+          chunks.push({
+            text: currentChunk.trim(),
+            index: chunks.length
+          });
+          currentChunk = sentence;
+        } else {
+          currentChunk += sentence;
+        }
+      });
+      
+      if (currentChunk.trim()) {
+        chunks.push({
+          text: currentChunk.trim(),
+          index: chunks.length
+        });
+      }
+    }
+  });
+  
+  return chunks;
+}
+
+// RAG检索函数 - 智能条款定位 + 模糊搜索混合
+function retrieveRelevantChunks(query, docs, topK = 4) {
+  if (!docs || docs.length === 0) return [];
+  
+  // 第一步：尝试精确定位条款编号
+  const articleMatch = query.match(/第([一二三四五六七八九十百千万]+)条|(\d{1,4})条/);
+  let articleNum = null;
+  
+  if (articleMatch) {
+    // 提取条款编号
+    const cnNum = articleMatch[1];
+    const digNum = articleMatch[2];
+    articleNum = cnNum || digNum;
+  }
+  
+  // 合并所有文档的块
+  const allChunks = [];
+  docs.forEach(doc => {
+    if (doc.chunks) {
+      doc.chunks.forEach(chunk => {
+        allChunks.push({
+          ...chunk,
+          docName: doc.name
+        });
+      });
+    }
+  });
+  
+  if (allChunks.length === 0) return [];
+  
+  let results = [];
+  
+  // 策略1：如果找到条款号，先精确查找
+  if (articleNum) {
+    const exactMatches = allChunks.filter(chunk => 
+      chunk.text.includes(`第${articleNum}条`) || 
+      chunk.text.includes(`${articleNum}条`)
+    );
+    if (exactMatches.length > 0) {
+      results = exactMatches.slice(0, topK).map(item => ({ ...item, score: 0 }));
+    }
+  }
+  
+  // 策略2：如果没有精确匹配或匹配数不足，使用模糊搜索补充
+  if (results.length < topK) {
+    const fuse = new Fuse(allChunks, {
+      keys: ['text'],
+      threshold: 0.3,  // 降低阈值，提高匹配率
+      minMatchCharLength: 2,
+      ignoreLocation: true,
+      useExtendedSearch: true
+    });
+    
+    const fuzzyResults = fuse.search(query, { limit: topK * 2 });
+    const fuzzyChunks = fuzzyResults.map(r => r.item);
+    
+    // 合并结果，去重
+    const seenIndexes = new Set(results.map(r => r.index + r.docName));
+    for (const chunk of fuzzyChunks) {
+      if (!seenIndexes.has(chunk.index + chunk.docName) && results.length < topK) {
+        results.push(chunk);
+      }
+    }
+  }
+  
+  return results.slice(0, topK);
 }
 
 export default function CoalMineAgent() {
@@ -185,6 +225,12 @@ export default function CoalMineAgent() {
     return null;
   };
 
+  const simulateAgents = () => {
+    [["knowledge"], ["knowledge","perception"], ["knowledge","perception","decision"],
+     ["knowledge","perception","decision","coordination"], ["decision","coordination"], ["coordination"], []
+    ].forEach((a, i) => setTimeout(() => setActiveAgents(a), i * 600));
+  };
+
   const handleUpload = async (e) => {
     const files = Array.from(e.target.files);
     if (!files.length) return;
@@ -193,10 +239,19 @@ export default function CoalMineAgent() {
       try {
         const content = await extractText(file);
         const sizeMB = (file.size / 1024 / 1024).toFixed(2);
-        setDocs(prev => [...prev.filter(d => d.name !== file.name), { name: file.name, content, sizeMB }]);
+        
+        // 分块处理文档内容
+        const chunks = chunkText(content, 600);
+        
+        setDocs(prev => [...prev.filter(d => d.name !== file.name), { 
+          name: file.name, 
+          content,
+          chunks,
+          sizeMB 
+        }]);
         setMessages(prev => [...prev, {
           role: "assistant",
-          content: `📄 已加载《**${file.name}**》（${sizeMB} MB · ${content.length.toLocaleString()} 字符）\n\n该文档已加入知识库，后续回答将优先参考此规程内容。`,
+          content: `📄 已加载《**${file.name}**》（${sizeMB} MB · ${content.length.toLocaleString()} 字符 · ${chunks.length} 个检索块）\n\n该文档已分块存储，后续回答将自动检索相关内容。`,
           timestamp: new Date(),
         }]);
       } catch (err) {
@@ -211,24 +266,52 @@ export default function CoalMineAgent() {
     e.target.value = "";
   };
 
-  const buildSystem = (agentId) => {
-    if (agentId) {
-      const agentConfig = AGENT_SYSTEM_PROMPTS[agentId];
-      let docText = "";
-      if (agentId === "knowledge" && docs.length > 0) {
-        docText = docs.map(d => `【文档：${d.name}】\n${truncate(d.content, 3000)}`).join("\n\n---\n\n");
-      }
-      return `${agentConfig.prompt(docs)}\n${docText ? `\n\n=== 参考规程文档 ===\n${docText}` : ""}`;
+  const buildSystemWithRAG = (retrievedChunks) => {
+    let prompt = BASE_SYSTEM_PROMPT;
+    
+    if (retrievedChunks && retrievedChunks.length > 0) {
+      const chunkTexts = retrievedChunks.map(c => `【${c.docName}】\n${c.text}`).join("\n\n───────\n\n");
+      const docNames = [...new Set(retrievedChunks.map(c => c.docName))].join('、');
+      prompt = `${BASE_SYSTEM_PROMPT}
+
+⚠️ 【检索结果】根据用户问题，以下是相关的规程内容：
+
+${chunkTexts}
+
+【回答指示】
+- 直接基于上述检索内容回答用户问题
+- 引用具体的条文编号和原文内容
+- 注明信息来源为〈${docNames}〉`;
     }
-    if (!docs.length) return BASE_SYSTEM_PROMPT;
-    const docText = docs.map(d => `【文档：${d.name}】\n${truncate(d.content)}`).join("\n\n---\n\n");
-    return `${BASE_SYSTEM_PROMPT}\n\n===== 用户上传的参考规程文档（优先依据以下内容作答，并注明引用文档名）=====\n\n${docText}\n\n=====`;
+    
+    return prompt;
   };
 
-  const callAgent = async (agentId, userText, history) => {
+  const sendMessage = async (text) => {
+    const userText = text || input.trim();
+    if (!userText || loading) return;
+    const level = detectAlertLevel(userText);
+    setAlertLevel(level);
+    if (level) setTimeout(() => setAlertLevel(null), 5000);
+    
+    const newMessages = [...messages, { role: "user", content: userText, timestamp: new Date() }];
+    setMessages(newMessages);
+    setInput("");
+    setLoading(true);
+    simulateAgents();
+    
+    // RAG检索 - 从文档中查找相关内容
+    const retrievedChunks = docs.length > 0 ? retrieveRelevantChunks(userText, docs, 4) : [];
+    
+    // 使用新的消息数组构建历史
+    const history = messages.map(m => ({ role: m.role, content: m.content.replace(/\*\*/g, "") }));
+    
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 45000);
+      const timeoutId = setTimeout(() => controller.abort(), 90000);
+      
+      // 使用RAG检索结果构建系统消息
+      const systemPrompt = buildSystemWithRAG(retrievedChunks);
       
       const res = await fetch(`${LONGCAT_BASE_URL}/v1/messages`, {
         method: "POST",
@@ -239,8 +322,8 @@ export default function CoalMineAgent() {
         },
         body: JSON.stringify({
           model: LONGCAT_MODEL,
-          max_tokens: 1024,
-          system: buildSystem(agentId),
+          max_tokens: 4096,
+          system: systemPrompt,
           messages: [...history, { role: "user", content: userText }]
         }),
         signal: controller.signal
@@ -250,100 +333,26 @@ export default function CoalMineAgent() {
       
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(`${res.status}: ${err.error?.message || res.statusText}`);
+        throw new Error(`API错误 ${res.status}: ${err.error?.message || res.statusText}`);
       }
       
       const data = await res.json();
+      let reply = "无响应";
+      
       if (data.content && Array.isArray(data.content)) {
         const textBlock = data.content.find(b => b.type === "text" && b.text);
-        if (textBlock) return textBlock.text;
-      }
-      return "无响应";
-    } catch (error) {
-      if (error.name === "AbortError") {
-        return `智能体请求超时`;
-      }
-      return `错误: ${error.message}`;
-    }
-  };
-
-  const sendMessage = async (text) => {
-    const userText = text || input.trim();
-    if (!userText || loading) return;
-    const level = detectAlertLevel(userText);
-    setAlertLevel(level);
-    if (level) setTimeout(() => setAlertLevel(null), 5000);
-    setMessages(prev => [...prev, { role: "user", content: userText, timestamp: new Date() }]);
-    setInput("");
-    setLoading(true);
-    
-    const history = messages.map(m => ({ role: m.role, content: m.content.replace(/\*\*/g, "") }));
-    const isUrgent = level === "red"; // 紧急情况
-    
-    try {
-      // 展示协同推理中的加载状态
-      setMessages(prev => [...prev, { 
-        role: "assistant", 
-        content: `🤖 多智能体协同推理启动${isUrgent ? '（紧急模式）' : ''}...`,
-        timestamp: new Date(),
-        isThinking: true
-      }]);
-      
-      let agentResults = {};
-      const agentOrder = ["knowledge", "perception", "decision", "coordination"];
-      
-      if (isUrgent) {
-        // 紧急情况：并行调用所有智能体
-        setActiveAgents(agentOrder);
-        const promises = agentOrder.map(agentId =>
-          callAgent(agentId, userText, history).then(result => ({ agentId, result }))
-        );
-        const results = await Promise.all(promises);
-        results.forEach(({ agentId, result }) => {
-          agentResults[agentId] = result;
-        });
-      } else {
-        // 普通情况：串行调用（成本低，逐步展示进度）
-        for (const agentId of agentOrder) {
-          setActiveAgents(prev => {
-            if (!prev.includes(agentId)) return [...prev, agentId];
-            return prev;
-          });
-          agentResults[agentId] = await callAgent(agentId, userText, history);
-          await new Promise(resolve => setTimeout(resolve, 300)); // 视觉间隔
+        if (textBlock) {
+          reply = textBlock.text;
         }
       }
       
-      // 移除加载提示
-      setMessages(prev => prev.filter(m => !m.isThinking));
-      
-      // 构建最终协同输出
-      const finalOutput = `🤖 **多智能体协同决策结果**
-
-${agentResults["knowledge"] ? `## 📚 知识图谱智能体输出
-${agentResults["knowledge"]}
-
-` : ""}${agentResults["perception"] ? `## 📡 态势感知智能体输出
-${agentResults["perception"]}
-
-` : ""}${agentResults["decision"] ? `## ⚡ 决策推理智能体输出
-${agentResults["decision"]}
-
-` : ""}${agentResults["coordination"] ? `## 🎯 协同指挥智能体输出
-${agentResults["coordination"]}
-
-` : ""}---
-⏱️ 协同耗时：${isUrgent ? '并行' : '串行'}执行 | 📊 智能体: ${agentOrder.join(' → ')}`;
-
-      setMessages(prev => [...prev, { role: "assistant", content: finalOutput, timestamp: new Date() }]);
-      setActiveAgents([]);
+      setMessages(prev => [...prev, { role: "assistant", content: reply, timestamp: new Date() }]);
     } catch (error) {
-      setMessages(prev => [...prev, { 
-        role: "assistant", 
-        content: `❌ 多智能体协同出错: ${error.message}`, 
-        timestamp: new Date() 
-      }]);
-      setActiveAgents([]);
+      let msg = "连接错误";
+      if (error.name === "AbortError") msg = "请求超时（90秒）";
+      else msg = `错误: ${error.message}`;
+      
+      setMessages(prev => [...prev, { role: "assistant", content: msg, timestamp: new Date() }]);
     }
     setLoading(false);
   };
@@ -449,7 +458,7 @@ ${agentResults["coordination"]}
                 {msg.role === "assistant" && (
                   <div style={{ width: 32, height: 32, borderRadius: "8px", flexShrink: 0, background: "linear-gradient(135deg,#4ade80,#22d3ee)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.9rem", marginRight: "0.6rem", marginTop: "0.2rem", boxShadow: "0 0 10px rgba(74,222,128,0.3)" }}>⛏</div>
                 )}
-                <div style={{ maxWidth: "76%", background: msg.role === "user" ? "linear-gradient(135deg,#1d4ed8,#1e40af)" : "rgba(255,255,255,0.05)", border: msg.role === "user" ? "1px solid rgba(59,130,246,0.4)" : "1px solid rgba(74,222,128,0.15)", borderRadius: msg.role === "user" ? "14px 4px 14px 14px" : "4px 14px 14px 14px", padding: "0.75rem 0.95rem", fontSize: "0.85rem", lineHeight: "1.7", backdropFilter: "blur(10px)" }}>
+                <div style={{ maxWidth: "76%", background: msg.role === "user" ? "linear-gradient(135deg,#1d4ed8,#1e40af)" : "rgba(255,255,255,0.05)", border: msg.role === "user" ? "1px solid rgba(59,130,246,0.4)" : "1px solid rgba(74,222,128,0.15)", borderRadius: msg.role === "user" ? "14px 4px 14px 14px" : "4px 14px 14px 14px", padding: "0.75rem 0.95rem", fontSize: "0.85rem", lineHeight: "1.7", backdropFilter: "blur(10px)", textAlign: "left" }}>
                   {fmt(msg.content)}
                   <div style={{ fontSize: "0.6rem", color: "#475569", marginTop: "0.3rem", textAlign: "right" }}>
                     {msg.timestamp.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
@@ -461,18 +470,14 @@ ${agentResults["coordination"]}
             {loading && (
               <div style={{ display: "flex", alignItems: "flex-start", gap: "0.6rem", animation: "fadeUp 0.3s ease" }}>
                 <div style={{ width: 32, height: 32, borderRadius: "8px", background: "linear-gradient(135deg,#4ade80,#22d3ee)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.9rem", boxShadow: "0 0 10px rgba(74,222,128,0.3)" }}>⛏</div>
-                <div style={{ padding: "0.75rem 0.95rem", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(74,222,128,0.15)", borderRadius: "4px 14px 14px 14px", fontSize: "0.82rem", color: "#94a3b8", minWidth: "280px" }}>
-                  <div style={{ fontWeight: 600, marginBottom: "0.35rem" }}>🤖 多智能体协同推理中...</div>
-                  <div style={{ fontSize: "0.75rem", lineHeight: "1.8" }}>
-                    {AGENTS.map(a => (
-                      <div key={a.id} style={{ display: "flex", alignItems: "center", gap: "0.4rem", color: activeAgents.includes(a.id) ? a.color : "#475569", transition: "all 0.3s" }}>
-                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: activeAgents.includes(a.id) ? a.color : "#374151", animation: activeAgents.includes(a.id) ? "pulse 1s infinite" : "none", flexShrink: 0 }} />
-                        <span>{a.icon} {a.name}</span>
-                        {activeAgents.includes(a.id) && <span style={{ fontSize: "0.65rem", color: a.color }}>处理中</span>}
-                      </div>
+                <div style={{ padding: "0.75rem 0.95rem", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(74,222,128,0.15)", borderRadius: "4px 14px 14px 14px", fontSize: "0.82rem", color: "#94a3b8" }}>
+                  <span>多智能体协同推理中</span><span className="dots">...</span>
+                  {docs.length > 0 && <div style={{ fontSize: "0.63rem", color: "#4ade80", marginTop: "0.2rem" }}>📄 正在检索 {docs.length} 份规程文档</div>}
+                  <div style={{ marginTop: "0.35rem", display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
+                    {AGENTS.filter(a => activeAgents.includes(a.id)).map(a => (
+                      <span key={a.id} style={{ fontSize: "0.6rem", padding: "0.1rem 0.4rem", background: `${a.color}20`, border: `1px solid ${a.color}`, borderRadius: "4px", color: a.color }}>{a.icon} {a.name}</span>
                     ))}
                   </div>
-                  {docs.length > 0 && <div style={{ fontSize: "0.63rem", color: "#4ade80", marginTop: "0.3rem", paddingTop: "0.3rem", borderTop: "1px solid rgba(74,222,128,0.2)" }}>📄 检索 {docs.length} 份规程 | 知识库激活</div>}
                 </div>
               </div>
             )}
