@@ -202,7 +202,7 @@ function retrieveRelevantChunks(query, docs, topK = 4) {
 export default function CoalMineAgent() {
   const [messages, setMessages] = useState([{
     role: "assistant",
-    content: "您好！我是**煤矿应急救援决策知识问答AI智能体**，由中国矿业大学研发。\n\n可为您提供：\n- ⚡ **实时应急决策支持**\n- 🔍 **灾害风险智能识别**\n- 📋 **救援策略精准生成**\n- 🤝 **跨部门协同指挥建议**\n\n💡 点击左侧 📂 上传您矿井的专属规程、应急预案，智能体将优先基于这些文档为您作答。",
+    content: "您好！我是**煤矿应急救援决策知识问答AI智能体**，由中国矿业大学研发。\n\n可为您提供：\n- ⚡ **实时应急决策支持**\n- 🔍 **灾害风险智能识别**\n- 📋 **救援策略精准生成**\n- 🤝 **跨部门协同指挥建议**\n\n💡 点击左侧 📂 上传您矿井的专属规程、应急预案，智能体将优先基于这些文档为您作答。\n📷 点击输入框旁的 📷 按钮可上传图片，系统将使用百度AI识别图片内容。",
     timestamp: new Date(),
   }]);
   const [input, setInput] = useState("");
@@ -211,9 +211,11 @@ export default function CoalMineAgent() {
   const [alertLevel, setAlertLevel] = useState(null);
   const [docs, setDocs] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [imageRecognizing, setImageRecognizing] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+  const imageInputRef = useRef(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -263,6 +265,58 @@ export default function CoalMineAgent() {
       }
     }
     setUploading(false);
+    e.target.value = "";
+  };
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setImageRecognizing(true);
+
+    setMessages(prev => [...prev, {
+      role: "user",
+      content: `📷 已上传图片：${file.name}`,
+      timestamp: new Date(),
+    }]);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch('http://localhost:5001/api/baidu-image-recognize', {
+        method: 'POST',
+        body: formData,
+      });
+      const result = await response.json();
+
+      if (result.success && result.results && result.results.length > 0) {
+        const lines = result.results.map((item, idx) =>
+          `${idx + 1}. **${item.keyword}**（${item.root}）— 置信度 ${item.score}%${item.description ? `\n   ${item.description}` : ''}`
+        ).join('\n');
+        const content = `🔍 **百度AI图片识别结果**（${file.name}）：\n\n${lines}`;
+        setMessages(prev => [...prev, { role: "assistant", content, timestamp: new Date() }]);
+      } else if (result.error) {
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          content: `⚠️ 图片识别失败：${result.error}`,
+          timestamp: new Date(),
+        }]);
+      } else {
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          content: '⚠️ 百度AI未能识别该图片内容，请尝试其他图片。',
+          timestamp: new Date(),
+        }]);
+      }
+    } catch (err) {
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: `⚠️ 图片识别服务不可用，请确保后端已启动：python server/pdf_parser.py\n错误：${err.message}`,
+        timestamp: new Date(),
+      }]);
+    }
+
+    setImageRecognizing(false);
     e.target.value = "";
   };
 
@@ -505,7 +559,9 @@ ${chunkTexts}
               </div>
             )}
             <div style={{ display: "flex", gap: "0.6rem", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(74,222,128,0.25)", borderRadius: "13px", padding: "0.4rem 0.4rem 0.4rem 0.85rem", backdropFilter: "blur(20px)", boxShadow: "0 0 25px rgba(74,222,128,0.05)" }}>
+              <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/bmp,image/webp" onChange={handleImageUpload} style={{ display: "none" }} />
               <button onClick={() => fileInputRef.current?.click()} title="上传规程文档" style={{ width: 34, height: 34, borderRadius: "7px", flexShrink: 0, alignSelf: "flex-end", background: "rgba(74,222,128,0.1)", border: "1px solid rgba(74,222,128,0.3)", color: "#4ade80", cursor: "pointer", fontSize: "0.95rem", display: "flex", alignItems: "center", justifyContent: "center" }}>📎</button>
+              <button onClick={() => imageInputRef.current?.click()} disabled={imageRecognizing} title="上传图片（百度AI识别）" style={{ width: 34, height: 34, borderRadius: "7px", flexShrink: 0, alignSelf: "flex-end", background: imageRecognizing ? "rgba(96,165,250,0.05)" : "rgba(96,165,250,0.1)", border: "1px solid rgba(96,165,250,0.3)", color: imageRecognizing ? "#60a5fa55" : "#60a5fa", cursor: imageRecognizing ? "not-allowed" : "pointer", fontSize: "0.95rem", display: "flex", alignItems: "center", justifyContent: "center" }}>{imageRecognizing ? "⏳" : "📷"}</button>
               <textarea value={input} onChange={e => setInput(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
                 placeholder="描述灾害情况或输入应急问题（Shift+Enter换行）..." rows={2}
