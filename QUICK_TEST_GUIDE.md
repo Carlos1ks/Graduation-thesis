@@ -4,14 +4,16 @@
 
 ### 1. 启动前端
 ```bash
-cd c:\self\Draft_py\coal-mine-agent
+cd coal-mine-agent
+npm install   # 首次运行
 npm run dev
 ```
 访问：http://localhost:5173
 
-### 2. 启动后端（可选，用于文件解析）
+### 2. 启动后端（可选，用于文件解析和图片识别）
 ```bash
-cd c:\self\Draft_py\coal-mine-agent\server
+cd coal-mine-agent/server
+pip install -r requirements.txt   # 首次运行
 python pdf_parser.py
 ```
 访问：http://localhost:5001
