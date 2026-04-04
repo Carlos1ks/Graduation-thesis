@@ -42,11 +42,7 @@ coal-mine-agent/
 │  ├─ index.css
 │  └─ main.jsx
 └─ server/
-	├─ agent_factory.py
-	├─ agent_tools.py
 	├─ config.py
-	├─ http_client.py
-	├─ llm_adapter.py
 	├─ pdf_parser.py
 	└─ requirements.txt
 ```
@@ -107,19 +103,7 @@ coal-mine-agent/
 2. server/config.py
 作用：统一管理后端配置项（端口、API Key、模型参数、超时等）。
 
-3. server/http_client.py
-作用：封装 HTTP 请求能力（重试、超时、代理设置、百度 Token 获取）。
-
-4. server/llm_adapter.py
-作用：封装 LongCat 大模型调用逻辑，提供统一的 LLM 适配层。
-
-5. server/agent_tools.py
-作用：定义智能体可调用工具函数，供 agent 执行时使用。
-
-6. server/agent_factory.py
-作用：构建和组织智能体执行链路（Agent 生成与调度逻辑）。
-
-7. server/requirements.txt
+3. server/requirements.txt
 作用：后端 Python 依赖列表。
 
 ## 对外接口说明（简版）
