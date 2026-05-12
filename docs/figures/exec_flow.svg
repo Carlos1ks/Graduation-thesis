@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="380" viewBox="0 0 900 380">
+  <style>
+    .box{fill:#fff8e6;stroke:#d2691e;stroke-width:2}
+    .title{font: bold 14px "Microsoft YaHei"; fill:#4a2f1b}
+    .label{font:12px "Microsoft YaHei"; fill:#333}
+  </style>
+  <rect x="40" y="30" width="180" height="50" rx="6" class="box"/>
+  <text x="130" y="62" class="title" text-anchor="middle">用户提问</text>
+
+  <rect x="260" y="30" width="200" height="50" rx="6" class="box"/>
+  <text x="360" y="62" class="title" text-anchor="middle">路由器（router_llm）</text>
+
+  <rect x="40" y="120" width="160" height="50" rx="6" class="box"/>
+  <text x="120" y="152" class="label" text-anchor="middle">态势感知</text>
+
+  <rect x="240" y="120" width="160" height="50" rx="6" class="box"/>
+  <text x="320" y="152" class="label" text-anchor="middle">知识检索</text>
+
+  <rect x="440" y="120" width="160" height="50" rx="6" class="box"/>
+  <text x="520" y="152" class="label" text-anchor="middle">决策推理</text>
+
+  <rect x="640" y="120" width="160" height="50" rx="6" class="box"/>
+  <text x="720" y="152" class="label" text-anchor="middle">协同指挥</text>
+
+  <rect x="340" y="230" width="220" height="60" rx="6" class="box"/>
+  <text x="450" y="262" class="title" text-anchor="middle">结果聚合器</text>
+
+  <defs>
+    <marker id="a" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#d2691e" />
+    </marker>
+  </defs>
+  <line x1="150" y1="80" x2="280" y2="80" stroke="#d2691e" stroke-width="2" marker-end="url(#a)" />
+  <line x1="360" y1="80" x2="360" y2="120" stroke="#d2691e" stroke-width="2" marker-end="url(#a)" />
+  <line x1="120" y1="170" x2="360" y2="260" stroke="#d2691e" stroke-width="2" marker-end="url(#a)" />
+  <line x1="320" y1="170" x2="360" y2="260" stroke="#d2691e" stroke-width="2" marker-end="url(#a)" />
+  <line x1="520" y1="170" x2="460" y2="230" stroke="#d2691e" stroke-width="2" marker-end="url(#a)" />
+  <line x1="720" y1="170" x2="560" y2="230" stroke="#d2691e" stroke-width="2" marker-end="url(#a)" />
+  <line x1="450" y1="290" x2="450" y2="330" stroke="#d2691e" stroke-width="2" marker-end="url(#a)" />
+
+  <text x="40" y="360" class="label">图2 多智能体执行流程（工程视图）</text>
+</svg>

@@ -1,0 +1,82 @@
+"""煤矿应急领域轻量 schema 定义。"""
+
+HAZARD_DEFINITIONS = {
+    "gas": {
+        "label": "瓦斯灾害",
+        "keywords": ["瓦斯", "超限", "积聚", "爆炸", "通风异常"],
+    },
+    "fire": {
+        "label": "火灾灾害",
+        "keywords": ["火灾", "明火", "火源", "烟雾", "高温", "燃烧"],
+    },
+    "water": {
+        "label": "水害风险",
+        "keywords": ["突水", "透水", "积水", "涌水", "淋水", "水位"],
+    },
+    "roof": {
+        "label": "顶板风险",
+        "keywords": ["冒顶", "顶板", "片帮", "离层", "垮落"],
+    },
+    "personnel": {
+        "label": "人员风险",
+        "keywords": ["被困", "失联", "中毒", "窒息", "伤亡", "撤离"],
+    },
+}
+
+SYMPTOM_DEFINITIONS = {
+    "smoke": {"label": "烟雾", "keywords": ["烟雾", "烟气", "浓烟"]},
+    "gas_overlimit": {"label": "瓦斯超限", "keywords": ["瓦斯浓度", "超限", "浓度达到", "浓度持续上升"]},
+    "water_inrush": {"label": "突水征兆", "keywords": ["涌水", "挂红", "挂汗", "底鼓", "淋水增大"]},
+    "power_issue": {"label": "电气异常", "keywords": ["断电", "电源", "设备异常", "停电"]},
+    "trapped": {"label": "人员被困", "keywords": ["被困", "失联", "通信中断"]},
+}
+
+ACTION_DEFINITIONS = {
+    "stop_work": {"label": "停止作业", "keywords": ["停止作业", "停产", "停掘", "停止施工"]},
+    "cut_power": {"label": "切断电源", "keywords": ["切断电源", "断电", "停电", "切电"]},
+    "evacuate": {"label": "撤离人员", "keywords": ["撤人", "撤离", "疏散", "沿避灾路线"]},
+    "ventilate": {"label": "加强通风", "keywords": ["通风", "稀释", "排放", "局部通风机"]},
+    "alert": {"label": "设置警戒", "keywords": ["警戒", "封控", "禁止进入", "栅栏"]},
+    "report": {"label": "上报调度", "keywords": ["调度室", "上报", "汇报", "报告"]},
+    "rescue": {"label": "组织救援", "keywords": ["救援", "搜救", "救护队", "救护"]},
+}
+
+DEPARTMENT_DEFINITIONS = {
+    "dispatch": {"label": "调度室", "keywords": ["调度室", "调度", "指挥中心"]},
+    "ventilation": {"label": "通防部门", "keywords": ["通防", "通风队", "瓦斯检查员", "瓦斯抽采队"]},
+    "electrical": {"label": "机电部门", "keywords": ["机电", "供电", "电工"]},
+    "mining": {"label": "采掘班组", "keywords": ["采掘", "班组长", "现场班组", "掘进工作面"]},
+    "safety": {"label": "安监部门", "keywords": ["安监", "安全管理", "安全员"]},
+    "rescue_team": {"label": "矿山救护队", "keywords": ["救护队", "救援队", "专业救援"]},
+}
+
+LOCATION_DEFINITIONS = {
+    "heading_face": {"label": "掘进工作面", "keywords": ["掘进工作面", "工作面"]},
+    "return_airway": {"label": "回风巷", "keywords": ["回风巷", "回风"]},
+    "fresh_air": {"label": "新鲜风流巷道", "keywords": ["新鲜风流", "进风巷", "避灾路线"]},
+    "transport_roadway": {"label": "运输巷道", "keywords": ["运输巷道", "运输巷"]},
+}
+
+EQUIPMENT_DEFINITIONS = {
+    "fan": {"label": "局部通风机", "keywords": ["局部通风机", "风机"]},
+    "detector": {"label": "检测仪", "keywords": ["检测仪", "传感器", "监测"]},
+    "communication": {"label": "通信设备", "keywords": ["对讲机", "广播", "通信终端"]},
+}
+
+ENTITY_GROUPS = {
+    "hazard": HAZARD_DEFINITIONS,
+    "symptom": SYMPTOM_DEFINITIONS,
+    "action": ACTION_DEFINITIONS,
+    "department": DEPARTMENT_DEFINITIONS,
+    "location": LOCATION_DEFINITIONS,
+    "equipment": EQUIPMENT_DEFINITIONS,
+}
+
+RELATION_LABELS = {
+    "indicates": "征兆指向灾害",
+    "requires_action": "灾害需要措施",
+    "responsible_for": "措施归属部门",
+    "governed_by": "条款约束措施",
+    "occurs_at": "风险发生于场景",
+    "supports_action": "证据支撑措施",
+}

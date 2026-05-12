@@ -1,30 +1,12 @@
 import { useState, useRef, useEffect } from "react";
-import * as mammoth from "mammoth";
-import * as pdfjsLib from "pdfjs-dist";
-import Fuse from "fuse.js";
 
-const BACKEND_BASE_URL = "http://localhost:5002";
-const CHAT_API_URL = `${BACKEND_BASE_URL}/api/chat`;
-const LONGCAT_MODEL = "LongCat-Flash-Thinking-2601";
-
-const BASE_SYSTEM_PROMPT = `你是一个专业的煤矿应急救援决策知识问答AI智能体，基于中国矿业大学袁冠团队的研究成果构建。
-
-你的核心能力包括：
-1. **应急知识问答**：基于煤矿作业规程、事故案例、应急预案等专业知识，快速精准回答应急相关问题
-2. **灾害风险识别**：识别矿井水灾、火灾、瓦斯爆炸等典型灾害场景的风险特征
-3. **救援决策支持**：依据法律法规与历史救援案例，智能生成自适应救援策略
-4. **安全态势感知**：分析灾变场景态势，提供"人-地-险-策"的精准协同决策支持
-5. **跨域知识融合**：整合多源异构专业知识，打通信息孤岛
-
-回答规则：
-- 回答要专业、准确、具有可操作性
-- 针对紧急情况，优先给出立即行动步骤，再给出详细分析
-- 如果用户上传了参考文档，优先基于文档内容作答，并注明引用来源文件名
-- 引用相关法律法规和历史案例支撑建议
-- 使用清晰的结构化格式（如步骤、风险等级、负责部门等）
-- 对于超出知识范围的问题，明确说明并建议联系专业机构
-
-你服务于煤矿指挥中心管理人员、带班队长和一线救援队员，目标是成为他们的"随身专家"。`;
+const BACKEND_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const CHAT_API_URL = `${BACKEND_BASE_URL}/api/agent-chat`;
+const DOCUMENT_UPLOAD_API_URL = `${BACKEND_BASE_URL}/api/documents/upload`;
+const DOCUMENT_REMOVE_API_URL = `${BACKEND_BASE_URL}/api/documents/remove`;
+const VIDEO_ANALYZE_API_URL = `${BACKEND_BASE_URL}/api/video-analyze`;
+const SENSOR_PUSH_API_URL = `${BACKEND_BASE_URL}/api/sensors/push`;
+const MAX_HISTORY_MESSAGES = 6;
 
 const QUICK_QUESTIONS = [
   { icon: "💨", text: "瓦斯浓度超标如何处置？" },
@@ -42,161 +24,67 @@ const AGENTS = [
   { id: "coordination", name: "协同指挥智能体", icon: "🎯", color: "#f472b6" },
 ];
 
-async function extractText(file) {
-  const name = file.name.toLowerCase();
-  
-  // 使用Python后端解析PDF
+async function uploadDocumentToBackend(file, sessionId) {
   const formData = new FormData();
-  formData.append('file', file);
-  
-  try {
-    let endpoint = '';
-    if (name.endsWith('.pdf')) {
-      endpoint = '/api/parse-pdf';
-    } else if (name.endsWith('.docx')) {
-      endpoint = '/api/parse-docx';
-    } else if (name.endsWith('.txt')) {
-      endpoint = '/api/parse-text';
-    } else {
-      return "（不支持的文件格式，请上传 TXT、DOCX 或 PDF）";
-    }
-    
-    // 调用Flask后端
-    const response = await fetch(`${BACKEND_BASE_URL}${endpoint}`, {
-      method: 'POST',
-      body: formData
-    });
-    
-    const result = await response.json();
-    
-    if (result.success) {
-      return result.text;
-    } else {
-      return `（文件解析失败：${result.error}）`;
-    }
-  } catch (err) {
-    // 如果后端不可用，显示提示信息
-    console.error('后端连接失败:', err);
-    return "（请确保Python后端服务已启动：python server/pdf_parser.py）";
-  }
-}
+  formData.append("file", file);
+  formData.append("session_id", sessionId);
 
-function truncate(text, max = 8000) {
-  if (text.length <= max) return text;
-  return text.slice(0, max) + "\n\n...[文档内容较长，已截取前部分]";
-}
-
-// 文档分块函数 - 优先按条款编号分块
-function chunkText(text, chunkSize = 800) {
-  const chunks = [];
-  
-  // 第一步：按"第X条"分段（优先级最高）
-  const articlePattern = /(?=第[一二三四五六七八九十百千万\d]+条)/;
-  const articles = text.split(articlePattern).filter(p => p.trim());
-  
-  // 第二步：对每个条款进行细分
-  articles.forEach(article => {
-    if (article.length <= chunkSize) {
-      // 如果条款本身不超长，直接加入
-      if (article.trim()) chunks.push({
-        text: article.trim(),
-        index: chunks.length
-      });
-    } else {
-      // 条款过长，按句号分段
-      const sentences = article.split(/(?<=[。；！？])/);
-      let currentChunk = '';
-      
-      sentences.forEach(sentence => {
-        if ((currentChunk + sentence).length > chunkSize && currentChunk.length > 0) {
-          chunks.push({
-            text: currentChunk.trim(),
-            index: chunks.length
-          });
-          currentChunk = sentence;
-        } else {
-          currentChunk += sentence;
-        }
-      });
-      
-      if (currentChunk.trim()) {
-        chunks.push({
-          text: currentChunk.trim(),
-          index: chunks.length
-        });
-      }
-    }
+  const response = await fetch(DOCUMENT_UPLOAD_API_URL, {
+    method: "POST",
+    body: formData,
   });
-  
-  return chunks;
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `文档上传失败：${response.status}`);
+  }
+  return result;
 }
 
-// RAG检索函数 - 智能条款定位 + 模糊搜索混合
-function retrieveRelevantChunks(query, docs, topK = 4) {
-  if (!docs || docs.length === 0) return [];
-  
-  // 第一步：尝试精确定位条款编号
-  const articleMatch = query.match(/第([一二三四五六七八九十百千万]+)条|(\d{1,4})条/);
-  let articleNum = null;
-  
-  if (articleMatch) {
-    // 提取条款编号
-    const cnNum = articleMatch[1];
-    const digNum = articleMatch[2];
-    articleNum = cnNum || digNum;
-  }
-  
-  // 合并所有文档的块
-  const allChunks = [];
-  docs.forEach(doc => {
-    if (doc.chunks) {
-      doc.chunks.forEach(chunk => {
-        allChunks.push({
-          ...chunk,
-          docName: doc.name
-        });
-      });
-    }
+async function removeDocumentFromBackend(documentId, sessionId) {
+  const response = await fetch(DOCUMENT_REMOVE_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      document_id: documentId,
+      session_id: sessionId,
+    }),
   });
-  
-  if (allChunks.length === 0) return [];
-  
-  let results = [];
-  
-  // 策略1：如果找到条款号，先精确查找
-  if (articleNum) {
-    const exactMatches = allChunks.filter(chunk => 
-      chunk.text.includes(`第${articleNum}条`) || 
-      chunk.text.includes(`${articleNum}条`)
-    );
-    if (exactMatches.length > 0) {
-      results = exactMatches.slice(0, topK).map(item => ({ ...item, score: 0 }));
-    }
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `文档移除失败：${response.status}`);
   }
-  
-  // 策略2：如果没有精确匹配或匹配数不足，使用模糊搜索补充
-  if (results.length < topK) {
-    const fuse = new Fuse(allChunks, {
-      keys: ['text'],
-      threshold: 0.3,  // 降低阈值，提高匹配率
-      minMatchCharLength: 2,
-      ignoreLocation: true,
-      useExtendedSearch: true
-    });
-    
-    const fuzzyResults = fuse.search(query, { limit: topK * 2 });
-    const fuzzyChunks = fuzzyResults.map(r => r.item);
-    
-    // 合并结果，去重
-    const seenIndexes = new Set(results.map(r => r.index + r.docName));
-    for (const chunk of fuzzyChunks) {
-      if (!seenIndexes.has(chunk.index + chunk.docName) && results.length < topK) {
-        results.push(chunk);
-      }
-    }
+}
+
+async function uploadVideoToBackend(file, sessionId) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("session_id", sessionId);
+
+  const response = await fetch(VIDEO_ANALYZE_API_URL, {
+    method: "POST",
+    body: formData,
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `视频分析失败：${response.status}`);
   }
-  
-  return results.slice(0, topK);
+  return result;
+}
+
+async function pushSensorsToBackend(records, sessionId) {
+  const response = await fetch(SENSOR_PUSH_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      session_id: sessionId,
+      records,
+    }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `传感器接入失败：${response.status}`);
+  }
+  return result;
 }
 
 export default function CoalMineAgent() {
@@ -211,12 +99,19 @@ export default function CoalMineAgent() {
   const [alertLevel, setAlertLevel] = useState(null);
   const [docs, setDocs] = useState([]);
   const [images, setImages] = useState([]);
+  const [videos, setVideos] = useState([]);
+  const [sensors, setSensors] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [imageUploading, setImageUploading] = useState(false);
+  const [videoUploading, setVideoUploading] = useState(false);
+  const [sensorDialogOpen, setSensorDialogOpen] = useState(false);
+  const [sensorInput, setSensorInput] = useState('[\n  {\n    "sensor_id": "gas-01",\n    "name": "瓦斯浓度传感器",\n    "value": 1.7,\n    "unit": "%",\n    "threshold": 1.5,\n    "location": "掘进工作面",\n    "status": "报警"\n  }\n]');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const imageInputRef = useRef(null);
+  const videoInputRef = useRef(null);
+  const sessionIdRef = useRef(`session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -240,27 +135,25 @@ export default function CoalMineAgent() {
     setUploading(true);
     for (const file of files) {
       try {
-        const content = await extractText(file);
         const sizeMB = (file.size / 1024 / 1024).toFixed(2);
-        
-        // 分块处理文档内容
-        const chunks = chunkText(content, 600);
-        
-        setDocs(prev => [...prev.filter(d => d.name !== file.name), { 
-          name: file.name, 
-          content,
-          chunks,
-          sizeMB 
+        const result = await uploadDocumentToBackend(file, sessionIdRef.current);
+
+        setDocs(prev => [...prev.filter(d => d.document_id !== result.document_id && d.name !== file.name), {
+          document_id: result.document_id,
+          name: result.file_name || file.name,
+          sizeMB,
+          charCount: result.char_count || 0,
+          chunkCount: result.chunk_count || 0,
         }]);
         setMessages(prev => [...prev, {
           role: "assistant",
-          content: `📄 已加载《**${file.name}**》（${sizeMB} MB · ${content.length.toLocaleString()} 字符 · ${chunks.length} 个检索块）\n\n该文档已分块存储，后续回答将自动检索相关内容。`,
+          content: `📄 已上传《**${result.file_name || file.name}**》（${sizeMB} MB · ${(result.char_count || 0).toLocaleString()} 字符 · ${result.chunk_count || 0} 个向量检索块）\n\n该文档已完成后端切块并建立向量索引，后续回答将自动检索相关条款。`,
           timestamp: new Date(),
         }]);
       } catch (err) {
         setMessages(prev => [...prev, {
           role: "assistant",
-          content: `⚠️ 文档《${file.name}》加载失败：${err.message}`,
+          content: `⚠️ 文档《${file.name}》上传失败：${err.message}`,
           timestamp: new Date(),
         }]);
       }
@@ -311,12 +204,86 @@ export default function CoalMineAgent() {
     e.target.value = "";
   };
 
+  // 处理视频上传并自动分析
+  const handleVideoUpload = async (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    setVideoUploading(true);
+
+    for (const file of files) {
+      try {
+        if (!file.type.startsWith("video/")) {
+          throw new Error("仅支持视频格式");
+        }
+
+        const sizeMB = (file.size / 1024 / 1024).toFixed(2);
+        const result = await uploadVideoToBackend(file, sessionIdRef.current);
+        const summaryText = result.summary_text || "";
+        const evidence = Array.isArray(result.evidence) ? result.evidence : [];
+
+        setVideos(prev => [
+          ...prev.filter(v => v.name !== file.name),
+          {
+            name: result.video_name || file.name,
+            sizeMB,
+            duration_s: result.duration_s || 0,
+            frames_extracted: result.frames_extracted || 0,
+            frames_matched: result.frames_matched || 0,
+            issue_keywords: Array.isArray(result.issue_keywords) ? result.issue_keywords : [],
+            summary_text: summaryText,
+            evidence,
+          }
+        ]);
+
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          content: summaryText || `🎬 已分析视频《**${result.video_name || file.name}**》`,
+          timestamp: new Date(),
+        }]);
+      } catch (err) {
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          content: `⚠️ 视频《${file.name}》分析失败：${err.message}`,
+          timestamp: new Date(),
+        }]);
+      }
+    }
+
+    setVideoUploading(false);
+    e.target.value = "";
+  };
+
+  const handleSensorSubmit = async () => {
+    try {
+      const records = JSON.parse(sensorInput);
+      if (!Array.isArray(records) || records.length === 0) {
+        throw new Error("请提供非空的传感器数组");
+      }
+      const result = await pushSensorsToBackend(records, sessionIdRef.current);
+      const latestRecords = Array.isArray(result.latest_records) ? result.latest_records : [];
+      setSensors(latestRecords);
+      setSensorDialogOpen(false);
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: `📡 已接入 ${latestRecords.length} 条传感器数据。\n\n${latestRecords.slice(0, 4).map(item => `- ${item.name || item.sensor_id}：${item.value_text || item.value || "未知"}${item.unit || ""}（${item.status || "状态未知"}）`).join("\n")}`,
+        timestamp: new Date(),
+      }]);
+    } catch (err) {
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: `⚠️ 传感器数据接入失败：${err.message}`,
+        timestamp: new Date(),
+      }]);
+    }
+  };
+
   // 调用百度API识别图片
   const analyzeImagesWithBaidu = async () => {
-    if (images.length === 0) return "";
-    
+    if (images.length === 0) return { summaryText: "", evidence: [] };
+
     try {
-      let results = [];
+      let lines = [];
+      let evidence = [];
       for (const img of images.slice(0, 2)) {
         try {
           const resp = await fetch(`${BACKEND_BASE_URL}/api/image-analyze`, {
@@ -327,44 +294,42 @@ export default function CoalMineAgent() {
               image_name: img.name
             })
           });
-          
+
           if (resp.ok) {
             const data = await resp.json();
             if (data.result && data.result.length > 0) {
               const keywords = data.result.slice(0, 3).map(r => r.keyword || r.class_name).join("、");
-              results.push(`【${img.name}】识别结果：${keywords}`);
+              lines.push(`【${img.name}】识别结果：${keywords}`);
+              evidence.push({
+                image_name: img.name,
+                summary: keywords,
+                source_type: "image_analysis"
+              });
             }
           }
         } catch (err) {
           console.warn(`图片${img.name}识别失败:`, err);
         }
       }
-      return results.length > 0 ? `📸 现场图片识别：\n${results.join("\n")}` : "";
+      return {
+        summaryText: lines.length > 0 ? `📸 现场图片识别：\n${lines.join("\n")}` : "",
+        evidence,
+      };
     } catch (err) {
       console.warn("百度API调用失败:", err);
-      return "";
+      return { summaryText: "", evidence: [] };
     }
   };
 
-  const buildSystemWithRAG = (retrievedChunks) => {
-    let prompt = BASE_SYSTEM_PROMPT;
-    
-    if (retrievedChunks && retrievedChunks.length > 0) {
-      const chunkTexts = retrievedChunks.map(c => `【${c.docName}】\n${c.text}`).join("\n\n───────\n\n");
-      const docNames = [...new Set(retrievedChunks.map(c => c.docName))].join('、');
-      prompt = `${BASE_SYSTEM_PROMPT}
-
-⚠️ 【检索结果】根据用户问题，以下是相关的规程内容：
-
-${chunkTexts}
-
-【回答指示】
-- 直接基于上述检索内容回答用户问题
-- 引用具体的条文编号和原文内容
-- 注明信息来源为〈${docNames}〉`;
-    }
-    
-    return prompt;
+  const buildConversationHistory = (messageList) => {
+    return messageList
+      .filter(m => ["user", "assistant"].includes(m.role))
+      .filter(m => {
+        const content = String(m.content || "");
+        return !content.startsWith("📄 已加载") && !content.startsWith("📄 已上传") && !content.startsWith("🗑️ 已移除") && !content.startsWith("📸 正在分析") && !content.startsWith("📸 已上传") && !content.startsWith("🎬 正在分析") && !content.startsWith("🎬 已分析") && !content.startsWith("🎬 视频") && !content.startsWith("📡 已接入");
+      })
+      .slice(-MAX_HISTORY_MESSAGES)
+      .map(m => ({ role: m.role, content: String(m.content || "").replace(/\*\*/g, "") }));
   };
 
   const sendMessage = async (text) => {
@@ -373,59 +338,63 @@ ${chunkTexts}
     const level = detectAlertLevel(userText);
     setAlertLevel(level);
     if (level) setTimeout(() => setAlertLevel(null), 5000);
-    
+
     const newMessages = [...messages, { role: "user", content: userText, timestamp: new Date() }];
     setMessages(newMessages);
     setInput("");
     setLoading(true);
     simulateAgents();
-    
+
     // 如果有图片，先调用百度API进行识别
-    let enhancedUserText = userText;
+    let imageSummaryText = "";
+    let imageEvidence = [];
     if (images.length > 0) {
       setMessages(prev => [...prev, {
         role: "assistant",
         content: "📸 正在分析上传的图片...",
         timestamp: new Date(),
       }]);
-      const analysisResult = await analyzeImagesWithBaidu();
-      if (analysisResult) {
-        enhancedUserText = `${userText}\n\n${analysisResult}`;
+      const imageAnalysis = await analyzeImagesWithBaidu();
+      imageSummaryText = imageAnalysis.summaryText || "";
+      imageEvidence = imageAnalysis.evidence || [];
+      if (imageSummaryText) {
         setMessages(prev => [...prev, {
           role: "assistant",
-          content: analysisResult,
+          content: imageSummaryText,
           timestamp: new Date(),
         }]);
       }
     }
-    
-    // RAG检索 - 从文档中查找相关内容
-    const retrievedChunks = docs.length > 0 ? retrieveRelevantChunks(enhancedUserText, docs, 4) : [];
-    
-    // 使用新的消息数组构建历史
-    const history = messages.map(m => ({ role: m.role, content: m.content.replace(/\*\*/g, "") }));
-    
+
+    const videoEvidence = videos.flatMap(v => Array.isArray(v.evidence) ? v.evidence : []);
+
+    const history = buildConversationHistory(newMessages);
+
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 180000);
-      
-      // 使用RAG检索结果构建系统消息
-      const systemPrompt = buildSystemWithRAG(retrievedChunks);
-      
+
       const res = await fetch(CHAT_API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: LONGCAT_MODEL,
-          max_tokens: 4096,
-          system: systemPrompt,
-          messages: [...history, { role: "user", content: enhancedUserText }]
+          query: userText,
+          session_id: sessionIdRef.current,
+          history,
+          evidence: {
+            images: [...imageEvidence, ...videoEvidence],
+            sensors,
+          },
+          options: {
+            use_session_memory: true,
+            use_retrieval_evidence: true,
+          },
         }),
         signal: controller.signal
       });
-      
+
       clearTimeout(timeoutId);
-      
+
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
@@ -433,16 +402,51 @@ ${chunkTexts}
       }
 
       const reply = data.reply || "无响应";
-      
-      setMessages(prev => [...prev, { role: "assistant", content: reply, timestamp: new Date() }]);
+      const selected = Array.isArray(data.selected_agents) ? data.selected_agents : [];
+      setActiveAgents(selected);
+
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: reply,
+        timestamp: new Date(),
+        meta: {
+          selected_agents: selected,
+          route_mode: data.route_mode,
+          route_reason: data.route_reason,
+          memory_used: data.memory_used,
+          evidence_used: data.evidence_used,
+          risk_assessment: data.risk_assessment,
+          kg_used: data.kg_used,
+          source_fusion: data.source_fusion,
+        }
+      }]);
     } catch (error) {
       let msg = "连接错误";
       if (error.name === "AbortError") msg = "请求超时（180秒）";
       else msg = `错误: ${error.message}`;
-      
+      setActiveAgents([]);
+
       setMessages(prev => [...prev, { role: "assistant", content: msg, timestamp: new Date() }]);
     }
     setLoading(false);
+  };
+
+  const removeUploadedDocument = async (doc) => {
+    try {
+      await removeDocumentFromBackend(doc.document_id, sessionIdRef.current);
+      setDocs(prev => prev.filter(item => item.document_id !== doc.document_id));
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: `🗑️ 已移除文档《**${doc.name}**》及其后端向量索引。`,
+        timestamp: new Date(),
+      }]);
+    } catch (err) {
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: `⚠️ 文档《${doc.name}》移除失败：${err.message}`,
+        timestamp: new Date(),
+      }]);
+    }
   };
 
   const fmt = (text) => {
@@ -464,6 +468,140 @@ ${chunkTexts}
   };
 
   const fileIcon = (name) => name.endsWith(".pdf") ? "📕" : name.endsWith(".docx") ? "📘" : "📄";
+
+  const renderMetaPanel = (meta) => {
+    if (!meta) return null;
+    const selectedAgents = Array.isArray(meta.selected_agents) ? meta.selected_agents : [];
+    const risk = meta.risk_assessment || {};
+    const evidence = meta.evidence_used || {};
+    const memory = meta.memory_used || {};
+    const kgUsed = meta.kg_used || {};
+    const sourceFusion = meta.source_fusion || {};
+    const matchedRelations = Array.isArray(kgUsed.matched_relations) ? kgUsed.matched_relations : [];
+    const matchedNodes = Array.isArray(kgUsed.matched_nodes) ? kgUsed.matched_nodes : [];
+    const riskSignals = Array.isArray(risk.signals_detected) ? risk.signals_detected : [];
+    const docEvidence = Array.isArray(evidence.documents) ? evidence.documents : [];
+    const imageEvidence = Array.isArray(evidence.images) ? evidence.images : [];
+    const videoEvidenceCount = imageEvidence.filter(item => String(item.source_type || "").includes("video")).length;
+    const stillImageEvidenceCount = imageEvidence.length - videoEvidenceCount;
+
+    return (
+      <details style={{ marginTop: "0.55rem", background: "rgba(15,23,42,0.35)", border: "1px solid rgba(74,222,128,0.14)", borderRadius: "8px", padding: "0.45rem 0.6rem" }}>
+        <summary style={{ cursor: "pointer", color: "#86efac", fontSize: "0.68rem", fontWeight: 700 }}>本次推理说明</summary>
+        <div style={{ marginTop: "0.45rem", display: "grid", gap: "0.35rem", fontSize: "0.65rem", color: "#cbd5e1", lineHeight: 1.6 }}>
+          <div><span style={{ color: "#86efac" }}>路由方式：</span>{meta.route_mode || "未知"}</div>
+          <div><span style={{ color: "#86efac" }}>路由原因：</span>{meta.route_reason || "无"}</div>
+          <div>
+            <span style={{ color: "#86efac" }}>激活角色：</span>
+            {selectedAgents.length > 0 ? selectedAgents.join("、") : "无"}
+          </div>
+          <div>
+            <span style={{ color: "#86efac" }}>风险识别：</span>
+            {risk.risk_level ? `${risk.risk_level}风险` : "未识别"}
+            {Array.isArray(risk.risk_type_labels) && risk.risk_type_labels.length > 0 ? `（${risk.risk_type_labels.join("、")}）` : ""}
+          </div>
+          <div>
+            <span style={{ color: "#86efac" }}>证据使用：</span>
+            文档 {docEvidence.length} 条，图片 {stillImageEvidenceCount} 条，视频 {videoEvidenceCount} 帧
+          </div>
+          <div>
+            <span style={{ color: "#86efac" }}>会话记忆：</span>
+            {memory.history_messages || 0} 条历史消息，最终会话 {memory.session_history_messages || 0} 条
+          </div>
+          <div>
+            <span style={{ color: "#86efac" }}>图谱命中：</span>
+            节点 {kgUsed.node_count || 0} 个，关系 {kgUsed.relation_count || 0} 条，相关关系 {matchedRelations.length} 条
+          </div>
+          <div>
+            <span style={{ color: "#86efac" }}>多源融合：</span>
+            {sourceFusion.history_used ? "使用历史" : "未使用历史"}，文档 {sourceFusion.document_count || 0} 份，图像/视频证据 {sourceFusion.image_count || 0} 条
+          </div>
+
+          {docEvidence.length > 0 && (
+            <div>
+              <span style={{ color: "#86efac" }}>文档证据：</span>
+              <div style={{ marginTop: "0.18rem", display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
+                {docEvidence.map((doc, idx) => (
+                  <span key={`${doc.doc_name || "doc"}-${idx}`} style={{ padding: "0.08rem 0.38rem", borderRadius: "999px", background: "rgba(74,222,128,0.12)", border: "1px solid rgba(74,222,128,0.2)", color: "#bbf7d0" }}>
+                    {(doc.doc_name || "未知文档")}{doc.chunk_id ? ` · ${doc.chunk_id}` : ""}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {imageEvidence.length > 0 && (
+            <div>
+              <span style={{ color: "#86efac" }}>图片证据：</span>
+              <div style={{ marginTop: "0.18rem", display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
+                {imageEvidence.map((img, idx) => (
+                  <span key={`${img.image_name || "img"}-${idx}`} style={{ padding: "0.08rem 0.38rem", borderRadius: "999px", background: "rgba(59,130,246,0.12)", border: "1px solid rgba(59,130,246,0.2)", color: "#bfdbfe" }}>
+                    {img.image_name || "未知图片"}{String(img.source_type || "") === "video_analysis" ? "（视频帧）" : ""}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {riskSignals.length > 0 && (
+            <div>
+              <span style={{ color: "#86efac" }}>风险触发信号：</span>
+              <div style={{ marginTop: "0.18rem", display: "grid", gap: "0.2rem" }}>
+                {riskSignals.slice(0, 6).map((signal, idx) => (
+                  <div key={`${signal.signal_id || "signal"}-${idx}`} style={{ color: "#94a3b8" }}>
+                    - {signal.signal_label || signal.signal_id || "未知信号"}
+                    {signal.source ? `（来源：${signal.source}` : ""}
+                    {signal.keywords ? `；命中：${signal.keywords}` : ""}
+                    {signal.source ? "）" : ""}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {matchedNodes.length > 0 && (
+            <div>
+              <span style={{ color: "#86efac" }}>命中实体：</span>
+              <div style={{ marginTop: "0.18rem", display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
+                {matchedNodes.slice(0, 8).map((node) => (
+                  <span key={node.id} style={{ padding: "0.08rem 0.38rem", borderRadius: "999px", background: "rgba(168,85,247,0.12)", border: "1px solid rgba(168,85,247,0.2)", color: "#e9d5ff" }}>
+                    {node.label}{node.type ? ` · ${node.type}` : ""}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {matchedRelations.length > 0 && (
+            <div>
+              <span style={{ color: "#86efac" }}>命中关系链：</span>
+              <div style={{ marginTop: "0.18rem", display: "grid", gap: "0.2rem" }}>
+                {matchedRelations.slice(0, 6).map((rel, idx) => (
+                  <div key={`${rel.head_id || "h"}-${rel.tail_id || "t"}-${idx}`} style={{ color: "#cbd5e1", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "6px", padding: "0.28rem 0.42rem" }}>
+                    <span style={{ color: "#fef08a" }}>{rel.head_label || rel.head_id}</span>
+                    <span style={{ color: "#94a3b8" }}> → {rel.relation_label || rel.relation} → </span>
+                    <span style={{ color: "#bfdbfe" }}>{rel.tail_label || rel.tail_id}</span>
+                    {rel.source ? <span style={{ color: "#64748b" }}>（{rel.source}）</span> : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {risk.summary && (
+            <div style={{ whiteSpace: "pre-wrap", color: "#94a3b8" }}>
+              <span style={{ color: "#86efac" }}>风险摘要：</span>{risk.summary}
+            </div>
+          )}
+          {kgUsed.summary && (
+            <div style={{ whiteSpace: "pre-wrap", color: "#94a3b8" }}>
+              <span style={{ color: "#86efac" }}>图谱摘要：</span>{kgUsed.summary}
+            </div>
+          )}
+        </div>
+      </details>
+    );
+  };
 
   return (
     <div style={{ height: "100vh", background: "linear-gradient(135deg,#0a0f1e,#0d1b2a,#0a1628)", fontFamily: "'Noto Sans SC','PingFang SC',sans-serif", color: "#e2e8f0", display: "flex", flexDirection: "column" }}>
@@ -511,6 +649,7 @@ ${chunkTexts}
               <div style={{ padding: "0.55rem" }}>
                 <input ref={fileInputRef} type="file" accept=".txt,.docx,.pdf" multiple onChange={handleUpload} style={{ display: "none" }} />
                 <input ref={imageInputRef} type="file" accept="image/*" multiple onChange={handleImageUpload} style={{ display: "none" }} />
+                <input ref={videoInputRef} type="file" accept="video/*" multiple onChange={handleVideoUpload} style={{ display: "none" }} />
                 <button onClick={() => fileInputRef.current?.click()} disabled={uploading} style={{ width: "100%", padding: "0.5rem", background: "linear-gradient(135deg,rgba(74,222,128,0.15),rgba(34,211,238,0.1))", border: "1px dashed rgba(74,222,128,0.45)", borderRadius: "7px", color: uploading ? "#4ade8055" : "#4ade80", cursor: uploading ? "not-allowed" : "pointer", fontSize: "0.73rem", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem" }}>
                   {uploading ? "⏳ 解析中..." : "＋ 上传规程文档"}
                 </button>
@@ -520,6 +659,16 @@ ${chunkTexts}
                   {imageUploading ? "📸 上传中..." : "📸 上传现场图片"}
                 </button>
                 <div style={{ fontSize: "0.6rem", color: "#475569", textAlign: "center", marginTop: "0.3rem" }}>JPG · PNG · WEBP</div>
+
+                <button onClick={() => videoInputRef.current?.click()} disabled={videoUploading} style={{ width: "100%", padding: "0.5rem", marginTop: "0.45rem", background: "linear-gradient(135deg,rgba(245,158,11,0.15),rgba(249,115,22,0.1))", border: "1px dashed rgba(245,158,11,0.45)", borderRadius: "7px", color: videoUploading ? "#f59e0b55" : "#f59e0b", cursor: videoUploading ? "not-allowed" : "pointer", fontSize: "0.73rem", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem" }}>
+                  {videoUploading ? "🎬 分析中..." : "🎬 上传现场视频"}
+                </button>
+                <div style={{ fontSize: "0.6rem", color: "#475569", textAlign: "center", marginTop: "0.3rem" }}>MP4 · WEBM · MOV</div>
+
+                <button onClick={() => setSensorDialogOpen(true)} style={{ width: "100%", padding: "0.5rem", marginTop: "0.45rem", background: "linear-gradient(135deg,rgba(168,85,247,0.15),rgba(99,102,241,0.1))", border: "1px dashed rgba(168,85,247,0.45)", borderRadius: "7px", color: "#c084fc", cursor: "pointer", fontSize: "0.73rem", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem" }}>
+                  📡 接入传感器数据
+                </button>
+                <div style={{ fontSize: "0.6rem", color: "#475569", textAlign: "center", marginTop: "0.3rem" }}>JSON · HTTP 推送</div>
               </div>
 
               {/* Doc list */}
@@ -533,9 +682,9 @@ ${chunkTexts}
                     <span style={{ fontSize: "0.9rem", flexShrink: 0 }}>{fileIcon(doc.name)}</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: "0.7rem", fontWeight: 600, color: "#a3e635", wordBreak: "break-all", lineHeight: 1.3 }}>{doc.name}</div>
-                      <div style={{ fontSize: "0.6rem", color: "#475569", marginTop: "0.12rem" }}>{doc.sizeMB} MB · {doc.content.length.toLocaleString()} 字符</div>
+                      <div style={{ fontSize: "0.6rem", color: "#475569", marginTop: "0.12rem" }}>{doc.sizeMB} MB · {(doc.charCount || 0).toLocaleString()} 字符 · {doc.chunkCount || 0} 块</div>
                     </div>
-                    <button onClick={() => setDocs(prev => prev.filter(d => d.name !== doc.name))} style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: "0.85rem", flexShrink: 0, padding: 0, lineHeight: 1 }}>×</button>
+                    <button onClick={() => removeUploadedDocument(doc)} style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: "0.85rem", flexShrink: 0, padding: 0, lineHeight: 1 }}>×</button>
                   </div>
                 ))}
                 
@@ -556,6 +705,53 @@ ${chunkTexts}
                     ))}
                   </div>
                 )}
+
+                {videos.length > 0 && (
+                  <div style={{ marginTop: "0.65rem" }}>
+                    <div style={{ fontSize: "0.7rem", color: "#f59e0b", marginBottom: "0.35rem", fontWeight: 700 }}>🎬 上传的视频</div>
+                    {videos.map((video, i) => (
+                      <div key={i} style={{ padding: "0.5rem", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.18)", borderRadius: "7px", marginBottom: "0.35rem", display: "flex", alignItems: "flex-start", gap: "0.45rem" }}>
+                        <div style={{ width: 36, height: 36, borderRadius: "6px", background: "rgba(15,23,42,0.6)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#fbbf24", fontSize: "0.9rem" }}>🎞</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: "0.7rem", fontWeight: 600, color: "#fbbf24", wordBreak: "break-all", lineHeight: 1.3 }}>{video.name}</div>
+                          <div style={{ fontSize: "0.6rem", color: "#64748b", marginTop: "0.12rem" }}>
+                            {video.sizeMB} MB · {video.frames_extracted || 0} 帧 · {video.frames_matched || 0} 帧命中
+                          </div>
+                          {video.issue_keywords && video.issue_keywords.length > 0 && (
+                            <div style={{ marginTop: "0.28rem", display: "flex", gap: "0.2rem", flexWrap: "wrap" }}>
+                              {video.issue_keywords.slice(0, 4).map((kw, idx) => (
+                                <span key={`${kw}-${idx}`} style={{ padding: "0.05rem 0.35rem", borderRadius: "999px", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.22)", color: "#fde68a", fontSize: "0.6rem" }}>{kw}</span>
+                              ))}
+                            </div>
+                          )}
+                          {video.summary_text && (
+                            <div style={{ fontSize: "0.58rem", color: "#94a3b8", marginTop: "0.25rem", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+                              {video.summary_text.split("\n").slice(0, 3).join("\n")}
+                            </div>
+                          )}
+                        </div>
+                        <button onClick={() => setVideos(prev => prev.filter(v => v.name !== video.name))} style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: "0.85rem", flexShrink: 0, padding: 0, lineHeight: 1 }}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {sensors.length > 0 && (
+                  <div style={{ marginTop: "0.65rem" }}>
+                    <div style={{ fontSize: "0.7rem", color: "#c084fc", marginBottom: "0.35rem", fontWeight: 700 }}>📡 传感器数据</div>
+                    {sensors.map((sensor, i) => (
+                      <div key={i} style={{ padding: "0.5rem", background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.18)", borderRadius: "7px", marginBottom: "0.35rem", display: "flex", alignItems: "flex-start", gap: "0.45rem" }}>
+                        <div style={{ width: 36, height: 36, borderRadius: "6px", background: "rgba(15,23,42,0.6)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#c084fc", fontSize: "0.9rem" }}>📟</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: "0.7rem", fontWeight: 600, color: "#d8b4fe", wordBreak: "break-all", lineHeight: 1.3 }}>{sensor.name || sensor.sensor_id}</div>
+                          <div style={{ fontSize: "0.6rem", color: "#64748b", marginTop: "0.12rem" }}>
+                            {(sensor.value_text || sensor.value || "未知")}{sensor.unit || ""} · {sensor.location || "未知位置"} · {sensor.status || "状态未知"}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -572,6 +768,7 @@ ${chunkTexts}
                 )}
                 <div style={{ maxWidth: "76%", background: msg.role === "user" ? "linear-gradient(135deg,#1d4ed8,#1e40af)" : "rgba(255,255,255,0.05)", border: msg.role === "user" ? "1px solid rgba(59,130,246,0.4)" : "1px solid rgba(74,222,128,0.15)", borderRadius: msg.role === "user" ? "14px 4px 14px 14px" : "4px 14px 14px 14px", padding: "0.75rem 0.95rem", fontSize: "0.85rem", lineHeight: "1.7", backdropFilter: "blur(10px)", textAlign: "left" }}>
                   {fmt(msg.content)}
+                  {msg.role === "assistant" && renderMetaPanel(msg.meta)}
                   <div style={{ fontSize: "0.6rem", color: "#475569", marginTop: "0.3rem", textAlign: "right" }}>
                     {msg.timestamp.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
                   </div>
@@ -611,7 +808,7 @@ ${chunkTexts}
 
           {/* Input */}
           <div style={{ padding: "0 1.25rem 1.1rem" }}>
-            {(docs.length > 0 || images.length > 0) && (
+            {(docs.length > 0 || images.length > 0 || videos.length > 0) && (
               <div style={{ marginBottom: "0.45rem" }}>
                 {docs.length > 0 && (
                   <div style={{ marginBottom: "0.35rem", padding: "0.3rem 0.7rem", background: "rgba(74,222,128,0.07)", border: "1px solid rgba(74,222,128,0.2)", borderRadius: "7px", fontSize: "0.65rem", color: "#4ade80", display: "flex", alignItems: "center", gap: "0.35rem" }}>
@@ -623,11 +820,23 @@ ${chunkTexts}
                     📸 已上传 {images.length} 张图片（将进行百度识别分析）
                   </div>
                 )}
+                {videos.length > 0 && (
+                  <div style={{ marginTop: "0.35rem", padding: "0.3rem 0.7rem", background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: "7px", fontSize: "0.65rem", color: "#f59e0b", display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                    🎬 已上传 {videos.length} 段视频（将进行抽帧分析）
+                  </div>
+                )}
+                {sensors.length > 0 && (
+                  <div style={{ marginTop: "0.35rem", padding: "0.3rem 0.7rem", background: "rgba(168,85,247,0.07)", border: "1px solid rgba(168,85,247,0.2)", borderRadius: "7px", fontSize: "0.65rem", color: "#c084fc", display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                    📡 已接入 {sensors.length} 条传感器数据
+                  </div>
+                )}
               </div>
             )}
             <div style={{ display: "flex", gap: "0.6rem", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(74,222,128,0.25)", borderRadius: "13px", padding: "0.4rem 0.4rem 0.4rem 0.85rem", backdropFilter: "blur(20px)", boxShadow: "0 0 25px rgba(74,222,128,0.05)" }}>
               <button onClick={() => fileInputRef.current?.click()} title="上传规程文档" style={{ width: 34, height: 34, borderRadius: "7px", flexShrink: 0, alignSelf: "flex-end", background: "rgba(74,222,128,0.1)", border: "1px solid rgba(74,222,128,0.3)", color: "#4ade80", cursor: "pointer", fontSize: "0.95rem", display: "flex", alignItems: "center", justifyContent: "center" }}>📎</button>
               <button onClick={() => imageInputRef.current?.click()} title="上传现场图片" style={{ width: 34, height: 34, borderRadius: "7px", flexShrink: 0, alignSelf: "flex-end", background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.3)", color: "#60a5fa", cursor: "pointer", fontSize: "0.95rem", display: "flex", alignItems: "center", justifyContent: "center" }}>📸</button>
+              <button onClick={() => videoInputRef.current?.click()} title="上传现场视频" style={{ width: 34, height: 34, borderRadius: "7px", flexShrink: 0, alignSelf: "flex-end", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", color: "#f59e0b", cursor: "pointer", fontSize: "0.95rem", display: "flex", alignItems: "center", justifyContent: "center" }}>🎬</button>
+              <button onClick={() => setSensorDialogOpen(true)} title="接入传感器数据" style={{ width: 34, height: 34, borderRadius: "7px", flexShrink: 0, alignSelf: "flex-end", background: "rgba(168,85,247,0.1)", border: "1px solid rgba(168,85,247,0.3)", color: "#c084fc", cursor: "pointer", fontSize: "0.95rem", display: "flex", alignItems: "center", justifyContent: "center" }}>📡</button>
               <textarea value={input} onChange={e => setInput(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
                 placeholder="描述灾害情况或输入应急问题（Shift+Enter换行）..." rows={2}
@@ -643,6 +852,30 @@ ${chunkTexts}
           </div>
         </div>
       </div>
+
+      {sensorDialogOpen && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(2,6,23,0.72)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300 }}>
+          <div style={{ width: "min(720px, 92vw)", background: "#0f172a", border: "1px solid rgba(168,85,247,0.28)", borderRadius: "12px", boxShadow: "0 18px 60px rgba(0,0,0,0.45)", padding: "1rem" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.8rem" }}>
+              <div style={{ fontSize: "0.9rem", fontWeight: 800, color: "#d8b4fe" }}>传感器数据接入</div>
+              <button onClick={() => setSensorDialogOpen(false)} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: "1rem" }}>×</button>
+            </div>
+            <div style={{ fontSize: "0.68rem", color: "#94a3b8", lineHeight: 1.7, marginBottom: "0.6rem" }}>
+              在这里粘贴传感器 JSON 数组，提交后会进入当前会话，并参与风险识别和多智能体问答。
+            </div>
+            <textarea
+              value={sensorInput}
+              onChange={e => setSensorInput(e.target.value)}
+              rows={14}
+              style={{ width: "100%", background: "rgba(15,23,42,0.9)", border: "1px solid rgba(168,85,247,0.2)", borderRadius: "10px", color: "#e2e8f0", fontSize: "0.75rem", lineHeight: 1.6, padding: "0.8rem", resize: "vertical", fontFamily: "Consolas, 'Courier New', monospace", outline: "none" }}
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.6rem", marginTop: "0.8rem" }}>
+              <button onClick={() => setSensorDialogOpen(false)} style={{ padding: "0.45rem 0.9rem", borderRadius: "8px", border: "1px solid rgba(148,163,184,0.2)", background: "rgba(255,255,255,0.04)", color: "#cbd5e1", cursor: "pointer" }}>取消</button>
+              <button onClick={handleSensorSubmit} style={{ padding: "0.45rem 0.9rem", borderRadius: "8px", border: "none", background: "linear-gradient(135deg,#a855f7,#6366f1)", color: "#f8fafc", fontWeight: 700, cursor: "pointer" }}>接入数据</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.6;transform:scale(1.4)} }

@@ -2,7 +2,7 @@
 
 本项目为前后端分离应用：
 1. 前端使用 React + Vite 提供交互界面。
-2. 后端使用 Flask 提供文档解析、图片识别和大模型代理接口。
+2. 后端使用 Flask 提供文档解析、图片识别、检索增强和多智能体问答接口。
 
 ## 运行方式
 
@@ -15,6 +15,12 @@ npm install
 npm run dev
 ```
 
+前端默认从环境变量 `VITE_API_BASE_URL` 读取后端地址，例如：
+
+```bash
+VITE_API_BASE_URL=http://127.0.0.1:5001 npm run dev
+```
+
 ### 后端
 
 在 server 目录执行：
@@ -24,101 +30,75 @@ pip install -r requirements.txt
 python pdf_parser.py
 ```
 
+运行前需要配置以下环境变量：
+
+```bash
+export LONGCAT_API_KEY="..."
+export BAIDU_API_KEY="..."
+export BAIDU_SECRET_KEY="..."
+```
+
+可选环境变量：
+
+- `LONGCAT_BASE_URL`：默认 `https://api.longcat.chat/openai`
+- `LONGCAT_CHAT_PROXY_URL`：默认 `https://api.longcat.chat/anthropic/v1/messages`
+- `SERVER_PORT`：默认 `5001`
+- `CORS_ORIGINS`：逗号分隔的允许来源列表
+
 ## 目录结构
 
 ```text
 coal-mine-agent/
-├─ .gitignore
-├─ eslint.config.js
-├─ index.html
-├─ package-lock.json
-├─ package.json
 ├─ README.md
+├─ package.json
 ├─ vite.config.js
-├─ public/
-│  └─ favicon.svg
 ├─ src/
 │  ├─ App.jsx
 │  ├─ index.css
 │  └─ main.jsx
-└─ server/
-	├─ config.py
-	├─ pdf_parser.py
-	└─ requirements.txt
+├─ server/
+│  ├─ agent.py
+│  ├─ config.py
+│  ├─ domain_schema.py
+│  ├─ knowledge_graph.py
+│  ├─ pdf_parser.py
+│  ├─ requirements.txt
+│  ├─ retrieval.py
+│  └─ risk_fusion.py
+├─ tools/
+│  └─ benchmark_agent.py
+└─ test_agent.py
 ```
 
-## 每个文件的作用
+## 核心模块说明
 
-### 根目录文件
+- `src/App.jsx`：前端主界面，负责聊天、文档上传、图片上传和结果展示。
+- `server/pdf_parser.py`：Flask 主服务入口，提供文档上传、图片分析、聊天代理和多智能体接口。
+- `server/retrieval.py`：文档切块、向量索引和会话级检索。
+- `server/risk_fusion.py`：多源风险识别与风险等级生成。
+- `server/knowledge_graph.py`：轻量知识图谱抽取与摘要。
+- `server/agent.py`：多智能体路由、角色调用和结果聚合。
+- `tools/benchmark_agent.py`：实验评测脚本。
+- `test_agent.py`：后端回归验证脚本。
 
-1. .gitignore
-作用：定义 Git 忽略规则，避免提交缓存、构建产物和本地环境文件。
+## 对外接口说明
 
-2. eslint.config.js
-作用：前端代码检查规则配置，用于统一 JavaScript/React 代码风格。
+1. `POST /api/documents/upload`
+   - 上传 PDF/DOCX/TXT 文档并建立后端向量索引。
 
-3. index.html
-作用：Vite 前端入口 HTML，挂载 React 根节点。
+2. `POST /api/documents/remove`
+   - 移除当前会话中的已上传文档及索引。
 
-4. package.json
-作用：前端依赖和脚本定义（如 dev、build）。
+3. `POST /api/agent-chat`
+   - 多智能体问答主接口，支持结构化历史与证据输入。
 
-5. package-lock.json
-作用：锁定 npm 依赖版本，保证不同机器安装结果一致。
+4. `POST /api/image-analyze`
+   - 调用百度图像识别分析图片内容。
 
-6. vite.config.js
-作用：Vite 构建与开发服务器配置。
+5. `POST /api/chat`
+   - 后端代理 LongCat 聊天请求。
 
-7. README.md
-作用：项目说明文档（当前文件）。
-
-### public 目录
-
-1. public/favicon.svg
-作用：浏览器标签页图标资源。
-
-### src 目录（前端）
-
-1. src/main.jsx
-作用：前端入口脚本，创建并挂载 React 应用。
-
-2. src/App.jsx
-作用：核心页面与业务逻辑，包含：
-1. 聊天交互。
-2. 文档上传与解析调用。
-3. 图片上传与识别调用。
-4. 调用后端聊天接口获取大模型回复。
-
-3. src/index.css
-作用：全局样式定义。
-
-### server 目录（后端）
-
-1. server/pdf_parser.py
-作用：Flask 主服务入口，提供 API 路由，包含：
-1. 文档解析接口（PDF、DOCX、TXT）。
-2. 图片识别接口（百度图像识别）。
-3. 聊天代理接口（后端转发 LongCat 请求）。
-
-2. server/config.py
-作用：统一管理后端配置项（端口、API Key、模型参数、超时等）。
-
-3. server/requirements.txt
-作用：后端 Python 依赖列表。
-
-## 对外接口说明（简版）
-
-1. POST /api/parse-pdf
-作用：解析上传 PDF 文本。
-
-2. POST /api/parse-docx
-作用：解析上传 DOCX 文本。
-
-3. POST /api/parse-text
-作用：解析上传 TXT 文本。
-
-4. POST /api/image-analyze
-作用：识别上传图片内容并返回关键词。
-
-5. POST /api/chat
-作用：后端代理大模型请求，返回聊天回复。
+6. `POST /api/parse-pdf`
+7. `POST /api/parse-docx`
+8. `POST /api/parse-text`
+   - 兼容保留的单文件解析接口。
