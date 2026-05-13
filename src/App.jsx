@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import ForceGraph2D from "react-force-graph-2d";
 
 const BACKEND_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const CHAT_API_URL = `${BACKEND_BASE_URL}/api/agent-chat`;
@@ -220,14 +221,33 @@ export default function CoalMineAgent() {
   const [graphRelationFilter, setGraphRelationFilter] = useState("all");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const messagesEndRef = useRef(null);
+  const graphViewportRef = useRef(null);
+  const forceGraphRef = useRef(null);
   const fileInputRef = useRef(null);
   const imageInputRef = useRef(null);
   const videoInputRef = useRef(null);
   const sessionIdRef = useRef(`session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
+  const [graphViewportSize, setGraphViewportSize] = useState({ width: 880, height: 620 });
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    if (!graphOpen || !graphViewportRef.current) return undefined;
+    const el = graphViewportRef.current;
+    const updateSize = () => {
+      const rect = el.getBoundingClientRect();
+      setGraphViewportSize({
+        width: Math.max(320, Math.floor(rect.width || 880)),
+        height: Math.max(320, Math.floor(rect.height || 620)),
+      });
+    };
+    updateSize();
+    const observer = new ResizeObserver(() => updateSize());
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [graphOpen]);
 
   useEffect(() => {
     if (!["running", "queued"].includes(graphBuildStatus.state)) return undefined;
@@ -719,9 +739,7 @@ export default function CoalMineAgent() {
     stage: "#fb7185",
   }[type] || "#cbd5e1");
 
-  const buildGraphLayout = (nodes, links) => {
-    const width = 920;
-    const height = 540;
+  const buildGraphData = (nodes, links) => {
     const safeNodes = (Array.isArray(nodes) ? nodes : []).filter(node => graphTypeFilter === "all" || node.type === graphTypeFilter);
     const visibleUids = new Set(safeNodes.map(node => node.uid));
     const safeLinks = dedupeGraphLinks((Array.isArray(links) ? links : []).filter(link => (
@@ -730,68 +748,45 @@ export default function CoalMineAgent() {
       (graphRelationFilter === "all" || link.relation === graphRelationFilter)
     )));
     if (safeNodes.length === 0) {
-      return { width, height, nodes: [], links: [] };
+      return { nodes: [], links: [] };
     }
 
-    const centerNode = selectedGraphNode && safeNodes.find(node => node.uid === selectedGraphNode.uid)
-      ? selectedGraphNode
-      : safeNodes.find(node => node.type === "hazard") || safeNodes[0];
-
-    const neighbors = new Set();
-    safeLinks.forEach(link => {
-      if (link.source === centerNode.uid) neighbors.add(link.target);
-      if (link.target === centerNode.uid) neighbors.add(link.source);
-    });
-
-    const positioned = [];
-    const centerX = width / 2;
-    const centerY = height / 2;
-
-    positioned.push({
-      ...centerNode,
-      x: centerX,
-      y: centerY,
-      color: nodeColor(centerNode.type),
-      size: 22,
-    });
-
-    const neighborNodes = safeNodes.filter(node => node.uid !== centerNode.uid && neighbors.has(node.uid));
-    neighborNodes.forEach((node, idx) => {
-      const angle = (Math.PI * 2 * idx) / Math.max(1, neighborNodes.length);
-      positioned.push({
-        ...node,
-        x: centerX + Math.cos(angle) * 170,
-        y: centerY + Math.sin(angle) * 170,
-        color: nodeColor(node.type),
-        size: node.type === "hazard" ? 18 : 12,
-      });
-    });
-
-    const outerNodes = safeNodes.filter(node => node.uid !== centerNode.uid && !neighbors.has(node.uid));
-    outerNodes.forEach((node, idx) => {
-      const angle = (Math.PI * 2 * idx) / Math.max(1, outerNodes.length);
-      positioned.push({
-        ...node,
-        x: centerX + Math.cos(angle) * 290,
-        y: centerY + Math.sin(angle) * 240,
-        color: nodeColor(node.type),
-        size: 10,
-      });
-    });
-
-    const byUid = new Map(positioned.map(node => [node.uid, node]));
-    const positionedLinks = safeLinks
-      .map(link => ({ ...link, sourceNode: byUid.get(link.source), targetNode: byUid.get(link.target) }))
-      .filter(link => link.sourceNode && link.targetNode);
-    return { width, height, nodes: positioned, links: positionedLinks };
+    const graphNodes = safeNodes.map(node => ({
+      ...node,
+      id: node.uid,
+      color: nodeColor(node.type),
+      val: selectedGraphNode?.uid === node.uid ? 18 : node.type === "hazard" ? 13 : 9,
+    }));
+    const graphLinks = safeLinks.map(link => ({
+      ...link,
+      source: link.source,
+      target: link.target,
+    }));
+    return { nodes: graphNodes, links: graphLinks };
   };
+
+  useEffect(() => {
+    if (!graphOpen) return;
+    if (!forceGraphRef.current) return;
+    if (!graphData.nodes.length) return;
+    const timer = setTimeout(() => {
+      try {
+        forceGraphRef.current.zoomToFit(600, 60);
+      } catch {}
+    }, 180);
+    return () => clearTimeout(timer);
+  }, [graphOpen, graphData.nodes.length, graphData.links.length, graphTypeFilter, graphRelationFilter]);
 
   const renderGraphDialog = () => {
     if (!graphOpen) return null;
-    const graph = buildGraphLayout(graphData.nodes, graphData.links);
+    const graph = buildGraphData(graphData.nodes, graphData.links);
     const stats = graphData.stats || {};
     const selectedRelations = selectedGraphNode
-      ? graph.links.filter(link => link.source === selectedGraphNode.uid || link.target === selectedGraphNode.uid)
+      ? graph.links.filter(link => {
+          const sourceId = typeof link.source === "string" ? link.source : link.source?.id;
+          const targetId = typeof link.target === "string" ? link.target : link.target?.id;
+          return sourceId === selectedGraphNode.uid || targetId === selectedGraphNode.uid;
+        })
       : [];
 
     return (
@@ -847,7 +842,7 @@ export default function CoalMineAgent() {
           </div>
 
           <div style={{ flex: 1, display: "grid", gridTemplateColumns: "minmax(0, 1fr) 300px", minHeight: 0 }}>
-            <div style={{ position: "relative", overflow: "hidden", background: "radial-gradient(circle at center, rgba(34,211,238,0.08), rgba(8,17,31,0.2) 45%, rgba(8,17,31,0.95))" }}>
+            <div ref={graphViewportRef} style={{ position: "relative", overflow: "hidden", background: "radial-gradient(circle at center, rgba(34,211,238,0.08), rgba(8,17,31,0.2) 45%, rgba(8,17,31,0.95))" }}>
               {graphLoading ? (
                 <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: "0.82rem", textAlign: "center", lineHeight: 1.8 }}>
                   {graphBuildStatus.state === "queued" ? (
@@ -885,51 +880,52 @@ export default function CoalMineAgent() {
                   先上传规程文档，或换一个关键词再检索
                 </div>
               ) : (
-                <svg viewBox={`0 0 ${graph.width} ${graph.height}`} style={{ width: "100%", height: "100%", display: "block" }}>
-                  {graph.links.map((link, idx) => (
-                    <g key={link.id || idx}>
-                      <line
-                        x1={link.sourceNode.x}
-                        y1={link.sourceNode.y}
-                        x2={link.targetNode.x}
-                        y2={link.targetNode.y}
-                        stroke="rgba(148,163,184,0.34)"
-                        strokeWidth={link.duplicateCount > 1 ? 1.6 : 1}
-                      />
-                      {link.condition ? (
-                        <text
-                          x={(link.sourceNode.x + link.targetNode.x) / 2}
-                          y={(link.sourceNode.y + link.targetNode.y) / 2 - 6}
-                          fill="#fcd34d"
-                          fontSize="10"
-                          textAnchor="middle"
-                        >
-                          {String(link.condition).slice(0, 20)}
-                        </text>
-                      ) : null}
-                    </g>
-                  ))}
-                  {graph.nodes.map((node) => (
-                    <g key={node.uid} onClick={() => handleGraphNodeClick(node)} style={{ cursor: "pointer" }}>
-                      <circle
-                        cx={node.x}
-                        cy={node.y}
-                        r={selectedGraphNode?.uid === node.uid ? node.size + 4 : node.size}
-                        fill={node.color}
-                        stroke={selectedGraphNode?.uid === node.uid ? "#fde68a" : "rgba(255,255,255,0.55)"}
-                        strokeWidth="1.4"
-                      />
-                      <text x={node.x + node.size + 8} y={node.y + 4} fill="#dbeafe" fontSize="11">
-                        {String(node.label || node.id || "").slice(0, 18)}
-                      </text>
-                      {graphExpandedNodes.includes(node.uid) ? (
-                        <text x={node.x} y={node.y - node.size - 8} fill="#67e8f9" fontSize="9" textAnchor="middle">
-                          已展开
-                        </text>
-                      ) : null}
-                    </g>
-                  ))}
-                </svg>
+                <ForceGraph2D
+                  ref={forceGraphRef}
+                  width={graphViewportSize.width}
+                  height={graphViewportSize.height}
+                  graphData={graph}
+                  backgroundColor="transparent"
+                  cooldownTicks={140}
+                  nodeRelSize={6}
+                  linkColor={() => "rgba(148,163,184,0.34)"}
+                  linkWidth={(link) => link.duplicateCount > 1 ? 1.6 : 1}
+                  nodeColor={(node) => node.color}
+                  nodeVal={(node) => node.val}
+                  nodeLabel={(node) => `${node.label || node.id || ""}${node.type ? ` (${node.type})` : ""}`}
+                  linkLabel={(link) => [link.relation_label, link.condition].filter(Boolean).join(" | ")}
+                  nodeCanvasObjectMode={() => "after"}
+                  nodeCanvasObject={(node, ctx, globalScale) => {
+                    const label = String(node.label || node.id || "");
+                    const fontSize = Math.max(8, 10 / globalScale);
+                    ctx.font = `${fontSize}px sans-serif`;
+                    ctx.textAlign = "left";
+                    ctx.textBaseline = "middle";
+                    ctx.fillStyle = "#dbeafe";
+                    ctx.fillText(label.slice(0, 18), node.x + 8, node.y);
+                    if (graphExpandedNodes.includes(node.uid)) {
+                      ctx.font = `${Math.max(7, 9 / globalScale)}px sans-serif`;
+                      ctx.fillStyle = "#67e8f9";
+                      ctx.textAlign = "center";
+                      ctx.fillText("已展开", node.x, node.y - 12);
+                    }
+                  }}
+                  linkCanvasObjectMode={() => "after"}
+                  linkCanvasObject={(link, ctx, globalScale) => {
+                    const start = link.source;
+                    const end = link.target;
+                    if (!start?.x || !end?.x) return;
+                    const midX = (start.x + end.x) / 2;
+                    const midY = (start.y + end.y) / 2;
+                    if (link.condition) {
+                      ctx.font = `${Math.max(7, 9 / globalScale)}px sans-serif`;
+                      ctx.fillStyle = "#fcd34d";
+                      ctx.textAlign = "center";
+                      ctx.fillText(String(link.condition).slice(0, 18), midX, midY - 6);
+                    }
+                  }}
+                  onNodeClick={handleGraphNodeClick}
+                />
               )}
             </div>
 
