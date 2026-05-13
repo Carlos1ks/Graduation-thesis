@@ -14,3 +14,4 @@ faiss-cpu>=1.8.0
 sentence-transformers>=3.0.0
 numpy>=1.26.0
 opencv-python-headless>=4.10.0.84
+neo4j>=5.24.0

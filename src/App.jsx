@@ -7,6 +7,8 @@ const DOCUMENT_REMOVE_API_URL = `${BACKEND_BASE_URL}/api/documents/remove`;
 const VIDEO_ANALYZE_API_URL = `${BACKEND_BASE_URL}/api/video-analyze`;
 const SENSOR_PUSH_API_URL = `${BACKEND_BASE_URL}/api/sensors/push`;
 const KNOWLEDGE_GRAPH_API_URL = `${BACKEND_BASE_URL}/api/knowledge-graph`;
+const KNOWLEDGE_GRAPH_EXPAND_API_URL = `${BACKEND_BASE_URL}/api/knowledge-graph/expand`;
+const KNOWLEDGE_GRAPH_STATUS_API_URL = `${BACKEND_BASE_URL}/api/knowledge-graph/status`;
 const MAX_HISTORY_MESSAGES = 6;
 
 const QUICK_QUESTIONS = [
@@ -104,6 +106,33 @@ async function fetchKnowledgeGraph(sessionId, keyword = "") {
   return result;
 }
 
+async function expandKnowledgeGraph(sessionId, nodeUid, limit = 60) {
+  const response = await fetch(KNOWLEDGE_GRAPH_EXPAND_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      session_id: sessionId,
+      node_uid: nodeUid,
+      limit,
+    }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `图谱展开失败：${response.status}`);
+  }
+  return result;
+}
+
+async function fetchKnowledgeGraphStatus(sessionId) {
+  const params = new URLSearchParams({ session_id: sessionId });
+  const response = await fetch(`${KNOWLEDGE_GRAPH_STATUS_API_URL}?${params.toString()}`);
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `图谱状态获取失败：${response.status}`);
+  }
+  return result;
+}
+
 function compactKnowledgeGraphForView(nodes, links) {
   const hiddenTypes = new Set(["document", "document_type", "clause"]);
   const abstractLabels = new Set([
@@ -121,6 +150,42 @@ function compactKnowledgeGraphForView(nodes, links) {
     visibleUids.has(link.source) && visibleUids.has(link.target)
   ));
   return { nodes: visibleNodes, links: visibleLinks };
+}
+
+function mergeGraphData(currentGraph, incomingGraph) {
+  const nodeMap = new Map((currentGraph.nodes || []).map(node => [node.uid, node]));
+  for (const node of incomingGraph.nodes || []) {
+    if (!node?.uid) continue;
+    nodeMap.set(node.uid, { ...(nodeMap.get(node.uid) || {}), ...node });
+  }
+
+  const linkMap = new Map((currentGraph.links || []).map(link => [link.id || `${link.source}-${link.target}-${link.relation}`, link]));
+  for (const link of incomingGraph.links || []) {
+    if (!link) continue;
+    const key = link.id || `${link.source}-${link.target}-${link.relation}`;
+    linkMap.set(key, { ...(linkMap.get(key) || {}), ...link });
+  }
+
+  return {
+    nodes: Array.from(nodeMap.values()),
+    links: Array.from(linkMap.values()),
+    stats: incomingGraph.stats || currentGraph.stats || {},
+  };
+}
+
+function dedupeGraphLinks(links) {
+  const grouped = new Map();
+  for (const link of Array.isArray(links) ? links : []) {
+    if (!link?.source || !link?.target || !link?.relation) continue;
+    const key = `${link.source}|${link.target}|${link.relation}|${link.condition || ""}`;
+    const existing = grouped.get(key);
+    if (!existing) {
+      grouped.set(key, { ...link, duplicateCount: 1 });
+    } else {
+      existing.duplicateCount += 1;
+    }
+  }
+  return Array.from(grouped.values());
 }
 
 export default function CoalMineAgent() {
@@ -147,6 +212,12 @@ export default function CoalMineAgent() {
   const [graphData, setGraphData] = useState({ nodes: [], links: [], stats: {} });
   const [graphKeyword, setGraphKeyword] = useState("");
   const [selectedGraphNode, setSelectedGraphNode] = useState(null);
+  const [graphError, setGraphError] = useState("");
+  const [graphBuildStatus, setGraphBuildStatus] = useState({ state: "idle", message: "" });
+  const [graphExpanding, setGraphExpanding] = useState(false);
+  const [graphExpandedNodes, setGraphExpandedNodes] = useState([]);
+  const [graphTypeFilter, setGraphTypeFilter] = useState("all");
+  const [graphRelationFilter, setGraphRelationFilter] = useState("all");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -157,6 +228,42 @@ export default function CoalMineAgent() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    if (!["running", "queued"].includes(graphBuildStatus.state)) return undefined;
+    const timer = setInterval(async () => {
+      try {
+        const result = await fetchKnowledgeGraphStatus(sessionIdRef.current);
+        if (!result.build_status) return;
+        setGraphBuildStatus(result.build_status);
+        if (result.build_status.state === "failed") {
+          clearInterval(timer);
+          setGraphLoading(false);
+          setGraphError(result.build_status.error || "知识图谱构建失败");
+        }
+        if (result.build_status.state === "completed") {
+          clearInterval(timer);
+          setGraphLoading(false);
+        }
+      } catch (err) {
+        clearInterval(timer);
+        setGraphLoading(false);
+        setGraphError(err.message);
+      }
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [graphBuildStatus.state]);
+
+  useEffect(() => {
+    if (!graphOpen) return;
+    if (graphBuildStatus.state !== "completed") return;
+    if (graphLoading) return;
+    if (graphData.nodes.length > 0 || graphData.links.length > 0) return;
+    const load = async () => {
+      await loadKnowledgeGraph(graphKeyword);
+    };
+    load();
+  }, [graphOpen, graphBuildStatus.state, graphKeyword, graphLoading, graphData.nodes.length, graphData.links.length]);
 
   const detectAlertLevel = (text) => {
     if (["爆炸", "火灾", "突水", "被困", "伤亡", "紧急", "危急"].some(w => text.includes(w))) return "red";
@@ -188,9 +295,16 @@ export default function CoalMineAgent() {
           graphNodeCount: result.knowledge_graph?.node_count || 0,
           graphRelationCount: result.knowledge_graph?.relation_count || 0,
         }]);
+        if (result.knowledge_graph?.build_status) {
+          setGraphBuildStatus(result.knowledge_graph.build_status);
+          const latest = await fetchKnowledgeGraphStatus(sessionIdRef.current).catch(() => null);
+          if (latest?.build_status) {
+            setGraphBuildStatus(latest.build_status);
+          }
+        }
         setMessages(prev => [...prev, {
           role: "assistant",
-          content: `📄 已上传《**${result.file_name || file.name}**》（${sizeMB} MB · ${(result.char_count || 0).toLocaleString()} 字符 · ${result.chunk_count || 0} 个向量检索块）\n\n该文档已完成后端切块并建立向量索引，后续回答将自动检索相关条款。`,
+          content: `📄 已上传《**${result.file_name || file.name}**》（${sizeMB} MB · ${(result.char_count || 0).toLocaleString()} 字符 · ${result.chunk_count || 0} 个向量检索块）\n\n文档已入库，知识图谱正在后台构建。`,
           timestamp: new Date(),
         }]);
       } catch (err) {
@@ -494,16 +608,25 @@ export default function CoalMineAgent() {
 
   const loadKnowledgeGraph = async (keyword = graphKeyword) => {
     setGraphLoading(true);
+    setGraphError("");
     try {
       const data = await fetchKnowledgeGraph(sessionIdRef.current, keyword);
       const compactGraph = compactKnowledgeGraphForView(data.nodes, data.links);
       setGraphData({
         nodes: compactGraph.nodes,
         links: compactGraph.links,
-        stats: data.stats || {},
+        stats: {
+          ...(data.stats || {}),
+          view_node_count: data.view_stats?.node_count ?? compactGraph.nodes.length,
+          view_relation_count: data.view_stats?.relation_count ?? compactGraph.links.length,
+        },
       });
       setSelectedGraphNode(null);
+      setGraphExpandedNodes([]);
     } catch (err) {
+      setGraphData({ nodes: [], links: [], stats: {} });
+      setSelectedGraphNode(null);
+      setGraphError(err.message);
       setMessages(prev => [...prev, {
         role: "assistant",
         content: `⚠️ 知识图谱加载失败：${err.message}`,
@@ -516,7 +639,49 @@ export default function CoalMineAgent() {
 
   const openKnowledgeGraph = async () => {
     setGraphOpen(true);
+    if (graphData.nodes.length > 0 || graphData.links.length > 0 || graphError) {
+      return;
+    }
+    const statusResult = await fetchKnowledgeGraphStatus(sessionIdRef.current).catch(() => null);
+    if (statusResult?.build_status) {
+      setGraphBuildStatus(statusResult.build_status);
+      if (statusResult.build_status.state === "running") {
+        setGraphLoading(true);
+        return;
+      }
+    }
     await loadKnowledgeGraph(graphKeyword);
+  };
+
+  const closeKnowledgeGraph = () => {
+    setGraphOpen(false);
+    setGraphLoading(false);
+    setGraphExpanding(false);
+    setSelectedGraphNode(null);
+    setGraphError("");
+  };
+
+  const handleGraphNodeClick = async (node) => {
+    setSelectedGraphNode(node);
+    if (!node?.uid || graphExpandedNodes.includes(node.uid)) {
+      return;
+    }
+    setGraphExpanding(true);
+    try {
+      const data = await expandKnowledgeGraph(sessionIdRef.current, node.uid, 60);
+      const compactGraph = compactKnowledgeGraphForView(data.nodes, data.links);
+      setGraphData(prev => mergeGraphData(prev, compactGraph));
+      setGraphExpandedNodes(prev => [...prev, node.uid]);
+    } catch (err) {
+      setGraphError(err.message);
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: `⚠️ 图谱邻居展开失败：${err.message}`,
+        timestamp: new Date(),
+      }]);
+    } finally {
+      setGraphExpanding(false);
+    }
   };
 
   const fmt = (text) => {
@@ -557,45 +722,60 @@ export default function CoalMineAgent() {
   const buildGraphLayout = (nodes, links) => {
     const width = 920;
     const height = 540;
-    const safeNodes = Array.isArray(nodes) ? nodes : [];
-    const safeLinks = Array.isArray(links) ? links : [];
+    const safeNodes = (Array.isArray(nodes) ? nodes : []).filter(node => graphTypeFilter === "all" || node.type === graphTypeFilter);
+    const visibleUids = new Set(safeNodes.map(node => node.uid));
+    const safeLinks = dedupeGraphLinks((Array.isArray(links) ? links : []).filter(link => (
+      visibleUids.has(link.source) &&
+      visibleUids.has(link.target) &&
+      (graphRelationFilter === "all" || link.relation === graphRelationFilter)
+    )));
     if (safeNodes.length === 0) {
       return { width, height, nodes: [], links: [] };
     }
 
-    const columns = [
-      { label: "感知层", types: ["sensor", "symptom"], x: 150 },
-      { label: "逻辑层", types: ["parameter", "hazard"], x: 470 },
-      { label: "动作层", types: ["action", "department", "location", "equipment"], x: 785 },
-    ];
-    const columnOf = (type) => columns.findIndex(col => col.types.includes(type));
-    const grouped = columns.map(() => []);
-    const other = [];
-    safeNodes.forEach((node) => {
-      const idx = columnOf(node.type || "other");
-      if (idx >= 0) grouped[idx].push(node);
-      else other.push(node);
+    const centerNode = selectedGraphNode && safeNodes.find(node => node.uid === selectedGraphNode.uid)
+      ? selectedGraphNode
+      : safeNodes.find(node => node.type === "hazard") || safeNodes[0];
+
+    const neighbors = new Set();
+    safeLinks.forEach(link => {
+      if (link.source === centerNode.uid) neighbors.add(link.target);
+      if (link.target === centerNode.uid) neighbors.add(link.source);
     });
-    if (other.length) grouped[0].push(...other);
 
     const positioned = [];
-    grouped.forEach((group, columnIndex) => {
-      if (!group.length) return;
-      const sorted = [...group].sort((a, b) => String(a.label || "").localeCompare(String(b.label || ""), "zh-Hans-CN"));
-      const x = columns[columnIndex]?.x || (80 + columnIndex * 150);
-      const available = height - 90;
-      const step = Math.min(62, Math.max(34, available / Math.max(1, sorted.length)));
-      const startY = Math.max(34, (height - step * (sorted.length - 1)) / 2);
-      sorted.forEach((node, idx) => {
-        const y = Math.min(height - 28, Math.max(28, startY + idx * step));
-        const jitter = node.type === "hazard" ? 0 : ((idx % 2) - 0.5) * 10;
-        positioned.push({
-          ...node,
-          x: x + jitter,
-          y,
-          color: nodeColor(node.type),
-          size: node.type === "hazard" ? 18 : node.type === "parameter" ? 12 : node.type === "department" ? 12 : 11,
-        });
+    const centerX = width / 2;
+    const centerY = height / 2;
+
+    positioned.push({
+      ...centerNode,
+      x: centerX,
+      y: centerY,
+      color: nodeColor(centerNode.type),
+      size: 22,
+    });
+
+    const neighborNodes = safeNodes.filter(node => node.uid !== centerNode.uid && neighbors.has(node.uid));
+    neighborNodes.forEach((node, idx) => {
+      const angle = (Math.PI * 2 * idx) / Math.max(1, neighborNodes.length);
+      positioned.push({
+        ...node,
+        x: centerX + Math.cos(angle) * 170,
+        y: centerY + Math.sin(angle) * 170,
+        color: nodeColor(node.type),
+        size: node.type === "hazard" ? 18 : 12,
+      });
+    });
+
+    const outerNodes = safeNodes.filter(node => node.uid !== centerNode.uid && !neighbors.has(node.uid));
+    outerNodes.forEach((node, idx) => {
+      const angle = (Math.PI * 2 * idx) / Math.max(1, outerNodes.length);
+      positioned.push({
+        ...node,
+        x: centerX + Math.cos(angle) * 290,
+        y: centerY + Math.sin(angle) * 240,
+        color: nodeColor(node.type),
+        size: 10,
       });
     });
 
@@ -603,7 +783,7 @@ export default function CoalMineAgent() {
     const positionedLinks = safeLinks
       .map(link => ({ ...link, sourceNode: byUid.get(link.source), targetNode: byUid.get(link.target) }))
       .filter(link => link.sourceNode && link.targetNode);
-    return { width, height, nodes: positioned, links: positionedLinks, columns };
+    return { width, height, nodes: positioned, links: positionedLinks };
   };
 
   const renderGraphDialog = () => {
@@ -619,9 +799,11 @@ export default function CoalMineAgent() {
         <div style={{ width: "min(1180px, 94vw)", height: "min(760px, 92vh)", background: "#08111f", border: "1px solid rgba(34,211,238,0.25)", borderRadius: "12px", boxShadow: "0 22px 70px rgba(0,0,0,0.5)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ padding: "0.8rem 1rem", borderBottom: "1px solid rgba(34,211,238,0.16)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.8rem", flexWrap: "wrap" }}>
             <div>
-              <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "#67e8f9" }}>完整知识图谱</div>
+              <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "#67e8f9" }}>
+                {graphKeyword.trim() ? `知识图谱检索：${graphKeyword.trim()}` : "完整知识图谱"}
+              </div>
               <div style={{ fontSize: "0.65rem", color: "#64748b", marginTop: "0.15rem" }}>
-                展示节点 {graphData.nodes.length || 0} 个 · 展示关系 {graphData.links.length || 0} 条
+                展示节点 {stats.view_node_count ?? graphData.nodes.length ?? 0} 个 · 展示关系 {stats.view_relation_count ?? graphData.links.length ?? 0} 条
                 {(stats.node_count || stats.relation_count) ? `（后端保留溯源节点 ${stats.node_count || 0} 个、关系 ${stats.relation_count || 0} 条）` : ""}
               </div>
             </div>
@@ -630,34 +812,80 @@ export default function CoalMineAgent() {
                 value={graphKeyword}
                 onChange={e => setGraphKeyword(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter") loadKnowledgeGraph(graphKeyword); }}
-                placeholder="搜索实体、条款、关系或来源"
+                placeholder="搜索节点或关键词，例如 瓦斯 / 透水 / 救护队"
                 style={{ flex: 1, minWidth: 180, background: "rgba(15,23,42,0.9)", border: "1px solid rgba(34,211,238,0.22)", borderRadius: "8px", color: "#e2e8f0", padding: "0.48rem 0.65rem", outline: "none", fontSize: "0.75rem" }}
               />
               <button onClick={() => loadKnowledgeGraph(graphKeyword)} disabled={graphLoading} style={{ padding: "0.48rem 0.78rem", borderRadius: "8px", border: "1px solid rgba(34,211,238,0.28)", background: "rgba(34,211,238,0.12)", color: "#67e8f9", cursor: graphLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{graphLoading ? "加载中" : "检索"}</button>
-              <button onClick={() => setGraphOpen(false)} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: "1.2rem", lineHeight: 1 }}>×</button>
+              <button onClick={closeKnowledgeGraph} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: "1.2rem", lineHeight: 1 }}>×</button>
+            </div>
+          </div>
+
+          <div style={{ padding: "0.55rem 1rem", borderBottom: "1px solid rgba(34,211,238,0.10)", display: "flex", gap: "0.6rem", alignItems: "center", flexWrap: "wrap" }}>
+            <select value={graphTypeFilter} onChange={e => setGraphTypeFilter(e.target.value)} style={{ background: "rgba(15,23,42,0.9)", border: "1px solid rgba(34,211,238,0.22)", borderRadius: "8px", color: "#e2e8f0", padding: "0.38rem 0.55rem", fontSize: "0.72rem" }}>
+              <option value="all">全部节点类型</option>
+              <option value="hazard">风险</option>
+              <option value="symptom">信号</option>
+              <option value="parameter">逻辑条件</option>
+              <option value="sensor">监测设备</option>
+              <option value="action">处置动作</option>
+              <option value="department">责任部门</option>
+              <option value="location">地点</option>
+              <option value="equipment">设备</option>
+            </select>
+            <select value={graphRelationFilter} onChange={e => setGraphRelationFilter(e.target.value)} style={{ background: "rgba(15,23,42,0.9)", border: "1px solid rgba(34,211,238,0.22)", borderRadius: "8px", color: "#e2e8f0", padding: "0.38rem 0.55rem", fontSize: "0.72rem" }}>
+              <option value="all">全部关系类型</option>
+              <option value="indicates">征兆指向灾害</option>
+              <option value="triggers_hazard">条件触发风险</option>
+              <option value="monitors">监测</option>
+              <option value="requires_action">需要动作</option>
+              <option value="responsible_for">责任部门</option>
+              <option value="occurs_at">发生场景</option>
+            </select>
+            <div style={{ fontSize: "0.68rem", color: graphExpanding ? "#fcd34d" : "#64748b" }}>
+              {graphExpanding ? "正在展开邻居…" : "点击节点可展开一跳邻居"}
             </div>
           </div>
 
           <div style={{ flex: 1, display: "grid", gridTemplateColumns: "minmax(0, 1fr) 300px", minHeight: 0 }}>
             <div style={{ position: "relative", overflow: "hidden", background: "radial-gradient(circle at center, rgba(34,211,238,0.08), rgba(8,17,31,0.2) 45%, rgba(8,17,31,0.95))" }}>
-              {graph.nodes.length === 0 ? (
+              {graphLoading ? (
+                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: "0.82rem", textAlign: "center", lineHeight: 1.8 }}>
+                  {graphBuildStatus.state === "queued" ? (
+                    <div style={{ width: "min(420px, 82%)" }}>
+                      <div style={{ marginBottom: "0.7rem" }}>图谱构建任务排队中…</div>
+                      <div style={{ height: 10, background: "rgba(255,255,255,0.08)", borderRadius: 999, overflow: "hidden" }}>
+                        <div style={{ width: "8%", height: "100%", background: "linear-gradient(90deg,#64748b,#22d3ee)", transition: "width 260ms ease" }} />
+                      </div>
+                      <div style={{ marginTop: "0.55rem", fontSize: "0.72rem", color: "#94a3b8" }}>
+                        当前队列繁忙，稍后自动开始
+                      </div>
+                    </div>
+                  ) : graphBuildStatus.state === "running" ? (
+                    <div style={{ width: "min(420px, 82%)" }}>
+                      <div style={{ marginBottom: "0.7rem" }}>正在用大模型抽取三元组并写入 Neo4j…</div>
+                      <div style={{ height: 10, background: "rgba(255,255,255,0.08)", borderRadius: 999, overflow: "hidden" }}>
+                        <div style={{ width: `${graphBuildStatus.progress_percent || 0}%`, height: "100%", background: "linear-gradient(90deg,#22d3ee,#4ade80)", transition: "width 260ms ease" }} />
+                      </div>
+                      <div style={{ marginTop: "0.55rem", fontSize: "0.72rem", color: "#67e8f9" }}>
+                        {graphBuildStatus.current || 0}/{graphBuildStatus.total || 0} · {graphBuildStatus.progress_percent || 0}%
+                      </div>
+                    </div>
+                  ) : "正在从 Neo4j 加载知识图谱…"}
+                </div>
+              ) : graphError ? (
+                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#fca5a5", fontSize: "0.8rem", textAlign: "center", lineHeight: 1.8, padding: "0 1.5rem" }}>
+                  图谱加载失败
+                  <br />
+                  {graphError}
+                </div>
+              ) : graph.nodes.length === 0 ? (
                 <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", fontSize: "0.82rem", textAlign: "center", lineHeight: 1.8 }}>
-                  暂无可展示的实体关系<br />上传规程文档后会自动构建完整知识图谱
+                  当前没有可展示的图谱结果
+                  <br />
+                  先上传规程文档，或换一个关键词再检索
                 </div>
               ) : (
                 <svg viewBox={`0 0 ${graph.width} ${graph.height}`} style={{ width: "100%", height: "100%", display: "block" }}>
-                  <defs>
-                    <marker id="kg-arrow" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto" markerUnits="strokeWidth">
-                      <path d="M0,0 L7,3.5 L0,7 Z" fill="#475569" />
-                    </marker>
-                  </defs>
-                  {graph.columns?.map((column, idx) => (
-                    <g key={column.label || idx}>
-                      <text x={column.x - 36} y="28" fill="rgba(148,163,184,0.78)" fontSize="12" fontWeight="700">
-                        {column.label}
-                      </text>
-                    </g>
-                  ))}
                   {graph.links.map((link, idx) => (
                     <g key={link.id || idx}>
                       <line
@@ -665,9 +893,8 @@ export default function CoalMineAgent() {
                         y1={link.sourceNode.y}
                         x2={link.targetNode.x}
                         y2={link.targetNode.y}
-                        stroke="rgba(148,163,184,0.28)"
-                        strokeWidth="1"
-                        markerEnd="url(#kg-arrow)"
+                        stroke="rgba(148,163,184,0.34)"
+                        strokeWidth={link.duplicateCount > 1 ? 1.6 : 1}
                       />
                       {link.condition ? (
                         <text
@@ -676,7 +903,6 @@ export default function CoalMineAgent() {
                           fill="#fcd34d"
                           fontSize="10"
                           textAnchor="middle"
-                          style={{ pointerEvents: "none" }}
                         >
                           {String(link.condition).slice(0, 20)}
                         </text>
@@ -684,12 +910,23 @@ export default function CoalMineAgent() {
                     </g>
                   ))}
                   {graph.nodes.map((node) => (
-                    <g key={node.uid} onClick={() => setSelectedGraphNode(node)} style={{ cursor: "pointer" }}>
-                      <circle cx={node.x} cy={node.y} r={node.size + 4} fill={selectedGraphNode?.uid === node.uid ? "rgba(250,204,21,0.2)" : "rgba(15,23,42,0.62)"} />
-                      <circle cx={node.x} cy={node.y} r={node.size} fill={node.color} stroke={selectedGraphNode?.uid === node.uid ? "#fde68a" : "rgba(255,255,255,0.55)"} strokeWidth="1.2" />
-                      <text x={node.x + node.size + 5} y={node.y + 4} fill="#dbeafe" fontSize="11" style={{ pointerEvents: "none" }}>
-                        {String(node.label || node.id || "").slice(0, 14)}
+                    <g key={node.uid} onClick={() => handleGraphNodeClick(node)} style={{ cursor: "pointer" }}>
+                      <circle
+                        cx={node.x}
+                        cy={node.y}
+                        r={selectedGraphNode?.uid === node.uid ? node.size + 4 : node.size}
+                        fill={node.color}
+                        stroke={selectedGraphNode?.uid === node.uid ? "#fde68a" : "rgba(255,255,255,0.55)"}
+                        strokeWidth="1.4"
+                      />
+                      <text x={node.x + node.size + 8} y={node.y + 4} fill="#dbeafe" fontSize="11">
+                        {String(node.label || node.id || "").slice(0, 18)}
                       </text>
+                      {graphExpandedNodes.includes(node.uid) ? (
+                        <text x={node.x} y={node.y - node.size - 8} fill="#67e8f9" fontSize="9" textAnchor="middle">
+                          已展开
+                        </text>
+                      ) : null}
                     </g>
                   ))}
                 </svg>
@@ -727,12 +964,12 @@ export default function CoalMineAgent() {
                 </div>
               ) : (
                 <div style={{ color: "#64748b", fontSize: "0.7rem", lineHeight: 1.8 }}>
-                  图谱按感知层、逻辑层、动作层展示。数值不再单独作为实体节点，而是附着在关系条件上；文档、条款和文档类型节点默认隐藏，仅用于来源追溯。
+                  图谱现在采用与 Neo4j Browser 更接近的力导向布局。点击节点可展开邻居，用筛选器收缩视图，文档和条款仍默认隐藏，仅作为来源追溯。
                   <div style={{ marginTop: "0.8rem", display: "flex", gap: "0.28rem", flexWrap: "wrap" }}>
                     {Object.entries({
-                      sensor: "感知",
+                      sensor: "传感器",
                       symptom: "信号",
-                      parameter: "逻辑",
+                      parameter: "条件",
                       hazard: "风险",
                       action: "动作",
                       department: "部门",
@@ -950,8 +1187,14 @@ export default function CoalMineAgent() {
                 </button>
                 <div style={{ fontSize: "0.6rem", color: "#475569", textAlign: "center", marginTop: "0.3rem" }}>JSON · HTTP 推送</div>
 
-                <button onClick={openKnowledgeGraph} disabled={graphLoading} style={{ width: "100%", padding: "0.5rem", marginTop: "0.45rem", background: "linear-gradient(135deg,rgba(34,211,238,0.14),rgba(20,184,166,0.1))", border: "1px dashed rgba(34,211,238,0.45)", borderRadius: "7px", color: graphLoading ? "#22d3ee55" : "#67e8f9", cursor: graphLoading ? "not-allowed" : "pointer", fontSize: "0.73rem", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem" }}>
-                  {graphLoading ? "🧠 加载图谱..." : "🧠 查看知识图谱"}
+                <button onClick={openKnowledgeGraph} disabled={graphLoading && graphBuildStatus.state !== "running"} style={{ width: "100%", padding: "0.5rem", marginTop: "0.45rem", background: "linear-gradient(135deg,rgba(34,211,238,0.14),rgba(20,184,166,0.1))", border: "1px dashed rgba(34,211,238,0.45)", borderRadius: "7px", color: graphLoading && graphBuildStatus.state !== "running" ? "#22d3ee55" : "#67e8f9", cursor: graphLoading && graphBuildStatus.state !== "running" ? "not-allowed" : "pointer", fontSize: "0.73rem", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem" }}>
+                  {graphBuildStatus.state === "queued"
+                    ? "🧠 图谱排队中..."
+                    : graphBuildStatus.state === "running"
+                    ? `🧠 图谱构建中 ${graphBuildStatus.progress_percent || 0}%`
+                    : graphLoading
+                      ? "🧠 加载图谱..."
+                      : "🧠 查看知识图谱"}
                 </button>
                 <div style={{ fontSize: "0.6rem", color: "#475569", textAlign: "center", marginTop: "0.3rem" }}>实体 · 关系 · 条款来源</div>
               </div>

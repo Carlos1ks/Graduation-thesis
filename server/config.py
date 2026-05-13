@@ -80,6 +80,14 @@ class Config:
     KG_ENABLED = os.environ.get("KG_ENABLED", "1") == "1"
     KG_MAX_TRIPLES_PER_DOC = int(os.environ.get("KG_MAX_TRIPLES_PER_DOC", "6"))
     KG_MAX_RELATED_TRIPLES = int(os.environ.get("KG_MAX_RELATED_TRIPLES", "6"))
+    NEO4J_ENABLED = os.environ.get("NEO4J_ENABLED", "1") == "1"
+    NEO4J_URI = os.environ.get("NEO4J_URI", "neo4j://127.0.0.1:7687")
+    NEO4J_USERNAME = os.environ.get("NEO4J_USERNAME", "neo4j")
+    NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "")
+    NEO4J_DATABASE = os.environ.get("NEO4J_DATABASE", "neo4j")
+    KG_LLM_ENABLED = os.environ.get("KG_LLM_ENABLED", "1") == "1"
+    KG_LLM_BATCH_SIZE = int(os.environ.get("KG_LLM_BATCH_SIZE", "8"))
+    KG_MAX_ARTICLES_PER_BUILD = int(os.environ.get("KG_MAX_ARTICLES_PER_BUILD", "80"))
 
     # 多源风险识别配置
     RISK_RULES_ENABLED = os.environ.get("RISK_RULES_ENABLED", "1") == "1"
@@ -128,6 +136,15 @@ class Config:
         if cls.BAIDU_API_KEY and cls.BAIDU_SECRET_KEY:
             return cls.BAIDU_API_KEY, cls.BAIDU_SECRET_KEY
         raise RuntimeError("未配置 BAIDU_API_KEY / BAIDU_SECRET_KEY 环境变量。")
+
+    @classmethod
+    def require_neo4j_credentials(cls) -> tuple[str, str, str, str]:
+        if cls.NEO4J_URI and cls.NEO4J_USERNAME and cls.NEO4J_PASSWORD:
+            uri = cls.NEO4J_URI
+            if uri.startswith("neo4j://"):
+                uri = "bolt://" + uri[len("neo4j://"):]
+            return uri, cls.NEO4J_USERNAME, cls.NEO4J_PASSWORD, cls.NEO4J_DATABASE
+        raise RuntimeError("未配置 NEO4J_URI / NEO4J_USERNAME / NEO4J_PASSWORD。")
 
 
 config = Config()

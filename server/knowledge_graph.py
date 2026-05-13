@@ -1,84 +1,94 @@
-"""煤矿应急知识图谱构建、检索与会话级存储。"""
+"""LLM triple extraction -> Neo4j graph storage and query helpers."""
 from __future__ import annotations
 
+import json
 import re
 from collections import Counter
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timezone
+from pathlib import Path
 from threading import RLock
 from typing import Dict, List, Tuple
 
+from neo4j import GraphDatabase
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+
 from config import config
-from domain_schema import ENTITY_GROUPS, RELATION_LABELS
+from domain_schema import RELATION_LABELS
 
 
 _DEFAULT_SESSION_ID = "default"
-_SESSION_GRAPHS: Dict[str, Dict[str, object]] = {}
-_GRAPH_LOCK = RLock()
+_DRIVER = None
+_DRIVER_LOCK = RLock()
+_TASK_LOCK = RLock()
+_BUILD_EXECUTOR = ThreadPoolExecutor(max_workers=1)
+_GRAPH_BUILD_STATUS: Dict[str, Dict[str, object]] = {}
+_GRAPH_BUILD_FUTURES: Dict[str, Future] = {}
+_STATUS_DIR = Path(__file__).resolve().parent / ".graph_status"
+_ARTICLE_SPLIT_PATTERN = re.compile(r"(?=第[一二三四五六七八九十百千万零两\d]+条)")
 _ARTICLE_LABEL_PATTERN = re.compile(r"第[一二三四五六七八九十百千万零两\d]+条")
-_NUMERIC_PARAMETER_PATTERN = re.compile(
-    r"(?P<value>\d+(?:\.\d+)?)\s*(?P<unit>%|％|m|米|℃|度|小时|h|min|分钟)"
-)
+
+_VISIBLE_NODE_TYPES = {
+    "hazard",
+    "condition",
+    "step",
+    "role",
+    "equipment",
+    "risk",
+}
 
 _TOPIC_RULES = {
-    "gas": {
-        "tokens": ["瓦斯", "甲烷", "超限", "瓦斯浓度"],
-        "hazard_ids": {"gas"},
-        "parameter_units": {"%", "％"},
-        "parameter_tokens": ["瓦斯", "甲烷", "浓度", "超限"],
-    },
-    "fire": {
-        "tokens": ["火灾", "明火", "火源", "烟雾", "燃烧"],
-        "hazard_ids": {"fire"},
-        "parameter_units": {"℃", "度", "%", "％"},
-        "parameter_tokens": ["温度", "高温", "火", "氧气", "浓度"],
-    },
-    "water": {
-        "tokens": ["水害", "突水", "透水", "涌水", "水位", "积水"],
-        "hazard_ids": {"water"},
-        "parameter_units": {"m", "米"},
-        "parameter_tokens": ["水位", "涌水", "积水", "水量", "深度"],
-    },
+    "gas": {"tokens": ["瓦斯", "甲烷", "超限", "瓦斯浓度"]},
+    "water": {"tokens": ["透水", "突水", "水害", "涌水", "水位"]},
+    "fire": {"tokens": ["火灾", "明火", "火源", "烟雾", "燃烧"]},
 }
-
-_DIRECT_TOPIC_RELATIONS = {
-    "indicates",
-    "requires_action",
-    "triggers_hazard",
-    "monitors",
-    "occurs_at",
-    "responsible_for",
-    "in_stage",
-    "supports_action",
-    "governed_by",
-    "related_to",
-}
-
 
 NODE_TYPE_LABELS = {
-    "document": "文档",
-    "clause": "条款",
-    "document_type": "文档类型",
-    "hazard": "风险类型",
-    "symptom": "触发信号",
-    "parameter": "参数阈值",
-    "sensor": "监测设备",
-    "action": "处置动作",
-    "department": "责任部门",
-    "location": "地点场景",
+    "regulation": "规程",
+    "chapter": "编章",
+    "article": "条文",
+    "hazard": "灾害类型",
+    "step": "处置步骤",
+    "condition": "条件约束",
     "equipment": "设备设施",
-    "stage": "处置阶段",
+    "role": "责任主体",
+    "risk": "风险点",
 }
 
-LAYER_BY_TYPE = {
-    "sensor": "perception",
-    "symptom": "perception",
-    "parameter": "logic",
-    "hazard": "logic",
-    "action": "action",
-    "department": "action",
-    "location": "action",
-    "equipment": "action",
+NEO4J_LABELS = {
+    "regulation": "Regulation",
+    "chapter": "Chapter",
+    "article": "Article",
+    "hazard": "Hazard",
+    "step": "Step",
+    "condition": "Condition",
+    "equipment": "Equipment",
+    "role": "Role",
+    "risk": "Risk",
 }
+
+ALLOWED_NODE_TYPES = set(NEO4J_LABELS.keys())
+ALLOWED_RELATIONS = {
+    "CONTAINS",
+    "NEXT",
+    "APPLIES_TO",
+    "REQUIRES",
+    "PERFORMED_BY",
+    "HAS_RISK",
+    "IF",
+}
+
+
+def _build_llm() -> ChatOpenAI:
+    return ChatOpenAI(
+        api_key=config.require_longcat_api_key(),
+        base_url=config.LONGCAT_BASE_URL,
+        model=config.LONGCAT_MODEL,
+        temperature=0,
+        max_tokens=config.LONGCAT_MAX_TOKENS,
+        timeout=config.LONGCAT_READ_TIMEOUT,
+    )
 
 
 def _get_session_id(session_id: str | None) -> str:
@@ -90,6 +100,17 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _safe_id(value: str) -> str:
+    text = str(value or "").strip()
+    text = re.sub(r"\s+", "_", text)
+    text = re.sub(r"[^\w\u4e00-\u9fa5.-]+", "_", text)
+    return text.strip("_")[:120] or "unknown"
+
+
+def _node_uid(node_type: str, node_id: str) -> str:
+    return f"{node_type}:{node_id}"
+
+
 def _clip_text(text: str, limit: int = 220) -> str:
     content = re.sub(r"\s+", " ", str(text or "")).strip()
     if len(content) <= limit:
@@ -97,310 +118,9 @@ def _clip_text(text: str, limit: int = 220) -> str:
     return f"{content[:limit]}..."
 
 
-def _node_uid(node_type: str, node_id: str) -> str:
-    return f"{node_type}:{node_id}"
-
-
-def _safe_id(value: str) -> str:
-    text = str(value or "").strip()
-    text = re.sub(r"\s+", "_", text)
-    text = re.sub(r"[^\w\u4e00-\u9fa5.-]+", "_", text)
-    return text.strip("_")[:80] or "unknown"
-
-
 def _extract_article_label(text: str) -> str:
     match = _ARTICLE_LABEL_PATTERN.search(str(text or ""))
     return match.group(0) if match else ""
-
-
-def _split_graph_segments(text: str, fallback_id: str) -> List[Dict[str, str]]:
-    content = str(text or "").strip()
-    if not content:
-        return []
-
-    matches = list(_ARTICLE_LABEL_PATTERN.finditer(content))
-    if len(matches) >= 2:
-        segments = []
-        for idx, match in enumerate(matches):
-            start = match.start()
-            end = matches[idx + 1].start() if idx + 1 < len(matches) else len(content)
-            segment_text = content[start:end].strip()
-            if not segment_text:
-                continue
-            label = match.group(0)
-            segments.append({
-                "segment_id": f"{fallback_id}-{idx + 1:03d}",
-                "article_label": label,
-                "label": label,
-                "text": segment_text,
-            })
-        return segments
-
-    sentences = [item.strip() for item in re.split(r"(?<=[。；;!?！？])", content) if item.strip()]
-    if len(sentences) <= 1:
-        article_label = _extract_article_label(content)
-        return [{
-            "segment_id": fallback_id,
-            "article_label": article_label,
-            "label": article_label or fallback_id,
-            "text": content,
-        }]
-
-    segments = []
-    article_label = _extract_article_label(content)
-    for idx, sentence in enumerate(sentences, start=1):
-        segments.append({
-            "segment_id": f"{fallback_id}-s{idx:02d}",
-            "article_label": _extract_article_label(sentence) or article_label,
-            "label": _extract_article_label(sentence) or article_label or f"{fallback_id}-句{idx}",
-            "text": sentence,
-        })
-    return segments
-
-
-def _match_entities(text: str) -> List[Dict[str, str]]:
-    content = str(text or "")
-    matched: List[Dict[str, str]] = []
-    seen = set()
-    for entity_type, definitions in ENTITY_GROUPS.items():
-        for entity_id, definition in definitions.items():
-            keywords = definition.get("keywords") or []
-            hit_keywords = [keyword for keyword in keywords if keyword and keyword in content]
-            if not hit_keywords:
-                continue
-            key = (entity_type, entity_id)
-            if key in seen:
-                continue
-            seen.add(key)
-            matched.append({
-                "uid": _node_uid(entity_type, entity_id),
-                "type": entity_type,
-                "id": entity_id,
-                "label": definition["label"],
-                "keywords": hit_keywords[:4],
-            })
-    return matched
-
-
-def _parameter_context_key(value: str, unit: str, context: str, close_context: str = "") -> Dict[str, str]:
-    raw_value = f"{value}{unit}"
-    context_text = str(context or "")
-    close_text = str(close_context or "")
-    if unit in {"%", "％"}:
-        if any(token in context_text for token in ["瓦斯", "甲烷"]):
-            return {"id": "gas_concentration", "label": "瓦斯浓度", "condition": f">= {raw_value}"}
-        if "氧气" in context_text:
-            return {"id": "oxygen_concentration", "label": "氧气浓度", "condition": f">= {raw_value}"}
-        if any(token in context_text for token in ["粉尘", "煤尘"]):
-            return {"id": "dust_concentration", "label": "粉尘浓度", "condition": f">= {raw_value}"}
-        if "浓度" in context_text:
-            return {"id": "concentration", "label": "浓度阈值", "condition": f">= {raw_value}"}
-        return {"id": "percentage_parameter", "label": "百分比阈值", "condition": f">= {raw_value}"}
-    if unit in {"℃", "度"}:
-        return {"id": "temperature", "label": "温度", "condition": f">= {raw_value}"}
-    if unit in {"小时", "h", "min", "分钟"}:
-        return {"id": "response_time", "label": "处置时间", "condition": f"<= {raw_value}"}
-    if unit in {"m", "米"}:
-        if any(token in close_text for token in ["距离", "范围", "以内", "以外", "附近", "半径"]):
-            return {"id": "distance", "label": "距离", "condition": f"<= {raw_value}"}
-        if any(token in close_text for token in ["水位", "积水", "涌水", "水深"]):
-            return {"id": "water_level", "label": "水位", "condition": f">= {raw_value}"}
-        if any(token in context_text for token in ["距离", "范围", "以内", "以外", "附近", "半径"]):
-            return {"id": "distance", "label": "距离", "condition": f"<= {raw_value}"}
-        if any(token in context_text for token in ["水位", "积水", "涌水", "水深"]):
-            return {"id": "water_level", "label": "水位", "condition": f">= {raw_value}"}
-        return {"id": "distance", "label": "距离", "condition": f"<= {raw_value}"}
-    return {"id": "generic_parameter", "label": "参数条件", "condition": raw_value}
-
-
-def _extract_numeric_parameters(text: str) -> List[Dict[str, object]]:
-    content = str(text or "")
-    parameters: List[Dict[str, object]] = []
-    seen = set()
-    for match in _NUMERIC_PARAMETER_PATTERN.finditer(content):
-        value = match.group("value")
-        unit = match.group("unit")
-        context = content[max(0, match.start() - 24): min(len(content), match.end() + 24)]
-        close_context = content[max(0, match.start() - 8): min(len(content), match.end() + 8)]
-        parameter = _parameter_context_key(value, unit, context, close_context)
-        node_id = str(parameter["id"])
-        condition = str(parameter["condition"])
-        dedupe_key = (node_id, condition)
-        if dedupe_key in seen:
-            continue
-        seen.add(dedupe_key)
-        parameters.append({
-            "type": "parameter",
-            "id": node_id,
-            "label": str(parameter["label"]),
-            "value": value,
-            "unit": unit,
-            "condition": condition,
-            "keywords": [f"{value}{unit}", str(parameter["label"]), condition],
-        })
-    return parameters
-
-
-def _merge_entity_nodes(entity_nodes: List[Dict[str, object]]) -> List[Dict[str, object]]:
-    merged: List[Dict[str, object]] = []
-    seen_keys = set()
-    for entity in entity_nodes:
-        node_type = str(entity.get("type") or "")
-        label = str(entity.get("label") or "")
-        value = str(entity.get("value") or "")
-        unit = str(entity.get("unit") or "")
-        condition = str(entity.get("condition") or "")
-        dedupe_key = (node_type, label, condition) if label else (node_type, value, unit, condition)
-        if dedupe_key in seen_keys:
-            continue
-        seen_keys.add(dedupe_key)
-        merged.append(entity)
-    return merged
-
-
-def _make_node(node_type: str, node_id: str, label: str, **extra) -> Dict[str, object]:
-    return {
-        "uid": _node_uid(node_type, node_id),
-        "type": node_type,
-        "type_label": NODE_TYPE_LABELS.get(node_type, node_type),
-        "layer": LAYER_BY_TYPE.get(node_type, "support"),
-        "id": node_id,
-        "label": label,
-        **{k: v for k, v in extra.items() if v not in (None, "", [])},
-    }
-
-
-def _make_relation(
-    head: Dict[str, object],
-    relation: str,
-    tail: Dict[str, object],
-    source: str,
-    **extra,
-) -> Dict[str, object]:
-    head_uid = str(head.get("uid") or _node_uid(str(head["type"]), str(head["id"])))
-    tail_uid = str(tail.get("uid") or _node_uid(str(tail["type"]), str(tail["id"])))
-    relation_id = f"{head_uid}|{relation}|{tail_uid}|{_safe_id(source)}"
-    return {
-        "id": relation_id,
-        "source": head_uid,
-        "target": tail_uid,
-        "head_type": head["type"],
-        "head_id": head["id"],
-        "head_label": head["label"],
-        "relation": relation,
-        "relation_label": RELATION_LABELS.get(relation, relation),
-        "tail_type": tail["type"],
-        "tail_id": tail["id"],
-        "tail_label": tail["label"],
-        "source_ref": source,
-        **{k: v for k, v in extra.items() if v not in (None, "", [])},
-    }
-
-
-def _add_node(nodes_by_uid: Dict[str, Dict[str, object]], node: Dict[str, object]) -> Dict[str, object]:
-    uid = str(node["uid"])
-    if uid not in nodes_by_uid:
-        nodes_by_uid[uid] = dict(node)
-        nodes_by_uid[uid].setdefault("sources", [])
-        return nodes_by_uid[uid]
-
-    existing = nodes_by_uid[uid]
-    for key, value in node.items():
-        if key == "sources":
-            continue
-        if key not in existing or existing[key] in (None, "", []):
-            existing[key] = value
-    return existing
-
-
-def _add_source(node: Dict[str, object], source: str) -> None:
-    source = str(source or "").strip()
-    if not source:
-        return
-    sources = node.setdefault("sources", [])
-    if isinstance(sources, list) and source not in sources:
-        sources.append(source)
-
-
-def _group_nodes(nodes: List[Dict[str, object]]) -> Dict[str, List[Dict[str, object]]]:
-    grouped: Dict[str, List[Dict[str, object]]] = {}
-    for node in nodes:
-        grouped.setdefault(str(node.get("type")), []).append(node)
-    return grouped
-
-
-def _relations_for_clause(
-    clause_node: Dict[str, object],
-    doc_node: Dict[str, object],
-    entity_nodes: List[Dict[str, object]],
-    source: str,
-) -> List[Dict[str, object]]:
-    relations: List[Dict[str, object]] = [
-        _make_relation(doc_node, "contains_clause", clause_node, source),
-    ]
-
-    grouped = _group_nodes(entity_nodes)
-    parameter_conditions = sorted({
-        str(item.get("condition"))
-        for item in grouped.get("parameter", [])
-        if item.get("condition")
-    })
-    combined_condition = "；".join(parameter_conditions) if parameter_conditions else None
-    for entity in entity_nodes:
-        relations.append(_make_relation(clause_node, "mentions", entity, source))
-
-    for symptom in grouped.get("symptom", []):
-        for hazard in grouped.get("hazard", []):
-            relations.append(_make_relation(symptom, "indicates", hazard, source))
-
-    for parameter in grouped.get("parameter", []):
-        relations.append(_make_relation(clause_node, "has_parameter", parameter, source))
-        for hazard in grouped.get("hazard", []):
-            relations.append(
-                _make_relation(
-                    parameter,
-                    "triggers_hazard",
-                    hazard,
-                    source,
-                    condition=parameter.get("condition"),
-                )
-            )
-
-    for sensor in grouped.get("sensor", []):
-        for parameter in grouped.get("parameter", []):
-            relations.append(
-                _make_relation(
-                    sensor,
-                    "monitors",
-                    parameter,
-                    source,
-                    condition=parameter.get("condition"),
-                )
-            )
-        for symptom in grouped.get("symptom", []):
-            relations.append(_make_relation(sensor, "monitors", symptom, source, condition=combined_condition))
-
-    for hazard in grouped.get("hazard", []):
-        for action in grouped.get("action", []):
-            relations.append(_make_relation(hazard, "requires_action", action, source, condition=combined_condition))
-        for location in grouped.get("location", []):
-            relations.append(_make_relation(hazard, "occurs_at", location, source))
-        for document_type in grouped.get("document_type", []):
-            relations.append(_make_relation(hazard, "governed_by", document_type, source))
-
-    for action in grouped.get("action", []):
-        for department in grouped.get("department", []):
-            relations.append(_make_relation(action, "responsible_for", department, source))
-        for stage in grouped.get("stage", []):
-            relations.append(_make_relation(action, "in_stage", stage, source))
-        for equipment in grouped.get("equipment", []):
-            relations.append(_make_relation(equipment, "supports_action", action, source))
-
-    for location in grouped.get("location", []):
-        for equipment in grouped.get("equipment", []):
-            relations.append(_make_relation(equipment, "related_to", location, source))
-
-    return relations
 
 
 def _normalize_documents(documents: List[Dict[str, object]] | None) -> List[Dict[str, object]]:
@@ -413,11 +133,11 @@ def _normalize_documents(documents: List[Dict[str, object]] | None) -> List[Dict
         text = str(item.get("text") or "").strip()
         if not text:
             continue
-        doc_name = str(item.get("doc_name") or item.get("file_name") or item.get("docName") or "未命名文档").strip()
+        doc_name = str(item.get("doc_name") or item.get("file_name") or item.get("docName") or "未命名文档").strip() or "未命名文档"
         chunk_id = str(item.get("chunk_id") or item.get("chunkId") or f"chunk-{idx + 1:03d}").strip()
         normalized.append({
             **item,
-            "doc_name": doc_name or "未命名文档",
+            "doc_name": doc_name,
             "chunk_id": chunk_id,
             "text": text,
             "article_label": str(item.get("article_label") or _extract_article_label(text) or "").strip(),
@@ -425,106 +145,225 @@ def _normalize_documents(documents: List[Dict[str, object]] | None) -> List[Dict
     return normalized
 
 
-def build_knowledge_graph(documents: List[Dict[str, object]]) -> Dict[str, object]:
-    if not config.KG_ENABLED:
-        return {
-            "nodes": [],
-            "relations": [],
-            "links": [],
-            "document_summaries": [],
-            "stats": {},
-        }
+def _split_articles(text: str, fallback_id: str) -> List[Dict[str, str]]:
+    content = str(text or "").strip()
+    if not content:
+        return []
+    parts = [item.strip() for item in _ARTICLE_SPLIT_PATTERN.split(content) if item.strip()]
+    if not parts:
+        return []
+    results = []
+    for idx, part in enumerate(parts, start=1):
+        label = _extract_article_label(part)
+        if not label:
+            continue
+        results.append({
+            "article_id": f"{fallback_id}-{idx:03d}",
+            "article_label": label,
+            "text": part,
+        })
+    return results
 
+
+def _build_graph_extraction_prompt(doc_name: str, article_label: str, text: str) -> str:
+    return (
+        "请从下面的煤矿安全规程条文中抽取知识图谱三元组，严格输出 JSON。\n"
+        "目标：面向煤矿灾害处置与应急救援，只保留真正有决策价值的实体和关系。\n"
+        "节点类型只允许使用：regulation, chapter, article, hazard, step, condition, equipment, role, risk。\n"
+        "关系类型只允许使用：CONTAINS, NEXT, APPLIES_TO, REQUIRES, PERFORMED_BY, HAS_RISK, IF。\n"
+        "不要把纯数字或百分比单独抽成节点；如果有阈值，请放到关系的 condition 属性里。\n"
+        "步骤节点应当是可执行动作，如“停止作业”“切断电源”“撤离人员”。\n"
+        "条件节点应当是适用条件或前提，如“瓦斯浓度达到1.5%”“突出矿井”“高瓦斯矿井”。\n"
+        "输出格式必须是 JSON 对象，结构如下：\n"
+        "{\n"
+        '  "nodes": [{"type":"hazard","id":"gas","label":"瓦斯灾害"}],\n'
+        '  "relationships": [{"source_id":"gas","source_type":"hazard","target_id":"stop_work","target_type":"step","type":"APPLIES_TO","condition":">=1.5%","evidence":"原文片段"}]\n'
+        "}\n"
+        "如果某条文没有明显的灾害处置知识，返回空数组。\n\n"
+        f"文档：{doc_name}\n"
+        f"条文：{article_label}\n"
+        f"正文：{text}"
+    )
+
+
+def _parse_llm_json(text: str) -> Dict[str, object]:
+    content = str(text or "").strip()
+    if not content:
+        return {"nodes": [], "relationships": []}
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", content, re.S)
+        if match:
+            return json.loads(match.group(0))
+    return {"nodes": [], "relationships": []}
+
+
+def _extract_article_graph(doc_name: str, article_label: str, text: str) -> Dict[str, object]:
+    prompt = _build_graph_extraction_prompt(doc_name, article_label, text)
+    messages = [
+        SystemMessage(content="你是煤矿安全规程知识图谱抽取器，只能输出合法 JSON。"),
+        HumanMessage(content=prompt),
+    ]
+    result = _build_llm().invoke(messages)
+    payload = _parse_llm_json(getattr(result, "content", result))
+    if not isinstance(payload, dict):
+        return {"nodes": [], "relationships": []}
+    nodes = payload.get("nodes") if isinstance(payload.get("nodes"), list) else []
+    relationships = payload.get("relationships") if isinstance(payload.get("relationships"), list) else []
+    return {"nodes": nodes, "relationships": relationships}
+
+
+def _sanitize_node(node: Dict[str, object], doc_name: str, article_label: str, article_uid: str) -> Dict[str, object] | None:
+    node_type = str(node.get("type") or "").strip().lower()
+    if node_type not in ALLOWED_NODE_TYPES:
+        return None
+    node_id = str(node.get("id") or _safe_id(node.get("label") or "")).strip()
+    label = str(node.get("label") or node_id).strip()
+    if not node_id or not label:
+        return None
+    return {
+        "uid": _node_uid(node_type, node_id),
+        "type": node_type,
+        "type_label": NODE_TYPE_LABELS.get(node_type, node_type),
+        "id": node_id,
+        "label": label,
+        "doc_name": doc_name,
+        "article_label": article_label,
+        "sources": [f"{doc_name} · {article_label}"],
+        "article_uid": article_uid,
+    }
+
+
+def _sanitize_relation(
+    rel: Dict[str, object],
+    nodes_by_uid: Dict[str, Dict[str, object]],
+    doc_name: str,
+    article_label: str,
+) -> Dict[str, object] | None:
+    rel_type = str(rel.get("type") or "").strip().upper()
+    if rel_type not in ALLOWED_RELATIONS:
+        return None
+    source_type = str(rel.get("source_type") or "").strip().lower()
+    target_type = str(rel.get("target_type") or "").strip().lower()
+    source_id = str(rel.get("source_id") or "").strip()
+    target_id = str(rel.get("target_id") or "").strip()
+    if not source_type or not target_type or not source_id or not target_id:
+        return None
+    source_uid = _node_uid(source_type, source_id)
+    target_uid = _node_uid(target_type, target_id)
+    if source_uid not in nodes_by_uid or target_uid not in nodes_by_uid:
+        return None
+    condition = str(rel.get("condition") or "").strip() or None
+    evidence = _clip_text(str(rel.get("evidence") or ""), 180) or None
+    return {
+        "id": f"{source_uid}|{rel_type}|{target_uid}|{_safe_id(article_label)}",
+        "source": source_uid,
+        "target": target_uid,
+        "head_type": source_type,
+        "head_id": source_id,
+        "head_label": nodes_by_uid[source_uid]["label"],
+        "tail_type": target_type,
+        "tail_id": target_id,
+        "tail_label": nodes_by_uid[target_uid]["label"],
+        "relation": rel_type,
+        "relation_label": RELATION_LABELS.get(rel_type, rel_type),
+        "source_ref": f"{doc_name} · {article_label}",
+        "condition": condition,
+        "evidence": evidence,
+    }
+
+
+def _build_graph_documents(documents: List[Dict[str, object]]) -> Dict[str, object]:
     normalized_documents = _normalize_documents(documents)
     nodes_by_uid: Dict[str, Dict[str, object]] = {}
     relations_by_id: Dict[str, Dict[str, object]] = {}
-    document_summaries: List[Dict[str, object]] = []
+    article_budget = max(1, int(config.KG_MAX_ARTICLES_PER_BUILD))
+    article_count = 0
 
-    for doc_index, doc in enumerate(normalized_documents, start=1):
+    for doc in normalized_documents:
         doc_name = str(doc["doc_name"])
         document_id = str(doc.get("document_id") or _safe_id(doc_name))
-        doc_node = _add_node(
-            nodes_by_uid,
-            _make_node("document", document_id, doc_name, doc_name=doc_name),
-        )
-
-        chunk_id = str(doc["chunk_id"])
-        base_article_label = str(doc.get("article_label") or _extract_article_label(str(doc["text"])) or "")
-        segments = _split_graph_segments(str(doc["text"]), chunk_id) or [{
-            "segment_id": chunk_id,
-            "article_label": base_article_label,
-            "label": base_article_label or chunk_id or f"片段{doc_index}",
-            "text": str(doc["text"]),
-        }]
-
-        doc_node_total = 1
-        doc_relation_total = 0
-        for segment in segments:
-            segment_id = str(segment.get("segment_id") or chunk_id)
-            article_label = str(segment.get("article_label") or base_article_label or "")
-            segment_text = str(segment.get("text") or "")
-            clause_id = f"{document_id}:{_safe_id(segment_id)}"
-            clause_label = str(segment.get("label") or article_label or segment_id)
-            source = f"{doc_name} · {segment_id}"
-            clause_node = _add_node(
-                nodes_by_uid,
-                _make_node(
-                    "clause",
-                    clause_id,
-                    clause_label,
-                    doc_name=doc_name,
-                    chunk_id=segment_id,
-                    article_label=article_label,
-                    text_excerpt=_clip_text(segment_text, 260),
-                ),
-            )
-            _add_source(doc_node, source)
-            _add_source(clause_node, source)
-
-            entity_nodes = _merge_entity_nodes(
-                _match_entities(segment_text) + _extract_numeric_parameters(segment_text)
-            )
-            normalized_entities: List[Dict[str, object]] = []
-            for entity in entity_nodes:
-                node = _add_node(
-                    nodes_by_uid,
-                    _make_node(
-                        str(entity["type"]),
-                        str(entity["id"]),
-                        str(entity["label"]),
-                        keywords=entity.get("keywords"),
-                        value=entity.get("value"),
-                        unit=entity.get("unit"),
-                    ),
-                )
-                _add_source(node, source)
-                normalized_entities.append(node)
-
-            segment_relations = _relations_for_clause(clause_node, doc_node, normalized_entities, source)
-            for relation in segment_relations:
-                relations_by_id.setdefault(str(relation["id"]), relation)
-
-            doc_node_total += len(normalized_entities) + 1
-            doc_relation_total += len(segment_relations)
-
-        document_summaries.append({
+        regulation_uid = _node_uid("regulation", document_id)
+        nodes_by_uid.setdefault(regulation_uid, {
+            "uid": regulation_uid,
+            "type": "regulation",
+            "type_label": NODE_TYPE_LABELS["regulation"],
+            "id": document_id,
+            "label": doc_name,
             "doc_name": doc_name,
-            "chunk_id": chunk_id,
-            "article_label": base_article_label,
-            "node_count": doc_node_total,
-            "relation_count": doc_relation_total,
+            "sources": [doc_name],
         })
+
+        articles = _split_articles(str(doc["text"]), str(doc["chunk_id"]))
+        batch_size = max(1, int(config.KG_LLM_BATCH_SIZE))
+        for start in range(0, len(articles), batch_size):
+            for article in articles[start:start + batch_size]:
+                if article_count >= article_budget:
+                    break
+                article_label = str(article["article_label"])
+                article_text = str(article["text"])
+                article_uid = _node_uid("article", _safe_id(f"{document_id}:{article_label}"))
+                article_node = {
+                    "uid": article_uid,
+                    "type": "article",
+                    "type_label": NODE_TYPE_LABELS["article"],
+                    "id": _safe_id(f"{document_id}:{article_label}"),
+                    "label": article_label,
+                    "doc_name": doc_name,
+                    "article_label": article_label,
+                    "text_excerpt": _clip_text(article_text, 260),
+                    "sources": [f"{doc_name} · {article_label}"],
+                }
+                nodes_by_uid.setdefault(article_uid, article_node)
+
+                payload = _extract_article_graph(doc_name, article_label, article_text) if config.KG_LLM_ENABLED else {"nodes": [], "relationships": []}
+                article_local_nodes: Dict[str, Dict[str, object]] = {}
+                for raw_node in payload.get("nodes", []):
+                    clean = _sanitize_node(raw_node, doc_name, article_label, article_uid)
+                    if clean is None:
+                        continue
+                    article_local_nodes[clean["uid"]] = clean
+                    nodes_by_uid.setdefault(clean["uid"], clean)
+
+                relations_by_id.setdefault(
+                    f"{regulation_uid}|CONTAINS|{article_uid}",
+                    {
+                        "id": f"{regulation_uid}|CONTAINS|{article_uid}",
+                        "source": regulation_uid,
+                        "target": article_uid,
+                        "head_type": "regulation",
+                        "head_id": document_id,
+                        "head_label": doc_name,
+                        "tail_type": "article",
+                        "tail_id": article_node["id"],
+                        "tail_label": article_label,
+                        "relation": "CONTAINS",
+                        "relation_label": "包含条文",
+                        "source_ref": doc_name,
+                    },
+                )
+
+                for raw_rel in payload.get("relationships", []):
+                    clean_rel = _sanitize_relation(raw_rel, nodes_by_uid, doc_name, article_label)
+                    if clean_rel is None:
+                        continue
+                    relations_by_id.setdefault(clean_rel["id"], clean_rel)
+                article_count += 1
+            if article_count >= article_budget:
+                break
+        if article_count >= article_budget:
+            break
 
     nodes = list(nodes_by_uid.values())
     relations = list(relations_by_id.values())
     type_counter = Counter(str(node.get("type")) for node in nodes)
     relation_counter = Counter(str(rel.get("relation")) for rel in relations)
-
     return {
         "nodes": nodes,
         "relations": relations,
         "links": relations,
-        "document_summaries": document_summaries,
+        "document_summaries": [],
         "stats": {
             "node_count": len(nodes),
             "relation_count": len(relations),
@@ -535,33 +374,496 @@ def build_knowledge_graph(documents: List[Dict[str, object]]) -> Dict[str, objec
     }
 
 
-def build_and_store_session_graph(session_id: str | None, documents: List[Dict[str, object]]) -> Dict[str, object]:
-    graph = build_knowledge_graph(documents)
+def _build_graph_documents_with_progress(documents: List[Dict[str, object]], session_id: str) -> Dict[str, object]:
+    normalized_documents = _normalize_documents(documents)
+    nodes_by_uid: Dict[str, Dict[str, object]] = {}
+    relations_by_id: Dict[str, Dict[str, object]] = {}
+    article_budget = max(1, int(config.KG_MAX_ARTICLES_PER_BUILD))
+    article_count = 0
+
+    articles_to_process: List[Tuple[str, str, str, str]] = []
+    for doc in normalized_documents:
+        doc_name = str(doc["doc_name"])
+        document_id = str(doc.get("document_id") or _safe_id(doc_name))
+        regulation_uid = _node_uid("regulation", document_id)
+        nodes_by_uid.setdefault(regulation_uid, {
+            "uid": regulation_uid,
+            "type": "regulation",
+            "type_label": NODE_TYPE_LABELS["regulation"],
+            "id": document_id,
+            "label": doc_name,
+            "doc_name": doc_name,
+            "sources": [doc_name],
+        })
+        articles = _split_articles(str(doc["text"]), str(doc["chunk_id"]))
+        for article in articles:
+            articles_to_process.append((doc_name, document_id, article["article_label"], article["text"]))
+            if len(articles_to_process) >= article_budget:
+                break
+        if len(articles_to_process) >= article_budget:
+            break
+
+    total = len(articles_to_process)
+    _set_build_status(session_id, total=total, current=0, progress_percent=0)
+
+    partial_graph = {"nodes": [], "relations": [], "links": [], "document_summaries": [], "stats": {"node_count": 0, "relation_count": 0}}
+
+    for index, (doc_name, document_id, article_label, article_text) in enumerate(articles_to_process, start=1):
+        started_percent = max(1, int(index * 100 / total)) if total else 100
+        _set_build_status(
+            session_id,
+            current=index,
+            total=total,
+            progress_percent=started_percent,
+            message=f"正在抽取第 {index}/{total} 条条文",
+        )
+        article_uid = _node_uid("article", _safe_id(f"{document_id}:{article_label}"))
+        article_node = {
+            "uid": article_uid,
+            "type": "article",
+            "type_label": NODE_TYPE_LABELS["article"],
+            "id": _safe_id(f"{document_id}:{article_label}"),
+            "label": article_label,
+            "doc_name": doc_name,
+            "article_label": article_label,
+            "text_excerpt": _clip_text(article_text, 260),
+            "sources": [f"{doc_name} · {article_label}"],
+        }
+        nodes_by_uid.setdefault(article_uid, article_node)
+
+        payload = _extract_article_graph(doc_name, article_label, article_text) if config.KG_LLM_ENABLED else {"nodes": [], "relationships": []}
+        for raw_node in payload.get("nodes", []):
+            clean = _sanitize_node(raw_node, doc_name, article_label, article_uid)
+            if clean is None:
+                continue
+            nodes_by_uid.setdefault(clean["uid"], clean)
+
+        regulation_uid = _node_uid("regulation", document_id)
+        relations_by_id.setdefault(
+            f"{regulation_uid}|CONTAINS|{article_uid}",
+            {
+                "id": f"{regulation_uid}|CONTAINS|{article_uid}",
+                "source": regulation_uid,
+                "target": article_uid,
+                "head_type": "regulation",
+                "head_id": document_id,
+                "head_label": doc_name,
+                "tail_type": "article",
+                "tail_id": article_node["id"],
+                "tail_label": article_label,
+                "relation": "CONTAINS",
+                "relation_label": "包含条文",
+                "source_ref": doc_name,
+            },
+        )
+
+        for raw_rel in payload.get("relationships", []):
+            clean_rel = _sanitize_relation(raw_rel, nodes_by_uid, doc_name, article_label)
+            if clean_rel is None:
+                continue
+            relations_by_id.setdefault(clean_rel["id"], clean_rel)
+
+        article_count += 1
+        progress_percent = int(article_count * 100 / total) if total else 100
+        partial_graph = _merge_graph_chunks(partial_graph, {
+            "nodes": list(nodes_by_uid.values()),
+            "relations": list(relations_by_id.values()),
+            "links": list(relations_by_id.values()),
+            "document_summaries": [],
+            "stats": {},
+        })
+        if config.NEO4J_ENABLED:
+            _upsert_graph_to_neo4j(session_id, partial_graph)
+        _set_build_status(
+            session_id,
+            current=article_count,
+            total=total,
+            progress_percent=progress_percent,
+            message=f"正在抽取第 {article_count}/{total} 条条文",
+        )
+
+    nodes = list(nodes_by_uid.values())
+    relations = list(relations_by_id.values())
+    type_counter = Counter(str(node.get("type")) for node in nodes)
+    relation_counter = Counter(str(rel.get("relation")) for rel in relations)
+    return {
+        "nodes": nodes,
+        "relations": relations,
+        "links": relations,
+        "document_summaries": [],
+        "stats": {
+            "node_count": len(nodes),
+            "relation_count": len(relations),
+            "node_types": dict(type_counter),
+            "relation_types": dict(relation_counter),
+            "updated_at": _now_iso(),
+        },
+    }
+
+
+def _get_driver():
+    global _DRIVER
+    with _DRIVER_LOCK:
+        if _DRIVER is None:
+            uri, username, password, _ = config.require_neo4j_credentials()
+            _DRIVER = GraphDatabase.driver(uri, auth=(username, password))
+        return _DRIVER
+
+
+def close_driver() -> None:
+    global _DRIVER
+    with _DRIVER_LOCK:
+        if _DRIVER is not None:
+            _DRIVER.close()
+            _DRIVER = None
+
+
+def _execute_write(query: str, **params):
+    driver = _get_driver()
+    _, _, _, database = config.require_neo4j_credentials()
+    with driver.session(database=database) as session:
+        return session.execute_write(lambda tx: list(tx.run(query, **params)))
+
+
+def _execute_read(query: str, **params):
+    driver = _get_driver()
+    _, _, _, database = config.require_neo4j_credentials()
+    with driver.session(database=database) as session:
+        return session.execute_read(lambda tx: [record.data() for record in tx.run(query, **params)])
+
+
+def _ensure_schema() -> None:
+    _execute_write("CREATE CONSTRAINT session_uid IF NOT EXISTS FOR (n:KGNode) REQUIRE (n.session_id, n.uid) IS UNIQUE")
+
+
+def _clear_session_graph_neo4j(session_id: str) -> None:
+    _execute_write(
+        """
+        MATCH (n:KGNode {session_id: $session_id})
+        DETACH DELETE n
+        """,
+        session_id=session_id,
+    )
+
+
+def _write_graph_to_neo4j(session_id: str, graph: Dict[str, object]) -> None:
+    _ensure_schema()
+    _clear_session_graph_neo4j(session_id)
+    _upsert_graph_to_neo4j(session_id, graph)
+
+
+def _upsert_graph_to_neo4j(session_id: str, graph: Dict[str, object]) -> None:
+    _ensure_schema()
+
+    node_rows = []
+    for node in graph.get("nodes", []):
+        node_rows.append({
+            "session_id": session_id,
+            "uid": node.get("uid"),
+            "type": node.get("type"),
+            "type_label": node.get("type_label"),
+            "id": node.get("id"),
+            "label": node.get("label"),
+            "doc_name": node.get("doc_name"),
+            "article_label": node.get("article_label"),
+            "text_excerpt": node.get("text_excerpt"),
+            "keywords": node.get("keywords") or [],
+            "sources": node.get("sources") or [],
+        })
+
+    rel_rows = []
+    for rel in graph.get("relations", []):
+        rel_rows.append({
+            "session_id": session_id,
+            "id": rel.get("id"),
+            "source": rel.get("source"),
+            "target": rel.get("target"),
+            "head_type": rel.get("head_type"),
+            "head_id": rel.get("head_id"),
+            "head_label": rel.get("head_label"),
+            "tail_type": rel.get("tail_type"),
+            "tail_id": rel.get("tail_id"),
+            "tail_label": rel.get("tail_label"),
+            "relation": rel.get("relation"),
+            "relation_label": rel.get("relation_label"),
+            "source_ref": rel.get("source_ref"),
+            "condition": rel.get("condition"),
+            "evidence": rel.get("evidence"),
+        })
+
+    _execute_write(
+        """
+        UNWIND $rows AS row
+        MERGE (n:KGNode {session_id: row.session_id, uid: row.uid})
+        SET n += row
+        FOREACH (_ IN CASE WHEN row.type = 'regulation' THEN [1] ELSE [] END | SET n:Regulation)
+        FOREACH (_ IN CASE WHEN row.type = 'chapter' THEN [1] ELSE [] END | SET n:Chapter)
+        FOREACH (_ IN CASE WHEN row.type = 'article' THEN [1] ELSE [] END | SET n:Article)
+        FOREACH (_ IN CASE WHEN row.type = 'hazard' THEN [1] ELSE [] END | SET n:Hazard)
+        FOREACH (_ IN CASE WHEN row.type = 'step' THEN [1] ELSE [] END | SET n:Step)
+        FOREACH (_ IN CASE WHEN row.type = 'condition' THEN [1] ELSE [] END | SET n:Condition)
+        FOREACH (_ IN CASE WHEN row.type = 'equipment' THEN [1] ELSE [] END | SET n:Equipment)
+        FOREACH (_ IN CASE WHEN row.type = 'role' THEN [1] ELSE [] END | SET n:Role)
+        FOREACH (_ IN CASE WHEN row.type = 'risk' THEN [1] ELSE [] END | SET n:Risk)
+        """,
+        rows=node_rows,
+    )
+
+    _execute_write(
+        """
+        UNWIND $rows AS row
+        MATCH (a:KGNode {session_id: row.session_id, uid: row.source})
+        MATCH (b:KGNode {session_id: row.session_id, uid: row.target})
+        MERGE (a)-[r:KG_REL {id: row.id}]->(b)
+        SET r += row
+        """,
+        rows=rel_rows,
+    )
+
+
+def _merge_graph_chunks(base: Dict[str, object], incoming: Dict[str, object]) -> Dict[str, object]:
+    node_map = {str(node.get("uid")): dict(node) for node in base.get("nodes", [])}
+    for node in incoming.get("nodes", []):
+        uid = str(node.get("uid"))
+        if not uid:
+            continue
+        merged = {**node_map.get(uid, {}), **node}
+        sources = list(dict.fromkeys((node_map.get(uid, {}).get("sources") or []) + (node.get("sources") or [])))
+        if sources:
+            merged["sources"] = sources
+        node_map[uid] = merged
+
+    rel_map = {str(rel.get("id")): dict(rel) for rel in base.get("relations", [])}
+    for rel in incoming.get("relations", []):
+        rid = str(rel.get("id"))
+        if rid:
+            rel_map[rid] = {**rel_map.get(rid, {}), **rel}
+
+    nodes = list(node_map.values())
+    relations = list(rel_map.values())
+    type_counter = Counter(str(node.get("type")) for node in nodes)
+    relation_counter = Counter(str(rel.get("relation")) for rel in relations)
+    return {
+        "nodes": nodes,
+        "relations": relations,
+        "links": relations,
+        "document_summaries": [],
+        "stats": {
+            "node_count": len(nodes),
+            "relation_count": len(relations),
+            "node_types": dict(type_counter),
+            "relation_types": dict(relation_counter),
+            "updated_at": _now_iso(),
+        },
+    }
+
+
+def _stats_for_session(session_id: str) -> Dict[str, object]:
+    stats = _execute_read(
+        """
+        MATCH (n:KGNode {session_id: $session_id})
+        OPTIONAL MATCH ()-[r:KG_REL {session_id: $session_id}]->()
+        RETURN count(DISTINCT n) AS node_count, count(DISTINCT r) AS relation_count
+        """,
+        session_id=session_id,
+    )
+    return stats[0] if stats else {"node_count": 0, "relation_count": 0}
+
+
+def _status_file(session_id: str) -> Path:
+    _STATUS_DIR.mkdir(parents=True, exist_ok=True)
+    return _STATUS_DIR / f"{_safe_id(session_id)}.json"
+
+
+def _write_status_file(session_id: str, status: Dict[str, object]) -> None:
+    path = _status_file(session_id)
+    path.write_text(json.dumps(status, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _read_status_file(session_id: str) -> Dict[str, object] | None:
+    path = _status_file(session_id)
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _set_build_status(session_id: str, **updates) -> Dict[str, object]:
+    with _TASK_LOCK:
+        status = _GRAPH_BUILD_STATUS.setdefault(session_id, {
+            "session_id": session_id,
+            "state": "idle",
+            "message": "",
+            "started_at": None,
+            "finished_at": None,
+            "node_count": 0,
+            "relation_count": 0,
+            "current": 0,
+            "total": 0,
+            "progress_percent": 0,
+            "error": "",
+        })
+        status.update(updates)
+        snapshot = dict(status)
+        _write_status_file(session_id, snapshot)
+        return snapshot
+
+
+def get_graph_build_status(session_id: str | None) -> Dict[str, object]:
     sid = _get_session_id(session_id)
-    with _GRAPH_LOCK:
-        _SESSION_GRAPHS[sid] = graph
+    with _TASK_LOCK:
+        memory_status = _GRAPH_BUILD_STATUS.get(sid)
+    file_status = _read_status_file(sid)
+    status = dict(memory_status or file_status or {
+            "session_id": sid,
+            "state": "idle",
+            "message": "",
+            "started_at": None,
+            "finished_at": None,
+            "node_count": 0,
+            "relation_count": 0,
+            "current": 0,
+            "total": 0,
+            "progress_percent": 0,
+            "error": "",
+        })
+    if status["state"] == "completed" and config.NEO4J_ENABLED:
+        stats = _stats_for_session(sid)
+        status["node_count"] = int(stats.get("node_count") or 0)
+        status["relation_count"] = int(stats.get("relation_count") or 0)
+        _write_status_file(sid, status)
+    return status
+
+
+def build_knowledge_graph(documents: List[Dict[str, object]]) -> Dict[str, object]:
+    return _build_graph_documents(documents) if config.KG_ENABLED else {
+        "nodes": [], "relations": [], "links": [], "document_summaries": [], "stats": {}
+    }
+
+
+def build_and_store_session_graph(session_id: str | None, documents: List[Dict[str, object]]) -> Dict[str, object]:
+    sid = _get_session_id(session_id)
+    graph = build_knowledge_graph(documents)
+    if config.NEO4J_ENABLED:
+        _write_graph_to_neo4j(sid, graph)
     return graph
+
+
+def start_graph_build(session_id: str | None, documents: List[Dict[str, object]]) -> Dict[str, object]:
+    sid = _get_session_id(session_id)
+    current = get_graph_build_status(sid)
+    if current.get("state") in {"running", "queued"}:
+        return current
+
+    normalized_documents = _normalize_documents(documents)
+    article_budget = max(1, int(config.KG_MAX_ARTICLES_PER_BUILD))
+    total_articles = 0
+    for doc in normalized_documents:
+        articles = _split_articles(str(doc["text"]), str(doc["chunk_id"]))
+        total_articles += len(articles)
+        if total_articles >= article_budget:
+            total_articles = article_budget
+            break
+
+    _set_build_status(
+        sid,
+        state="queued",
+        message=f"图谱构建任务排队中（共 {total_articles} 条条文）",
+        started_at=_now_iso(),
+        finished_at=None,
+        current=0,
+        total=total_articles,
+        progress_percent=0,
+        error="",
+    )
+
+    def _runner():
+        try:
+            _set_build_status(
+                sid,
+                state="running",
+                message=f"正在使用大模型抽取三元组并写入 Neo4j（共 {total_articles} 条）",
+            )
+            graph = _build_graph_documents_with_progress(documents, sid)
+            if config.NEO4J_ENABLED:
+                _write_graph_to_neo4j(sid, graph)
+            stats = graph.get("stats", {})
+            _set_build_status(
+                sid,
+                state="completed",
+                message="知识图谱构建完成",
+                finished_at=_now_iso(),
+                node_count=int(stats.get("node_count") or 0),
+                relation_count=int(stats.get("relation_count") or 0),
+                progress_percent=100,
+                error="",
+            )
+        except Exception as exc:
+            _set_build_status(
+                sid,
+                state="failed",
+                message="知识图谱构建失败",
+                finished_at=_now_iso(),
+                error=str(exc),
+            )
+
+    future = _BUILD_EXECUTOR.submit(_runner)
+    with _TASK_LOCK:
+        _GRAPH_BUILD_FUTURES[sid] = future
+    return get_graph_build_status(sid)
+
+
+def _map_neo4j_records_to_graph(records: List[Dict[str, object]]) -> Dict[str, object]:
+    nodes: Dict[str, Dict[str, object]] = {}
+    relations: Dict[str, Dict[str, object]] = {}
+    for record in records:
+        source_node = record.get("source_node")
+        target_node = record.get("target_node")
+        rel = record.get("rel")
+        for node in [source_node, target_node]:
+            if not node:
+                continue
+            nodes[str(node["uid"])] = dict(node)
+        if rel:
+            relations[str(rel["id"])] = dict(rel)
+    return {"nodes": list(nodes.values()), "relations": list(relations.values()), "links": list(relations.values())}
 
 
 def get_session_graph(session_id: str | None) -> Dict[str, object]:
     sid = _get_session_id(session_id)
-    with _GRAPH_LOCK:
-        graph = _SESSION_GRAPHS.get(sid)
-        if graph is None:
-            return {
-                "nodes": [],
-                "relations": [],
-                "links": [],
-                "document_summaries": [],
-                "stats": {"node_count": 0, "relation_count": 0},
-            }
-        return graph
+    if not config.NEO4J_ENABLED:
+        return {"nodes": [], "relations": [], "links": [], "document_summaries": [], "stats": {"node_count": 0, "relation_count": 0}}
+    records = _execute_read(
+        """
+        MATCH (a:KGNode {session_id: $session_id})-[r:KG_REL {session_id: $session_id}]->(b:KGNode {session_id: $session_id})
+        RETURN properties(a) AS source_node, properties(r) AS rel, properties(b) AS target_node
+        """,
+        session_id=sid,
+    )
+    graph = _map_neo4j_records_to_graph(records)
+    graph["document_summaries"] = []
+    graph["stats"] = _stats_for_session(sid)
+    return graph
 
 
 def clear_session_graph(session_id: str | None) -> bool:
     sid = _get_session_id(session_id)
-    with _GRAPH_LOCK:
-        return _SESSION_GRAPHS.pop(sid, None) is not None
+    if not config.NEO4J_ENABLED:
+        return False
+    _clear_session_graph_neo4j(sid)
+    return True
+
+
+def _strip_support_nodes(nodes: List[Dict[str, object]], relations: List[Dict[str, object]]) -> Tuple[List[Dict[str, object]], List[Dict[str, object]]]:
+    visible_nodes = [node for node in nodes if str(node.get("type")) in _VISIBLE_NODE_TYPES]
+    visible_uids = {str(node.get("uid")) for node in visible_nodes}
+    visible_relations = [
+        rel for rel in relations
+        if str(rel.get("source")) in visible_uids and str(rel.get("target")) in visible_uids
+    ]
+    return visible_nodes, visible_relations
 
 
 def _detect_topic(keyword: str) -> Dict[str, object] | None:
@@ -578,14 +880,12 @@ def _node_matches_keyword(node: Dict[str, object], keyword: str) -> bool:
     text = str(keyword or "").strip()
     if not text:
         return False
-    sources = node.get("sources", []) if isinstance(node.get("sources"), list) else []
-    keywords = node.get("keywords", []) if isinstance(node.get("keywords"), list) else []
     fields = [
         str(node.get("label", "")),
         str(node.get("id", "")),
         str(node.get("type_label", "")),
-        " ".join(map(str, keywords)),
-        " ".join(map(str, sources)),
+        " ".join(map(str, node.get("keywords", []) if isinstance(node.get("keywords"), list) else [])),
+        " ".join(map(str, node.get("sources", []) if isinstance(node.get("sources"), list) else [])),
     ]
     return any(text in field for field in fields)
 
@@ -599,155 +899,10 @@ def _relation_matches_keyword(rel: Dict[str, object], keyword: str) -> bool:
         str(rel.get("tail_label", "")),
         str(rel.get("relation_label", "")),
         str(rel.get("source_ref", "")),
+        str(rel.get("condition", "")),
+        str(rel.get("evidence", "")),
     ]
     return any(text in field for field in fields)
-
-
-def _topic_context_matches(node: Dict[str, object], rule: Dict[str, object]) -> bool:
-    tokens = list(rule.get("tokens") or [])
-    parameter_tokens = list(rule.get("parameter_tokens") or tokens)
-    sources = node.get("sources", []) if isinstance(node.get("sources"), list) else []
-    keywords = node.get("keywords", []) if isinstance(node.get("keywords"), list) else []
-    context = " ".join([
-        str(node.get("label", "")),
-        str(node.get("id", "")),
-        " ".join(map(str, keywords)),
-        " ".join(map(str, sources)),
-    ])
-    if str(node.get("type")) == "parameter":
-        unit = str(node.get("unit", ""))
-        if unit and unit not in set(rule.get("parameter_units") or []):
-            return False
-        return any(token in context for token in parameter_tokens)
-    return any(token in context for token in tokens)
-
-
-def _relation_is_topic_consistent(rel: Dict[str, object], rule: Dict[str, object]) -> bool:
-    hazard_ids = set(rule.get("hazard_ids") or [])
-    parameter_units = set(rule.get("parameter_units") or [])
-    parameter_tokens = list(rule.get("parameter_tokens") or rule.get("tokens") or [])
-    endpoints = [
-        (str(rel.get("head_type", "")), str(rel.get("head_id", "")), str(rel.get("head_label", ""))),
-        (str(rel.get("tail_type", "")), str(rel.get("tail_id", "")), str(rel.get("tail_label", ""))),
-    ]
-    for endpoint_type, endpoint_id, _ in endpoints:
-        if endpoint_type == "hazard" and endpoint_id and endpoint_id not in hazard_ids:
-            return False
-    for endpoint_type, _, endpoint_label in endpoints:
-        if endpoint_type == "parameter":
-            unit_ok = not parameter_units or any(unit in endpoint_label for unit in parameter_units)
-            token_ok = any(token in endpoint_label for token in parameter_tokens)
-            if not (unit_ok and token_ok):
-                return False
-    return True
-
-
-def _topic_seed_uids(nodes: List[Dict[str, object]], keyword: str, rule: Dict[str, object]) -> set[str]:
-    seeds = set()
-    hazard_ids = set(rule.get("hazard_ids") or [])
-    for node in nodes:
-        uid = str(node.get("uid"))
-        node_type = str(node.get("type", ""))
-        if node_type == "hazard" and node.get("id") in hazard_ids:
-            seeds.add(uid)
-            continue
-        if node_type in {"symptom", "sensor", "parameter", "action", "location", "equipment"}:
-            if _topic_context_matches(node, rule):
-                seeds.add(uid)
-                continue
-        if _node_matches_keyword(node, keyword):
-            seeds.add(uid)
-    return seeds
-
-
-def _rank_topic_nodes(nodes: List[Dict[str, object]], keyword: str, seed_uids: set[str]) -> List[Dict[str, object]]:
-    priority = {
-        "hazard": 0,
-        "symptom": 1,
-        "parameter": 2,
-        "sensor": 3,
-        "action": 4,
-        "department": 5,
-        "location": 6,
-        "equipment": 7,
-        "stage": 8,
-        "clause": 9,
-        "document_type": 10,
-        "document": 11,
-    }
-    return sorted(
-        nodes,
-        key=lambda node: (
-            0 if str(node.get("uid")) in seed_uids else 1,
-            priority.get(str(node.get("type")), 99),
-            0 if _node_matches_keyword(node, keyword) else 1,
-            str(node.get("label", "")),
-        ),
-    )
-
-
-def _compact_topic_subgraph(
-    nodes: List[Dict[str, object]],
-    relations: List[Dict[str, object]],
-    keyword: str,
-    rule: Dict[str, object],
-    limit: int,
-) -> Tuple[List[Dict[str, object]], List[Dict[str, object]]]:
-    nodes_by_uid = {str(node.get("uid")): node for node in nodes}
-    seed_uids = _topic_seed_uids(nodes, keyword, rule)
-    if not seed_uids:
-        seed_uids = {
-            str(node.get("uid"))
-            for node in nodes
-            if _node_matches_keyword(node, keyword)
-        }
-
-    kept_relations: List[Dict[str, object]] = []
-    kept_uids = set(seed_uids)
-
-    for rel in relations:
-        source = str(rel.get("source"))
-        target = str(rel.get("target"))
-        relation_type = str(rel.get("relation"))
-        if source not in seed_uids and target not in seed_uids:
-            continue
-        if relation_type not in _DIRECT_TOPIC_RELATIONS:
-            continue
-        if not _relation_is_topic_consistent(rel, rule):
-            continue
-
-        other_uid = target if source in seed_uids else source
-        other_node = nodes_by_uid.get(other_uid)
-        if other_node and str(other_node.get("type")) == "parameter" and not _topic_context_matches(other_node, rule):
-            continue
-        if other_node and str(other_node.get("type")) in {"action", "department", "location", "equipment", "stage", "clause"}:
-            if not _relation_matches_keyword(rel, keyword) and not _topic_context_matches(other_node, rule):
-                continue
-
-        kept_relations.append(rel)
-        kept_uids.add(source)
-        kept_uids.add(target)
-
-    relation_sources = [str(rel.get("source_ref", "")) for rel in kept_relations if rel.get("source_ref")]
-    top_sources = [source for source, _ in Counter(relation_sources).most_common(10)]
-    for node in nodes:
-        if str(node.get("type")) != "clause":
-            continue
-        sources = node.get("sources", []) if isinstance(node.get("sources"), list) else []
-        if any(source in top_sources for source in sources):
-            kept_uids.add(str(node.get("uid")))
-
-    kept_nodes = [node for node in nodes if str(node.get("uid")) in kept_uids]
-    if len(kept_nodes) > limit:
-        ranked = _rank_topic_nodes(kept_nodes, keyword, seed_uids)
-        keep_uids = {str(node.get("uid")) for node in ranked[:limit]}
-        kept_nodes = [node for node in ranked if str(node.get("uid")) in keep_uids]
-        kept_relations = [
-            rel for rel in kept_relations
-            if str(rel.get("source")) in keep_uids and str(rel.get("target")) in keep_uids
-        ]
-
-    return kept_nodes, kept_relations
 
 
 def query_graph(graph: Dict[str, object], keyword: str = "", limit: int = 80) -> Dict[str, object]:
@@ -755,40 +910,24 @@ def query_graph(graph: Dict[str, object], keyword: str = "", limit: int = 80) ->
     relations = list(graph.get("relations", graph.get("links", [])))
     keyword_text = str(keyword or "").strip()
     limit = max(10, int(limit or 80))
+    visible_nodes, visible_relations = _strip_support_nodes(nodes, relations)
 
-    topic_rule = _detect_topic(keyword_text)
-    if keyword_text and topic_rule:
-        filtered_nodes, filtered_relations = _compact_topic_subgraph(
-            nodes,
-            relations,
-            keyword_text,
-            topic_rule,
-            limit=limit,
-        )
-    elif keyword_text:
-        matched_node_uids = {
-            str(node.get("uid"))
-            for node in nodes
-            if _node_matches_keyword(node, keyword_text)
-        }
-        matched_relations = [
-            rel for rel in relations
-            if str(rel.get("source")) in matched_node_uids
-            or str(rel.get("target")) in matched_node_uids
+    if keyword_text:
+        matched_uids = {str(node.get("uid")) for node in visible_nodes if _node_matches_keyword(node, keyword_text)}
+        filtered_relations = [
+            rel for rel in visible_relations
+            if str(rel.get("source")) in matched_uids
+            or str(rel.get("target")) in matched_uids
             or _relation_matches_keyword(rel, keyword_text)
         ]
-        related_uids = set(matched_node_uids)
-        for rel in matched_relations:
+        related_uids = set(matched_uids)
+        for rel in filtered_relations:
             related_uids.add(str(rel.get("source")))
             related_uids.add(str(rel.get("target")))
-        filtered_nodes = [node for node in nodes if str(node.get("uid")) in related_uids]
-        filtered_relations = [
-            rel for rel in matched_relations
-            if str(rel.get("source")) in related_uids and str(rel.get("target")) in related_uids
-        ]
+        filtered_nodes = [node for node in visible_nodes if str(node.get("uid")) in related_uids]
     else:
-        filtered_nodes = nodes
-        filtered_relations = relations
+        filtered_nodes = visible_nodes
+        filtered_relations = visible_relations
 
     if len(filtered_nodes) > limit:
         keep_uids = {str(node.get("uid")) for node in filtered_nodes[:limit]}
@@ -796,7 +935,7 @@ def query_graph(graph: Dict[str, object], keyword: str = "", limit: int = 80) ->
         filtered_relations = [
             rel for rel in filtered_relations
             if str(rel.get("source")) in keep_uids and str(rel.get("target")) in keep_uids
-        ][: limit * 2]
+        ]
 
     return {
         "nodes": filtered_nodes,
@@ -807,62 +946,70 @@ def query_graph(graph: Dict[str, object], keyword: str = "", limit: int = 80) ->
     }
 
 
+def expand_graph_neighbors(session_id: str | None, node_uid: str, limit: int = 60) -> Dict[str, object]:
+    sid = _get_session_id(session_id)
+    target_uid = str(node_uid or "").strip()
+    if not target_uid:
+        return {"nodes": [], "relations": [], "links": [], "stats": {"node_count": 0, "relation_count": 0}}
+    records = _execute_read(
+        """
+        MATCH (center:KGNode {session_id: $session_id, uid: $uid})
+        OPTIONAL MATCH (center)-[r1:KG_REL {session_id: $session_id}]->(nbr1:KGNode {session_id: $session_id})
+        OPTIONAL MATCH (nbr2:KGNode {session_id: $session_id})-[r2:KG_REL {session_id: $session_id}]->(center)
+        WITH center,
+             collect(DISTINCT {source_node: properties(center), rel: properties(r1), target_node: properties(nbr1)}) +
+             collect(DISTINCT {source_node: properties(nbr2), rel: properties(r2), target_node: properties(center)}) AS rows
+        UNWIND rows AS row
+        WITH row
+        WHERE row.rel IS NOT NULL
+        RETURN row.source_node AS source_node, row.rel AS rel, row.target_node AS target_node
+        LIMIT $limit
+        """,
+        session_id=sid,
+        uid=target_uid,
+        limit=max(10, int(limit or 60)),
+    )
+    graph = _map_neo4j_records_to_graph(records)
+    graph["stats"] = {"node_count": len(graph.get("nodes", [])), "relation_count": len(graph.get("relations", []))}
+    return graph
+
+
 def _relation_text(rel: Dict[str, object]) -> str:
-    source = rel.get("source_ref") or rel.get("source") or "未知来源"
-    return f"{rel['head_label']} -> {rel['relation_label']} -> {rel['tail_label']}（来源：{source}）"
+    source = rel.get("source_ref") or "未知来源"
+    condition = f"；条件：{rel.get('condition')}" if rel.get("condition") else ""
+    return f"{rel['head_label']} -> {rel['relation_label']} -> {rel['tail_label']}（来源：{source}{condition}）"
 
 
-def summarize_related_graph(
-    query: str,
-    graph: Dict[str, object],
-    risk_types: List[str] | None = None,
-) -> Tuple[str, Dict[str, object]]:
+def summarize_related_graph(query: str, graph: Dict[str, object], risk_types: List[str] | None = None) -> Tuple[str, Dict[str, object]]:
     if not config.KG_ENABLED:
         return "未启用知识图谱。", {"enabled": False, "matched_relations": [], "matched_nodes": []}
-
     relations = list(graph.get("relations", graph.get("links", [])))
     nodes = list(graph.get("nodes", []))
     if not relations and not nodes:
         return "无图谱命中。", {"enabled": True, "matched_relations": [], "matched_nodes": []}
 
     query_text = str(query or "")
-    risk_types = risk_types or []
-    matched_relations: List[Dict[str, object]] = []
-    matched_nodes: List[Dict[str, object]] = []
-
+    matched_relations = []
     for rel in relations:
-        labels = [
+        if any(token and token in query_text for token in [
             str(rel.get("head_label", "")),
             str(rel.get("tail_label", "")),
             str(rel.get("relation_label", "")),
-            str(rel.get("source_ref", "")),
-        ]
-        if any(token and token in query_text for token in labels):
-            matched_relations.append(rel)
-            continue
-        if rel.get("head_id") in risk_types or rel.get("tail_id") in risk_types:
+            str(rel.get("condition", "")),
+        ]):
             matched_relations.append(rel)
 
     if not matched_relations:
-        priority_relations = [
-            rel for rel in relations
-            if rel.get("relation") in {"indicates", "requires_action", "has_parameter", "triggers_hazard", "responsible_for"}
-        ]
-        matched_relations = priority_relations[:config.KG_MAX_RELATED_TRIPLES]
+        matched_relations = relations[:config.KG_MAX_RELATED_TRIPLES]
     else:
         matched_relations = matched_relations[:config.KG_MAX_RELATED_TRIPLES]
 
-    matched_uids = {str(rel.get("source")) for rel in matched_relations} | {
-        str(rel.get("target")) for rel in matched_relations
-    }
-    for node in nodes:
-        if str(node.get("uid")) in matched_uids:
-            matched_nodes.append(node)
+    matched_uids = {str(rel.get("source")) for rel in matched_relations} | {str(rel.get("target")) for rel in matched_relations}
+    matched_nodes = [node for node in nodes if str(node.get("uid")) in matched_uids]
 
     lines = ["知识图谱命中摘要："]
     for rel in matched_relations:
         lines.append(f"- {_relation_text(rel)}")
-
     summary = "\n".join(lines) if matched_relations else "无图谱命中。"
     return summary, {
         "enabled": True,

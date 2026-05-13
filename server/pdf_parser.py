@@ -22,6 +22,9 @@ from knowledge_graph import (
     get_session_graph,
     query_graph,
     clear_session_graph,
+    expand_graph_neighbors,
+    start_graph_build,
+    get_graph_build_status,
 )
 
 # LangChain Agent
@@ -501,7 +504,7 @@ def parse_text():
 
 @app.route('/api/documents/upload', methods=['POST'])
 def upload_document():
-    """统一文档入库接口：解析文本后建立后端向量索引。"""
+    """统一文档入库接口：解析文本后建立后端向量索引，并异步构建图谱。"""
     if 'file' not in request.files:
         return jsonify({'error': '未找到文件'}), 400
 
@@ -515,11 +518,13 @@ def upload_document():
             file_name=str(getattr(file, 'filename', '') or '未命名文档'),
             text=parsed['text'],
         )
-        graph = _rebuild_session_knowledge_graph(session_id)
+        build_status = start_graph_build(session_id, list_session_chunks(session_id))
         return jsonify({
             'success': True,
             **result,
-            "knowledge_graph": _graph_payload(graph),
+            "knowledge_graph": {
+                "build_status": build_status,
+            },
         })
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
@@ -542,13 +547,14 @@ def remove_uploaded_document():
     removed = remove_document(session_id=session_id, document_id=document_id)
     if not removed:
         return jsonify({'error': '未找到对应文档'}), 404
-    graph = _rebuild_session_knowledge_graph(session_id)
     if not list_session_chunks(session_id):
         clear_session_graph(session_id)
     return jsonify({
         'success': True,
         'document_id': document_id,
-        "knowledge_graph": _graph_payload(graph),
+        "knowledge_graph": {
+            "build_status": get_graph_build_status(session_id),
+        },
     })
 
 
@@ -573,6 +579,10 @@ def get_knowledge_graph():
         "links": view.get("links", []),
         "relations": view.get("relations", []),
         "stats": stats,
+        "view_stats": {
+            "node_count": len(view.get("nodes", [])),
+            "relation_count": len(view.get("relations", [])),
+        },
         "query": keyword,
     })
 
@@ -597,19 +607,55 @@ def query_knowledge_graph():
         "links": view.get("links", []),
         "relations": view.get("relations", []),
         "stats": graph.get("stats", {}),
+        "view_stats": {
+            "node_count": len(view.get("nodes", [])),
+            "relation_count": len(view.get("relations", [])),
+        },
         "query": keyword,
     })
 
 
 @app.route('/api/knowledge-graph/rebuild', methods=['POST'])
 def rebuild_knowledge_graph():
-    """根据当前会话已上传文档重建完整知识图谱。"""
+    """根据当前会话已上传文档异步重建知识图谱。"""
     payload = request.get_json(silent=True) or {}
     session_id = str(payload.get('session_id', '')).strip() or None
-    graph = _rebuild_session_knowledge_graph(session_id)
+    status = start_graph_build(session_id, list_session_chunks(session_id))
     return jsonify({
         "success": True,
         "session_id": str(session_id or "default"),
+        "build_status": status,
+    })
+
+
+@app.route('/api/knowledge-graph/status', methods=['GET'])
+def knowledge_graph_status():
+    """获取当前会话知识图谱构建状态。"""
+    session_id = str(request.args.get('session_id', '')).strip() or None
+    status = get_graph_build_status(session_id)
+    return jsonify({
+        "success": True,
+        "session_id": str(session_id or "default"),
+        "build_status": status,
+    })
+
+
+@app.route('/api/knowledge-graph/expand', methods=['POST'])
+def expand_knowledge_graph():
+    """按节点展开一跳邻居。"""
+    payload = request.get_json(silent=True) or {}
+    session_id = str(payload.get('session_id', '')).strip() or None
+    node_uid = str(payload.get('node_uid', '')).strip()
+    try:
+        limit = int(payload.get("limit") or 60)
+    except (TypeError, ValueError):
+        limit = 60
+
+    graph = expand_graph_neighbors(session_id=session_id, node_uid=node_uid, limit=limit)
+    return jsonify({
+        "success": True,
+        "session_id": str(session_id or "default"),
+        "node_uid": node_uid,
         "nodes": graph.get("nodes", []),
         "links": graph.get("links", []),
         "relations": graph.get("relations", []),
