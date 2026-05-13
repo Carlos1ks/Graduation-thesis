@@ -294,6 +294,24 @@ def list_session_documents(session_id: Optional[str]) -> List[Dict[str, Any]]:
         ]
 
 
+def list_session_chunks(session_id: Optional[str]) -> List[Dict[str, Any]]:
+    sid = _get_session_id(session_id)
+    with _STORE_LOCK:
+        store = _SESSION_RAG_STORES.get(sid) or {}
+        chunks = list(store.get("chunks") or [])
+    return [
+        {
+            "document_id": item.get("document_id"),
+            "doc_name": item.get("doc_name", "未命名文档"),
+            "chunk_id": item.get("chunk_id", "未知片段"),
+            "article_label": item.get("article_label", ""),
+            "text": item.get("text", ""),
+            "source_type": item.get("source_type", "uploaded_doc_vector"),
+        }
+        for item in chunks
+    ]
+
+
 def ingest_document(session_id: Optional[str], file_name: str, text: str) -> Dict[str, Any]:
     if not config.RAG_ENABLED:
         raise RuntimeError("后端向量检索已关闭。")

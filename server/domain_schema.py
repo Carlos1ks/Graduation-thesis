@@ -63,13 +63,47 @@ EQUIPMENT_DEFINITIONS = {
     "communication": {"label": "通信设备", "keywords": ["对讲机", "广播", "通信终端"]},
 }
 
+PARAMETER_DEFINITIONS = {
+    "gas_concentration": {"label": "瓦斯浓度", "keywords": ["瓦斯浓度", "甲烷浓度", "瓦斯", "甲烷"]},
+    "wind_speed": {"label": "风速", "keywords": ["风速", "风量", "风流"]},
+    "temperature": {"label": "温度", "keywords": ["温度", "高温", "℃"]},
+    "water_level": {"label": "水位", "keywords": ["水位", "涌水量", "积水深度", "水深"]},
+    "distance": {"label": "距离", "keywords": ["范围", "距离", "米", "m"]},
+    "response_time": {"label": "处置时间", "keywords": ["小时", "分钟", "时限", "时间内"]},
+}
+
+DOCUMENT_DEFINITIONS = {
+    "safety_regulation": {"label": "安全规程", "keywords": ["规程", "煤矿安全规程", "安全规定"]},
+    "emergency_plan": {"label": "应急预案", "keywords": ["应急预案", "处置预案", "救援预案"]},
+    "operation_rule": {"label": "作业规程", "keywords": ["作业规程", "操作规程", "施工措施"]},
+}
+
+STAGE_DEFINITIONS = {
+    "early_warning": {"label": "预警阶段", "keywords": ["预警", "报警", "异常", "征兆"]},
+    "initial_response": {"label": "初期处置阶段", "keywords": ["立即", "首先", "初期", "第一时间"]},
+    "rescue_response": {"label": "救援处置阶段", "keywords": ["救援", "搜救", "救护队"]},
+    "recovery": {"label": "恢复阶段", "keywords": ["恢复", "复工", "确认安全"]},
+}
+
+SENSOR_DEFINITIONS = {
+    "gas_sensor": {"label": "瓦斯传感器", "keywords": ["瓦斯传感器", "甲烷传感器", "瓦斯检测"]},
+    "wind_sensor": {"label": "风速传感器", "keywords": ["风速传感器", "风量监测", "风速监测"]},
+    "temperature_sensor": {"label": "温度传感器", "keywords": ["温度传感器", "温度监测"]},
+    "water_sensor": {"label": "水位传感器", "keywords": ["水位传感器", "水位监测", "涌水监测"]},
+    "power_sensor": {"label": "电气监测装置", "keywords": ["断电仪", "电气监测", "供电监测"]},
+}
+
 ENTITY_GROUPS = {
+    "document_type": DOCUMENT_DEFINITIONS,
     "hazard": HAZARD_DEFINITIONS,
     "symptom": SYMPTOM_DEFINITIONS,
+    "parameter": PARAMETER_DEFINITIONS,
+    "sensor": SENSOR_DEFINITIONS,
     "action": ACTION_DEFINITIONS,
     "department": DEPARTMENT_DEFINITIONS,
     "location": LOCATION_DEFINITIONS,
     "equipment": EQUIPMENT_DEFINITIONS,
+    "stage": STAGE_DEFINITIONS,
 }
 
 RELATION_LABELS = {
@@ -79,4 +113,11 @@ RELATION_LABELS = {
     "governed_by": "条款约束措施",
     "occurs_at": "风险发生于场景",
     "supports_action": "证据支撑措施",
+    "contains_clause": "文档包含条款",
+    "mentions": "条款提及实体",
+    "has_parameter": "条款包含参数",
+    "triggers_hazard": "参数触发风险",
+    "monitors": "监测设备监测对象",
+    "in_stage": "动作所属阶段",
+    "related_to": "关联",
 }

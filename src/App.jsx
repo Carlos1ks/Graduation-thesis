@@ -6,6 +6,7 @@ const DOCUMENT_UPLOAD_API_URL = `${BACKEND_BASE_URL}/api/documents/upload`;
 const DOCUMENT_REMOVE_API_URL = `${BACKEND_BASE_URL}/api/documents/remove`;
 const VIDEO_ANALYZE_API_URL = `${BACKEND_BASE_URL}/api/video-analyze`;
 const SENSOR_PUSH_API_URL = `${BACKEND_BASE_URL}/api/sensors/push`;
+const KNOWLEDGE_GRAPH_API_URL = `${BACKEND_BASE_URL}/api/knowledge-graph`;
 const MAX_HISTORY_MESSAGES = 6;
 
 const QUICK_QUESTIONS = [
@@ -87,6 +88,41 @@ async function pushSensorsToBackend(records, sessionId) {
   return result;
 }
 
+async function fetchKnowledgeGraph(sessionId, keyword = "") {
+  const params = new URLSearchParams({
+    session_id: sessionId,
+    limit: keyword.trim() ? "70" : "140",
+  });
+  if (keyword.trim()) {
+    params.set("keyword", keyword.trim());
+  }
+  const response = await fetch(`${KNOWLEDGE_GRAPH_API_URL}?${params.toString()}`);
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `知识图谱加载失败：${response.status}`);
+  }
+  return result;
+}
+
+function compactKnowledgeGraphForView(nodes, links) {
+  const hiddenTypes = new Set(["document", "document_type", "clause"]);
+  const abstractLabels = new Set([
+    "处置阶段",
+    "预警阶段",
+    "初期处置阶段",
+    "救援处置阶段",
+    "恢复阶段",
+  ]);
+  const visibleNodes = (Array.isArray(nodes) ? nodes : []).filter(node => (
+    !hiddenTypes.has(node.type) && !abstractLabels.has(String(node.label || ""))
+  ));
+  const visibleUids = new Set(visibleNodes.map(node => node.uid));
+  const visibleLinks = (Array.isArray(links) ? links : []).filter(link => (
+    visibleUids.has(link.source) && visibleUids.has(link.target)
+  ));
+  return { nodes: visibleNodes, links: visibleLinks };
+}
+
 export default function CoalMineAgent() {
   const [messages, setMessages] = useState([{
     role: "assistant",
@@ -106,6 +142,11 @@ export default function CoalMineAgent() {
   const [videoUploading, setVideoUploading] = useState(false);
   const [sensorDialogOpen, setSensorDialogOpen] = useState(false);
   const [sensorInput, setSensorInput] = useState('[\n  {\n    "sensor_id": "gas-01",\n    "name": "瓦斯浓度传感器",\n    "value": 1.7,\n    "unit": "%",\n    "threshold": 1.5,\n    "location": "掘进工作面",\n    "status": "报警"\n  }\n]');
+  const [graphOpen, setGraphOpen] = useState(false);
+  const [graphLoading, setGraphLoading] = useState(false);
+  const [graphData, setGraphData] = useState({ nodes: [], links: [], stats: {} });
+  const [graphKeyword, setGraphKeyword] = useState("");
+  const [selectedGraphNode, setSelectedGraphNode] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -144,6 +185,8 @@ export default function CoalMineAgent() {
           sizeMB,
           charCount: result.char_count || 0,
           chunkCount: result.chunk_count || 0,
+          graphNodeCount: result.knowledge_graph?.node_count || 0,
+          graphRelationCount: result.knowledge_graph?.relation_count || 0,
         }]);
         setMessages(prev => [...prev, {
           role: "assistant",
@@ -449,6 +492,33 @@ export default function CoalMineAgent() {
     }
   };
 
+  const loadKnowledgeGraph = async (keyword = graphKeyword) => {
+    setGraphLoading(true);
+    try {
+      const data = await fetchKnowledgeGraph(sessionIdRef.current, keyword);
+      const compactGraph = compactKnowledgeGraphForView(data.nodes, data.links);
+      setGraphData({
+        nodes: compactGraph.nodes,
+        links: compactGraph.links,
+        stats: data.stats || {},
+      });
+      setSelectedGraphNode(null);
+    } catch (err) {
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: `⚠️ 知识图谱加载失败：${err.message}`,
+        timestamp: new Date(),
+      }]);
+    } finally {
+      setGraphLoading(false);
+    }
+  };
+
+  const openKnowledgeGraph = async () => {
+    setGraphOpen(true);
+    await loadKnowledgeGraph(graphKeyword);
+  };
+
   const fmt = (text) => {
     return text.split(/(\*\*[^*]+\*\*)/).map((part, i) => {
       if (part.startsWith("**") && part.endsWith("**")) {
@@ -468,6 +538,216 @@ export default function CoalMineAgent() {
   };
 
   const fileIcon = (name) => name.endsWith(".pdf") ? "📕" : name.endsWith(".docx") ? "📘" : "📄";
+
+  const nodeColor = (type) => ({
+    document: "#22d3ee",
+    clause: "#94a3b8",
+    document_type: "#38bdf8",
+    hazard: "#f97316",
+    symptom: "#14b8a6",
+    parameter: "#fbbf24",
+    sensor: "#38bdf8",
+    action: "#4ade80",
+    department: "#60a5fa",
+    location: "#a78bfa",
+    equipment: "#fb7185",
+    stage: "#fb7185",
+  }[type] || "#cbd5e1");
+
+  const buildGraphLayout = (nodes, links) => {
+    const width = 920;
+    const height = 540;
+    const safeNodes = Array.isArray(nodes) ? nodes : [];
+    const safeLinks = Array.isArray(links) ? links : [];
+    if (safeNodes.length === 0) {
+      return { width, height, nodes: [], links: [] };
+    }
+
+    const columns = [
+      { label: "感知层", types: ["sensor", "symptom"], x: 150 },
+      { label: "逻辑层", types: ["parameter", "hazard"], x: 470 },
+      { label: "动作层", types: ["action", "department", "location", "equipment"], x: 785 },
+    ];
+    const columnOf = (type) => columns.findIndex(col => col.types.includes(type));
+    const grouped = columns.map(() => []);
+    const other = [];
+    safeNodes.forEach((node) => {
+      const idx = columnOf(node.type || "other");
+      if (idx >= 0) grouped[idx].push(node);
+      else other.push(node);
+    });
+    if (other.length) grouped[0].push(...other);
+
+    const positioned = [];
+    grouped.forEach((group, columnIndex) => {
+      if (!group.length) return;
+      const sorted = [...group].sort((a, b) => String(a.label || "").localeCompare(String(b.label || ""), "zh-Hans-CN"));
+      const x = columns[columnIndex]?.x || (80 + columnIndex * 150);
+      const available = height - 90;
+      const step = Math.min(62, Math.max(34, available / Math.max(1, sorted.length)));
+      const startY = Math.max(34, (height - step * (sorted.length - 1)) / 2);
+      sorted.forEach((node, idx) => {
+        const y = Math.min(height - 28, Math.max(28, startY + idx * step));
+        const jitter = node.type === "hazard" ? 0 : ((idx % 2) - 0.5) * 10;
+        positioned.push({
+          ...node,
+          x: x + jitter,
+          y,
+          color: nodeColor(node.type),
+          size: node.type === "hazard" ? 18 : node.type === "parameter" ? 12 : node.type === "department" ? 12 : 11,
+        });
+      });
+    });
+
+    const byUid = new Map(positioned.map(node => [node.uid, node]));
+    const positionedLinks = safeLinks
+      .map(link => ({ ...link, sourceNode: byUid.get(link.source), targetNode: byUid.get(link.target) }))
+      .filter(link => link.sourceNode && link.targetNode);
+    return { width, height, nodes: positioned, links: positionedLinks, columns };
+  };
+
+  const renderGraphDialog = () => {
+    if (!graphOpen) return null;
+    const graph = buildGraphLayout(graphData.nodes, graphData.links);
+    const stats = graphData.stats || {};
+    const selectedRelations = selectedGraphNode
+      ? graph.links.filter(link => link.source === selectedGraphNode.uid || link.target === selectedGraphNode.uid)
+      : [];
+
+    return (
+      <div style={{ position: "fixed", inset: 0, background: "rgba(2,6,23,0.78)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 320 }}>
+        <div style={{ width: "min(1180px, 94vw)", height: "min(760px, 92vh)", background: "#08111f", border: "1px solid rgba(34,211,238,0.25)", borderRadius: "12px", boxShadow: "0 22px 70px rgba(0,0,0,0.5)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ padding: "0.8rem 1rem", borderBottom: "1px solid rgba(34,211,238,0.16)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.8rem", flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "#67e8f9" }}>完整知识图谱</div>
+              <div style={{ fontSize: "0.65rem", color: "#64748b", marginTop: "0.15rem" }}>
+                展示节点 {graphData.nodes.length || 0} 个 · 展示关系 {graphData.links.length || 0} 条
+                {(stats.node_count || stats.relation_count) ? `（后端保留溯源节点 ${stats.node_count || 0} 个、关系 ${stats.relation_count || 0} 条）` : ""}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: "0.45rem", alignItems: "center", flex: "0 1 440px" }}>
+              <input
+                value={graphKeyword}
+                onChange={e => setGraphKeyword(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") loadKnowledgeGraph(graphKeyword); }}
+                placeholder="搜索实体、条款、关系或来源"
+                style={{ flex: 1, minWidth: 180, background: "rgba(15,23,42,0.9)", border: "1px solid rgba(34,211,238,0.22)", borderRadius: "8px", color: "#e2e8f0", padding: "0.48rem 0.65rem", outline: "none", fontSize: "0.75rem" }}
+              />
+              <button onClick={() => loadKnowledgeGraph(graphKeyword)} disabled={graphLoading} style={{ padding: "0.48rem 0.78rem", borderRadius: "8px", border: "1px solid rgba(34,211,238,0.28)", background: "rgba(34,211,238,0.12)", color: "#67e8f9", cursor: graphLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{graphLoading ? "加载中" : "检索"}</button>
+              <button onClick={() => setGraphOpen(false)} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: "1.2rem", lineHeight: 1 }}>×</button>
+            </div>
+          </div>
+
+          <div style={{ flex: 1, display: "grid", gridTemplateColumns: "minmax(0, 1fr) 300px", minHeight: 0 }}>
+            <div style={{ position: "relative", overflow: "hidden", background: "radial-gradient(circle at center, rgba(34,211,238,0.08), rgba(8,17,31,0.2) 45%, rgba(8,17,31,0.95))" }}>
+              {graph.nodes.length === 0 ? (
+                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", fontSize: "0.82rem", textAlign: "center", lineHeight: 1.8 }}>
+                  暂无可展示的实体关系<br />上传规程文档后会自动构建完整知识图谱
+                </div>
+              ) : (
+                <svg viewBox={`0 0 ${graph.width} ${graph.height}`} style={{ width: "100%", height: "100%", display: "block" }}>
+                  <defs>
+                    <marker id="kg-arrow" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto" markerUnits="strokeWidth">
+                      <path d="M0,0 L7,3.5 L0,7 Z" fill="#475569" />
+                    </marker>
+                  </defs>
+                  {graph.columns?.map((column, idx) => (
+                    <g key={column.label || idx}>
+                      <text x={column.x - 36} y="28" fill="rgba(148,163,184,0.78)" fontSize="12" fontWeight="700">
+                        {column.label}
+                      </text>
+                    </g>
+                  ))}
+                  {graph.links.map((link, idx) => (
+                    <g key={link.id || idx}>
+                      <line
+                        x1={link.sourceNode.x}
+                        y1={link.sourceNode.y}
+                        x2={link.targetNode.x}
+                        y2={link.targetNode.y}
+                        stroke="rgba(148,163,184,0.28)"
+                        strokeWidth="1"
+                        markerEnd="url(#kg-arrow)"
+                      />
+                      {link.condition ? (
+                        <text
+                          x={(link.sourceNode.x + link.targetNode.x) / 2}
+                          y={(link.sourceNode.y + link.targetNode.y) / 2 - 6}
+                          fill="#fcd34d"
+                          fontSize="10"
+                          textAnchor="middle"
+                          style={{ pointerEvents: "none" }}
+                        >
+                          {String(link.condition).slice(0, 20)}
+                        </text>
+                      ) : null}
+                    </g>
+                  ))}
+                  {graph.nodes.map((node) => (
+                    <g key={node.uid} onClick={() => setSelectedGraphNode(node)} style={{ cursor: "pointer" }}>
+                      <circle cx={node.x} cy={node.y} r={node.size + 4} fill={selectedGraphNode?.uid === node.uid ? "rgba(250,204,21,0.2)" : "rgba(15,23,42,0.62)"} />
+                      <circle cx={node.x} cy={node.y} r={node.size} fill={node.color} stroke={selectedGraphNode?.uid === node.uid ? "#fde68a" : "rgba(255,255,255,0.55)"} strokeWidth="1.2" />
+                      <text x={node.x + node.size + 5} y={node.y + 4} fill="#dbeafe" fontSize="11" style={{ pointerEvents: "none" }}>
+                        {String(node.label || node.id || "").slice(0, 14)}
+                      </text>
+                    </g>
+                  ))}
+                </svg>
+              )}
+            </div>
+
+            <div style={{ borderLeft: "1px solid rgba(34,211,238,0.14)", padding: "0.8rem", overflowY: "auto", background: "rgba(15,23,42,0.36)" }}>
+              <div style={{ fontSize: "0.75rem", color: "#67e8f9", fontWeight: 800, marginBottom: "0.55rem" }}>图谱详情</div>
+              {selectedGraphNode ? (
+                <div style={{ display: "grid", gap: "0.45rem", fontSize: "0.68rem", color: "#cbd5e1", lineHeight: 1.6 }}>
+                  <div style={{ fontSize: "0.86rem", color: nodeColor(selectedGraphNode.type), fontWeight: 800 }}>{selectedGraphNode.label}</div>
+                  <div><span style={{ color: "#94a3b8" }}>类型：</span>{selectedGraphNode.type_label || selectedGraphNode.type}</div>
+                  {selectedGraphNode.text_excerpt && <div style={{ color: "#94a3b8", whiteSpace: "pre-wrap" }}>{selectedGraphNode.text_excerpt}</div>}
+                  {Array.isArray(selectedGraphNode.sources) && selectedGraphNode.sources.length > 0 && (
+                    <div>
+                      <span style={{ color: "#94a3b8" }}>来源：</span>
+                      <div style={{ marginTop: "0.25rem", display: "grid", gap: "0.25rem" }}>
+                        {selectedGraphNode.sources.slice(0, 5).map((source, idx) => (
+                          <div key={`${source}-${idx}`} style={{ padding: "0.28rem 0.4rem", borderRadius: "6px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", color: "#a7f3d0" }}>{source}</div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div style={{ marginTop: "0.4rem", color: "#67e8f9", fontWeight: 800 }}>相邻关系</div>
+                  {selectedRelations.length === 0 ? (
+                    <div style={{ color: "#64748b" }}>暂无相邻关系</div>
+                  ) : selectedRelations.slice(0, 10).map((rel, idx) => (
+                    <div key={`${rel.id || idx}`} style={{ padding: "0.42rem 0.48rem", borderRadius: "7px", background: "rgba(255,255,255,0.035)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                      <span style={{ color: "#fef08a" }}>{rel.head_label}</span>
+                      <span style={{ color: "#94a3b8" }}> → {rel.relation_label} → </span>
+                      <span style={{ color: "#bfdbfe" }}>{rel.tail_label}</span>
+                      {rel.source_ref && <div style={{ color: "#64748b", marginTop: "0.15rem" }}>{rel.source_ref}</div>}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ color: "#64748b", fontSize: "0.7rem", lineHeight: 1.8 }}>
+                  图谱按感知层、逻辑层、动作层展示。数值不再单独作为实体节点，而是附着在关系条件上；文档、条款和文档类型节点默认隐藏，仅用于来源追溯。
+                  <div style={{ marginTop: "0.8rem", display: "flex", gap: "0.28rem", flexWrap: "wrap" }}>
+                    {Object.entries({
+                      sensor: "感知",
+                      symptom: "信号",
+                      parameter: "逻辑",
+                      hazard: "风险",
+                      action: "动作",
+                      department: "部门",
+                    }).map(([type, label]) => (
+                      <span key={type} style={{ padding: "0.12rem 0.38rem", borderRadius: "999px", background: `${nodeColor(type)}22`, border: `1px solid ${nodeColor(type)}66`, color: nodeColor(type) }}>{label}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const renderMetaPanel = (meta) => {
     if (!meta) return null;
@@ -669,6 +949,11 @@ export default function CoalMineAgent() {
                   📡 接入传感器数据
                 </button>
                 <div style={{ fontSize: "0.6rem", color: "#475569", textAlign: "center", marginTop: "0.3rem" }}>JSON · HTTP 推送</div>
+
+                <button onClick={openKnowledgeGraph} disabled={graphLoading} style={{ width: "100%", padding: "0.5rem", marginTop: "0.45rem", background: "linear-gradient(135deg,rgba(34,211,238,0.14),rgba(20,184,166,0.1))", border: "1px dashed rgba(34,211,238,0.45)", borderRadius: "7px", color: graphLoading ? "#22d3ee55" : "#67e8f9", cursor: graphLoading ? "not-allowed" : "pointer", fontSize: "0.73rem", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem" }}>
+                  {graphLoading ? "🧠 加载图谱..." : "🧠 查看知识图谱"}
+                </button>
+                <div style={{ fontSize: "0.6rem", color: "#475569", textAlign: "center", marginTop: "0.3rem" }}>实体 · 关系 · 条款来源</div>
               </div>
 
               {/* Doc list */}
@@ -683,6 +968,11 @@ export default function CoalMineAgent() {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: "0.7rem", fontWeight: 600, color: "#a3e635", wordBreak: "break-all", lineHeight: 1.3 }}>{doc.name}</div>
                       <div style={{ fontSize: "0.6rem", color: "#475569", marginTop: "0.12rem" }}>{doc.sizeMB} MB · {(doc.charCount || 0).toLocaleString()} 字符 · {doc.chunkCount || 0} 块</div>
+                      {(doc.graphNodeCount || doc.graphRelationCount) ? (
+                        <div style={{ fontSize: "0.58rem", color: "#22d3ee", marginTop: "0.12rem" }}>
+                          图谱 {doc.graphNodeCount || 0} 节点 · {doc.graphRelationCount || 0} 关系
+                        </div>
+                      ) : null}
                     </div>
                     <button onClick={() => removeUploadedDocument(doc)} style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: "0.85rem", flexShrink: 0, padding: 0, lineHeight: 1 }}>×</button>
                   </div>
@@ -876,6 +1166,8 @@ export default function CoalMineAgent() {
           </div>
         </div>
       )}
+
+      {renderGraphDialog()}
 
       <style>{`
         @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.6;transform:scale(1.4)} }

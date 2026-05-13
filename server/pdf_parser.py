@@ -9,8 +9,20 @@ import requests
 import base64
 from pathlib import Path
 from config import config
-from retrieval import ingest_document, retrieve_relevant_chunks, has_session_documents, remove_document
+from retrieval import (
+    ingest_document,
+    retrieve_relevant_chunks,
+    has_session_documents,
+    remove_document,
+    list_session_chunks,
+)
 from sensor_store import push_session_sensors, list_session_sensors, has_session_sensors, clear_session_sensors
+from knowledge_graph import (
+    build_and_store_session_graph,
+    get_session_graph,
+    query_graph,
+    clear_session_graph,
+)
 
 # LangChain Agent
 from agent import multi_agent_ask
@@ -24,6 +36,21 @@ CORS(
     allow_headers=["Content-Type", "Authorization"],
     methods=["GET", "POST", "OPTIONS"],
 )
+
+
+def _graph_payload(graph):
+    stats = graph.get("stats") if isinstance(graph, dict) else {}
+    return {
+        "node_count": int((stats or {}).get("node_count") or len(graph.get("nodes", []))),
+        "relation_count": int((stats or {}).get("relation_count") or len(graph.get("relations", []))),
+        "stats": stats or {},
+    }
+
+
+def _rebuild_session_knowledge_graph(session_id):
+    chunks = list_session_chunks(session_id)
+    graph = build_and_store_session_graph(session_id, chunks)
+    return graph
 
 # Token缓存
 _token_cache = {"token": None, "expires_at": 0}
@@ -488,9 +515,11 @@ def upload_document():
             file_name=str(getattr(file, 'filename', '') or '未命名文档'),
             text=parsed['text'],
         )
+        graph = _rebuild_session_knowledge_graph(session_id)
         return jsonify({
             'success': True,
             **result,
+            "knowledge_graph": _graph_payload(graph),
         })
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
@@ -513,7 +542,79 @@ def remove_uploaded_document():
     removed = remove_document(session_id=session_id, document_id=document_id)
     if not removed:
         return jsonify({'error': '未找到对应文档'}), 404
-    return jsonify({'success': True, 'document_id': document_id})
+    graph = _rebuild_session_knowledge_graph(session_id)
+    if not list_session_chunks(session_id):
+        clear_session_graph(session_id)
+    return jsonify({
+        'success': True,
+        'document_id': document_id,
+        "knowledge_graph": _graph_payload(graph),
+    })
+
+
+@app.route('/api/knowledge-graph', methods=['GET'])
+def get_knowledge_graph():
+    """获取当前会话完整知识图谱。"""
+    session_id = str(request.args.get('session_id', '')).strip() or None
+    keyword = str(request.args.get('keyword', '')).strip()
+    limit = request.args.get('limit', 160)
+    try:
+        limit = int(limit)
+    except (TypeError, ValueError):
+        limit = 160
+
+    graph = get_session_graph(session_id)
+    view = query_graph(graph, keyword=keyword, limit=limit)
+    stats = graph.get("stats", {}) if isinstance(graph, dict) else {}
+    return jsonify({
+        "success": True,
+        "session_id": str(session_id or "default"),
+        "nodes": view.get("nodes", []),
+        "links": view.get("links", []),
+        "relations": view.get("relations", []),
+        "stats": stats,
+        "query": keyword,
+    })
+
+
+@app.route('/api/knowledge-graph/query', methods=['POST'])
+def query_knowledge_graph():
+    """按关键词返回图谱子图。"""
+    payload = request.get_json(silent=True) or {}
+    session_id = str(payload.get('session_id', '')).strip() or None
+    keyword = str(payload.get('keyword', '')).strip()
+    try:
+        limit = int(payload.get("limit") or 160)
+    except (TypeError, ValueError):
+        limit = 160
+
+    graph = get_session_graph(session_id)
+    view = query_graph(graph, keyword=keyword, limit=limit)
+    return jsonify({
+        "success": True,
+        "session_id": str(session_id or "default"),
+        "nodes": view.get("nodes", []),
+        "links": view.get("links", []),
+        "relations": view.get("relations", []),
+        "stats": graph.get("stats", {}),
+        "query": keyword,
+    })
+
+
+@app.route('/api/knowledge-graph/rebuild', methods=['POST'])
+def rebuild_knowledge_graph():
+    """根据当前会话已上传文档重建完整知识图谱。"""
+    payload = request.get_json(silent=True) or {}
+    session_id = str(payload.get('session_id', '')).strip() or None
+    graph = _rebuild_session_knowledge_graph(session_id)
+    return jsonify({
+        "success": True,
+        "session_id": str(session_id or "default"),
+        "nodes": graph.get("nodes", []),
+        "links": graph.get("links", []),
+        "relations": graph.get("relations", []),
+        "stats": graph.get("stats", {}),
+    })
 
 
 @app.route('/api/sensors/push', methods=['POST'])

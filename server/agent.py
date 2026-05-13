@@ -9,7 +9,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from config import config
-from knowledge_graph import build_knowledge_graph, summarize_related_graph
+from knowledge_graph import build_knowledge_graph, get_session_graph, summarize_related_graph
 from risk_fusion import build_risk_profile
 
 # 进程内会话记忆，按 session_id 隔离
@@ -537,7 +537,11 @@ def multi_agent_ask(
         normalized_images,
         normalized_sensors,
     )
-    graph = build_knowledge_graph(normalized_documents)
+    session_graph = get_session_graph(session_id)
+    if session_graph.get("nodes") or session_graph.get("relations"):
+        graph = session_graph
+    else:
+        graph = build_knowledge_graph(normalized_documents)
     graph_summary, graph_used = summarize_related_graph(
         user_query,
         graph,
