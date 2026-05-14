@@ -583,6 +583,7 @@ def get_knowledge_graph():
             "node_count": len(view.get("nodes", [])),
             "relation_count": len(view.get("relations", [])),
         },
+        "relation_types": stats.get("relation_types", {}),
         "query": keyword,
     })
 
@@ -611,6 +612,7 @@ def query_knowledge_graph():
             "node_count": len(view.get("nodes", [])),
             "relation_count": len(view.get("relations", [])),
         },
+        "relation_types": graph.get("stats", {}).get("relation_types", {}),
         "query": keyword,
     })
 

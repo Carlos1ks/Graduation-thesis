@@ -219,6 +219,7 @@ export default function CoalMineAgent() {
   const [graphExpandedNodes, setGraphExpandedNodes] = useState([]);
   const [graphTypeFilter, setGraphTypeFilter] = useState("all");
   const [graphRelationFilter, setGraphRelationFilter] = useState("all");
+  const [graphCache, setGraphCache] = useState({});
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const messagesEndRef = useRef(null);
   const graphViewportRef = useRef(null);
@@ -627,12 +628,21 @@ export default function CoalMineAgent() {
   };
 
   const loadKnowledgeGraph = async (keyword = graphKeyword) => {
+    const cacheKey = `${sessionIdRef.current}::${keyword.trim()}::${graphTypeFilter}::${graphRelationFilter}`;
+    if (graphCache[cacheKey]) {
+      setGraphData(graphCache[cacheKey]);
+      setSelectedGraphNode(null);
+      setGraphExpandedNodes([]);
+      setGraphLoading(false);
+      setGraphError("");
+      return;
+    }
     setGraphLoading(true);
     setGraphError("");
     try {
       const data = await fetchKnowledgeGraph(sessionIdRef.current, keyword);
       const compactGraph = compactKnowledgeGraphForView(data.nodes, data.links);
-      setGraphData({
+      const nextGraphData = {
         nodes: compactGraph.nodes,
         links: compactGraph.links,
         stats: {
@@ -640,7 +650,9 @@ export default function CoalMineAgent() {
           view_node_count: data.view_stats?.node_count ?? compactGraph.nodes.length,
           view_relation_count: data.view_stats?.relation_count ?? compactGraph.links.length,
         },
-      });
+      };
+      setGraphData(nextGraphData);
+      setGraphCache(prev => ({ ...prev, [cacheKey]: nextGraphData }));
       setSelectedGraphNode(null);
       setGraphExpandedNodes([]);
     } catch (err) {
@@ -769,13 +781,12 @@ export default function CoalMineAgent() {
     if (!graphOpen) return;
     if (!forceGraphRef.current) return;
     if (!graphData.nodes.length) return;
-    const timer = setTimeout(() => {
-      try {
-        forceGraphRef.current.zoomToFit(600, 60);
-      } catch {}
-    }, 180);
-    return () => clearTimeout(timer);
-  }, [graphOpen, graphData.nodes.length, graphData.links.length, graphTypeFilter, graphRelationFilter]);
+    try {
+      forceGraphRef.current.d3Force("charge")?.strength?.(-260);
+      forceGraphRef.current.d3Force("link")?.distance?.(160);
+      forceGraphRef.current.d3Alpha(0.9).d3ReheatSimulation();
+    } catch {}
+  }, [graphOpen, graphData.nodes.length, graphData.links.length]);
 
   const renderGraphDialog = () => {
     if (!graphOpen) return null;
@@ -888,6 +899,8 @@ export default function CoalMineAgent() {
                   backgroundColor="transparent"
                   cooldownTicks={140}
                   nodeRelSize={6}
+                  d3AlphaDecay={0.03}
+                  d3VelocityDecay={0.22}
                   linkColor={() => "rgba(148,163,184,0.34)"}
                   linkWidth={(link) => link.duplicateCount > 1 ? 1.6 : 1}
                   nodeColor={(node) => node.color}
@@ -917,6 +930,12 @@ export default function CoalMineAgent() {
                     if (!start?.x || !end?.x) return;
                     const midX = (start.x + end.x) / 2;
                     const midY = (start.y + end.y) / 2;
+                    if (link.relation_label) {
+                      ctx.font = `${Math.max(7, 9 / globalScale)}px sans-serif`;
+                      ctx.fillStyle = "rgba(226,232,240,0.82)";
+                      ctx.textAlign = "center";
+                      ctx.fillText(String(link.relation_label).slice(0, 12), midX, midY + 10);
+                    }
                     if (link.condition) {
                       ctx.font = `${Math.max(7, 9 / globalScale)}px sans-serif`;
                       ctx.fillStyle = "#fcd34d";

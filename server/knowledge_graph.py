@@ -79,6 +79,16 @@ ALLOWED_RELATIONS = {
     "IF",
 }
 
+RELATION_TYPE_MAP = {
+    "CONTAINS": "CONTAINS",
+    "NEXT": "NEXT",
+    "APPLIES_TO": "APPLIES_TO",
+    "REQUIRES": "REQUIRES",
+    "PERFORMED_BY": "PERFORMED_BY",
+    "HAS_RISK": "HAS_RISK",
+    "IF": "IF",
+}
+
 
 def _build_llm() -> ChatOpenAI:
     return ChatOpenAI(
