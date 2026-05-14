@@ -575,7 +575,19 @@ def get_knowledge_graph():
         stats = view.get("stats", {})
     else:
         graph = get_session_graph(session_id)
-        view = query_graph(graph, keyword=keyword, limit=limit)
+        compact_view = query_graph(graph, limit=limit)
+        all_links = compact_view.get("links", []) if isinstance(compact_view, dict) else []
+        safe_limit = max(50, min(int(limit or 1000), 2000))
+        visible_links = all_links[:safe_limit]
+        visible_uids = {str(link.get("source")) for link in visible_links} | {str(link.get("target")) for link in visible_links}
+        view = {
+            "nodes": [node for node in compact_view.get("nodes", []) if str(node.get("uid")) in visible_uids],
+            "links": visible_links,
+            "relations": visible_links,
+            "stats": graph.get("stats", {}),
+            "has_more": len(all_links) > len(visible_links),
+            "truncated": len(all_links) > len(visible_links),
+        }
         stats = graph.get("stats", {}) if isinstance(graph, dict) else {}
     return jsonify({
         "success": True,

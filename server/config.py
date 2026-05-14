@@ -87,7 +87,8 @@ class Config:
     NEO4J_DATABASE = os.environ.get("NEO4J_DATABASE", "neo4j")
     KG_LLM_ENABLED = os.environ.get("KG_LLM_ENABLED", "1") == "1"
     KG_LLM_BATCH_SIZE = int(os.environ.get("KG_LLM_BATCH_SIZE", "8"))
-    KG_MAX_ARTICLES_PER_BUILD = int(os.environ.get("KG_MAX_ARTICLES_PER_BUILD", "80"))
+    # 0 means no artificial article cap; set a positive value for quick debug builds.
+    KG_MAX_ARTICLES_PER_BUILD = int(os.environ.get("KG_MAX_ARTICLES_PER_BUILD", "20"))
 
     # 多源风险识别配置
     RISK_RULES_ENABLED = os.environ.get("RISK_RULES_ENABLED", "1") == "1"

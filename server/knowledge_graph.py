@@ -34,6 +34,7 @@ _GRAPH_QUERY_CACHE: Dict[str, Tuple[float, Dict[str, object]]] = {}
 _GRAPH_QUERY_CACHE_LOCK = RLock()
 _GRAPH_QUERY_CACHE_TTL_SECONDS = 60
 _GRAPH_QUERY_CACHE_MAX_ITEMS = 256
+_NO_ARTICLE_LIMIT = 0
 
 _VISIBLE_NODE_TYPES = {
     "hazard",
@@ -83,6 +84,7 @@ ALLOWED_RELATIONS = {
     "PERFORMED_BY",
     "HAS_RISK",
     "IF",
+    "MENTIONS",
 }
 
 RELATION_LABEL_OVERRIDES = {
@@ -93,6 +95,7 @@ RELATION_LABEL_OVERRIDES = {
     "PERFORMED_BY": "执行主体",
     "HAS_RISK": "存在风险",
     "IF": "条件",
+    "MENTIONS": "提及",
 }
 
 RELATION_TYPE_MAP = {
@@ -103,6 +106,7 @@ RELATION_TYPE_MAP = {
     "PERFORMED_BY": "PERFORMED_BY",
     "HAS_RISK": "HAS_RISK",
     "IF": "IF",
+    "MENTIONS": "MENTIONS",
 }
 
 RELATION_PRIORITY = {
@@ -113,11 +117,70 @@ RELATION_PRIORITY = {
     "IF": 5,
     "NEXT": 6,
     "CONTAINS": 9,
+    "MENTIONS": 10,
 }
+
+_SUPPORT_RELATIONS = {"CONTAINS", "MENTIONS"}
+
+_CANONICAL_NODE_RULES = {
+    "hazard": [
+        ("gas", "瓦斯灾害", ["gas", "ch4", "甲烷", "瓦斯"]),
+        ("fire", "火灾灾害", ["fire", "明火", "火灾", "烟雾", "烟气", "燃烧"]),
+        ("water", "水害风险", ["water", "突水", "透水", "涌水", "积水", "水害"]),
+        ("roof", "顶板风险", ["roof", "冒顶", "顶板", "片帮", "垮落"]),
+        ("personnel", "人员风险", ["personnel", "被困", "失联", "中毒", "窒息", "伤亡"]),
+    ],
+    "risk": [
+        ("gas", "瓦斯风险", ["gas", "ch4", "甲烷", "瓦斯"]),
+        ("fire", "火灾风险", ["fire", "明火", "火灾", "烟雾", "烟气", "燃烧"]),
+        ("water", "水害风险", ["water", "突水", "透水", "涌水", "积水", "水害"]),
+        ("roof", "顶板风险", ["roof", "冒顶", "顶板", "片帮", "垮落"]),
+        ("personnel", "人员风险", ["personnel", "被困", "失联", "中毒", "窒息", "伤亡"]),
+    ],
+    "step": [
+        ("stop_work", "停止作业", ["stop_work", "停止作业", "停止施工", "停产", "停掘"]),
+        ("cut_power", "切断电源", ["cut_power", "切断电源", "断电", "停电", "切电"]),
+        ("evacuate", "撤离人员", ["evacuate", "撤离", "撤人", "撤出人员", "疏散"]),
+        ("ventilate", "加强通风", ["ventilate", "通风", "排放瓦斯", "稀释", "局部通风"]),
+        ("report", "上报调度", ["report", "上报", "汇报", "报告调度", "调度室"]),
+        ("alert", "设置警戒", ["alert", "警戒", "封控", "禁止进入", "栅栏"]),
+        ("rescue", "组织救援", ["rescue", "救援", "搜救", "救护队"]),
+        ("self_rescue", "佩戴自救器", ["self_rescue", "自救器", "佩戴"]),
+    ],
+    "role": [
+        ("dispatch", "调度室", ["dispatch", "调度室", "调度中心", "指挥中心"]),
+        ("ventilation", "通防部门", ["ventilation", "通防", "通风队", "瓦斯检查", "瓦检"]),
+        ("electrical", "机电部门", ["electrical", "机电", "供电", "电工"]),
+        ("mining_team", "现场班组", ["mining", "班组", "班组长", "现场人员", "作业人员"]),
+        ("safety", "安监部门", ["safety", "安监", "安全员", "安全管理"]),
+        ("rescue_team", "矿山救护队", ["rescue_team", "救护队", "救援队", "专业救援"]),
+    ],
+    "equipment": [
+        ("local_fan", "局部通风机", ["local_fan", "局部通风机", "风机"]),
+        ("detector", "检测仪", ["detector", "检测仪", "传感器", "监测装置"]),
+        ("communication", "通信设备", ["communication", "对讲机", "广播", "通信"]),
+        ("self_rescuer", "自救器", ["self_rescuer", "自救器"]),
+    ],
+    "condition": [
+        ("gas_overlimit", "瓦斯超限条件", ["gas_overlimit", "瓦斯浓度", "甲烷浓度", "超限", "1.5%"]),
+        ("fire_condition", "火灾征兆", ["fire_condition", "明火", "烟雾", "烟气", "燃烧", "高温"]),
+        ("water_inrush_condition", "突水征兆", ["water_inrush", "突水", "透水", "涌水", "积水", "水位"]),
+        ("trapped_condition", "人员受困条件", ["trapped", "被困", "失联", "通信中断"]),
+    ],
+}
+
 
 def _relation_label(rel_type: str) -> str:
     code = str(rel_type or "").strip()
     return RELATION_LABEL_OVERRIDES.get(code.upper()) or RELATION_LABELS.get(code) or RELATION_LABELS.get(code.lower()) or code
+
+
+def _article_limit() -> int:
+    return max(_NO_ARTICLE_LIMIT, int(config.KG_MAX_ARTICLES_PER_BUILD))
+
+
+def _article_budget_reached(count: int, limit: int) -> bool:
+    return limit > 0 and count >= limit
 
 
 def _build_llm() -> ChatOpenAI:
@@ -149,6 +212,81 @@ def _safe_id(value: str) -> str:
 
 def _node_uid(node_type: str, node_id: str) -> str:
     return f"{node_type}:{node_id}"
+
+
+def _normalize_node_key_text(value: str) -> str:
+    text = str(value or "").strip().lower()
+    text = re.sub(r"\s+", "", text)
+    text = re.sub(r"[：:；;，,。、“”\"'（）()【】\[\]{}<>《》\-_/\\|]+", "", text)
+    for token in ["灾害", "风险", "事故", "措施", "步骤", "动作", "处置", "要求", "条件", "主体", "部门", "设备", "设施"]:
+        if len(text) > len(token) + 1:
+            text = text.replace(token, "")
+    return text or "unknown"
+
+
+def _canonical_entity(node_type: str, node_id: str, label: str) -> Tuple[str, str]:
+    clean_type = str(node_type or "").strip().lower()
+    haystack = f"{node_id} {label}".lower()
+    normalized = _normalize_node_key_text(f"{node_id}{label}")
+    for canonical_id, canonical_label, aliases in _CANONICAL_NODE_RULES.get(clean_type, []):
+        if any(str(alias).lower() in haystack for alias in aliases):
+            return canonical_id, canonical_label
+    if clean_type in {"hazard", "risk", "step", "role", "equipment", "condition"}:
+        return normalized, str(label or node_id).strip()
+    return str(node_id or normalized).strip(), str(label or node_id).strip()
+
+
+def _resolve_node_uid(nodes_by_uid: Dict[str, Dict[str, object]], node_type: str, raw_id: str) -> str:
+    canonical_id, _ = _canonical_entity(node_type, raw_id, raw_id)
+    canonical_uid = _node_uid(node_type, canonical_id)
+    if canonical_uid in nodes_by_uid:
+        return canonical_uid
+
+    needle = _normalize_node_key_text(raw_id)
+    for uid, node in nodes_by_uid.items():
+        if str(node.get("type") or "").strip().lower() != node_type:
+            continue
+        fields = [
+            str(node.get("id") or ""),
+            str(node.get("label") or ""),
+            *(str(item) for item in node.get("aliases", []) if item),
+        ]
+        if any(_normalize_node_key_text(field) == needle for field in fields):
+            return uid
+    return canonical_uid
+
+
+def _canonical_uid_from_uid(uid: str) -> str:
+    text = str(uid or "").strip()
+    if ":" not in text:
+        return text
+    node_type, raw_id = text.split(":", 1)
+    canonical_id, _ = _canonical_entity(node_type, raw_id, raw_id)
+    return _node_uid(node_type, canonical_id)
+
+
+def _merge_node_record(existing: Dict[str, object] | None, incoming: Dict[str, object]) -> Dict[str, object]:
+    if not existing:
+        merged = dict(incoming)
+    else:
+        merged = {**existing, **incoming}
+    for key in ("sources", "aliases"):
+        values = []
+        for source in ((existing or {}).get(key), incoming.get(key)):
+            if isinstance(source, list):
+                values.extend(source)
+            elif source:
+                values.append(source)
+        if values:
+            merged[key] = list(dict.fromkeys(str(item) for item in values if str(item or "").strip()))
+    return merged
+
+
+def _put_node(nodes_by_uid: Dict[str, Dict[str, object]], node: Dict[str, object]) -> None:
+    uid = str(node.get("uid") or "").strip()
+    if not uid:
+        return
+    nodes_by_uid[uid] = _merge_node_record(nodes_by_uid.get(uid), node)
 
 
 def _clip_text(text: str, limit: int = 220) -> str:
@@ -258,8 +396,9 @@ def _sanitize_node(node: Dict[str, object], doc_name: str, article_label: str, a
     node_type = str(node.get("type") or "").strip().lower()
     if node_type not in ALLOWED_NODE_TYPES:
         return None
-    node_id = str(node.get("id") or _safe_id(node.get("label") or "")).strip()
-    label = str(node.get("label") or node_id).strip()
+    raw_id = str(node.get("id") or _safe_id(node.get("label") or "")).strip()
+    raw_label = str(node.get("label") or raw_id).strip()
+    node_id, label = _canonical_entity(node_type, raw_id, raw_label)
     if not node_id or not label:
         return None
     return {
@@ -268,6 +407,7 @@ def _sanitize_node(node: Dict[str, object], doc_name: str, article_label: str, a
         "type_label": NODE_TYPE_LABELS.get(node_type, node_type),
         "id": node_id,
         "label": label,
+        "aliases": list(dict.fromkeys([raw_label, raw_id, label])),
         "doc_name": doc_name,
         "article_label": article_label,
         "sources": [f"{doc_name} · {article_label}"],
@@ -286,14 +426,16 @@ def _sanitize_relation(
         return None
     source_type = str(rel.get("source_type") or "").strip().lower()
     target_type = str(rel.get("target_type") or "").strip().lower()
-    source_id = str(rel.get("source_id") or "").strip()
-    target_id = str(rel.get("target_id") or "").strip()
-    if not source_type or not target_type or not source_id or not target_id:
+    raw_source_id = str(rel.get("source_id") or "").strip()
+    raw_target_id = str(rel.get("target_id") or "").strip()
+    if not source_type or not target_type or not raw_source_id or not raw_target_id:
         return None
-    source_uid = _node_uid(source_type, source_id)
-    target_uid = _node_uid(target_type, target_id)
+    source_uid = _resolve_node_uid(nodes_by_uid, source_type, raw_source_id)
+    target_uid = _resolve_node_uid(nodes_by_uid, target_type, raw_target_id)
     if source_uid not in nodes_by_uid or target_uid not in nodes_by_uid:
         return None
+    source_id = str(nodes_by_uid[source_uid].get("id") or "").strip()
+    target_id = str(nodes_by_uid[target_uid].get("id") or "").strip()
     condition = str(rel.get("condition") or "").strip() or None
     evidence = _clip_text(str(rel.get("evidence") or ""), 180) or None
     return {
@@ -318,7 +460,7 @@ def _build_graph_documents(documents: List[Dict[str, object]]) -> Dict[str, obje
     normalized_documents = _normalize_documents(documents)
     nodes_by_uid: Dict[str, Dict[str, object]] = {}
     relations_by_id: Dict[str, Dict[str, object]] = {}
-    article_budget = max(1, int(config.KG_MAX_ARTICLES_PER_BUILD))
+    article_budget = _article_limit()
     article_count = 0
 
     for doc in normalized_documents:
@@ -339,7 +481,7 @@ def _build_graph_documents(documents: List[Dict[str, object]]) -> Dict[str, obje
         batch_size = max(1, int(config.KG_LLM_BATCH_SIZE))
         for start in range(0, len(articles), batch_size):
             for article in articles[start:start + batch_size]:
-                if article_count >= article_budget:
+                if _article_budget_reached(article_count, article_budget):
                     break
                 article_label = str(article["article_label"])
                 article_text = str(article["text"])
@@ -364,7 +506,24 @@ def _build_graph_documents(documents: List[Dict[str, object]]) -> Dict[str, obje
                     if clean is None:
                         continue
                     article_local_nodes[clean["uid"]] = clean
-                    nodes_by_uid.setdefault(clean["uid"], clean)
+                    _put_node(nodes_by_uid, clean)
+                    relations_by_id.setdefault(
+                        f"{article_uid}|MENTIONS|{clean['uid']}",
+                        {
+                            "id": f"{article_uid}|MENTIONS|{clean['uid']}",
+                            "source": article_uid,
+                            "target": clean["uid"],
+                            "head_type": "article",
+                            "head_id": article_node["id"],
+                            "head_label": article_label,
+                            "tail_type": clean["type"],
+                            "tail_id": clean["id"],
+                            "tail_label": clean["label"],
+                            "relation": "MENTIONS",
+                            "relation_label": _relation_label("MENTIONS"),
+                            "source_ref": f"{doc_name} · {article_label}",
+                        },
+                    )
 
                 relations_by_id.setdefault(
                     f"{regulation_uid}|CONTAINS|{article_uid}",
@@ -390,35 +549,19 @@ def _build_graph_documents(documents: List[Dict[str, object]]) -> Dict[str, obje
                         continue
                     relations_by_id.setdefault(clean_rel["id"], clean_rel)
                 article_count += 1
-            if article_count >= article_budget:
+            if _article_budget_reached(article_count, article_budget):
                 break
-        if article_count >= article_budget:
+        if _article_budget_reached(article_count, article_budget):
             break
 
-    nodes = list(nodes_by_uid.values())
-    relations = list(relations_by_id.values())
-    type_counter = Counter(str(node.get("type")) for node in nodes)
-    relation_counter = Counter(str(rel.get("relation")) for rel in relations)
-    return {
-        "nodes": nodes,
-        "relations": relations,
-        "links": relations,
-        "document_summaries": [],
-        "stats": {
-            "node_count": len(nodes),
-            "relation_count": len(relations),
-            "node_types": dict(type_counter),
-            "relation_types": dict(relation_counter),
-            "updated_at": _now_iso(),
-        },
-    }
+    return _normalize_graph_shape(list(nodes_by_uid.values()), list(relations_by_id.values()))
 
 
 def _build_graph_documents_with_progress(documents: List[Dict[str, object]], session_id: str) -> Dict[str, object]:
     normalized_documents = _normalize_documents(documents)
     nodes_by_uid: Dict[str, Dict[str, object]] = {}
     relations_by_id: Dict[str, Dict[str, object]] = {}
-    article_budget = max(1, int(config.KG_MAX_ARTICLES_PER_BUILD))
+    article_budget = _article_limit()
     article_count = 0
 
     articles_to_process: List[Tuple[str, str, str, str]] = []
@@ -438,9 +581,9 @@ def _build_graph_documents_with_progress(documents: List[Dict[str, object]], ses
         articles = _split_articles(str(doc["text"]), str(doc["chunk_id"]))
         for article in articles:
             articles_to_process.append((doc_name, document_id, article["article_label"], article["text"]))
-            if len(articles_to_process) >= article_budget:
+            if _article_budget_reached(len(articles_to_process), article_budget):
                 break
-        if len(articles_to_process) >= article_budget:
+        if _article_budget_reached(len(articles_to_process), article_budget):
             break
 
     total = len(articles_to_process)
@@ -476,7 +619,24 @@ def _build_graph_documents_with_progress(documents: List[Dict[str, object]], ses
             clean = _sanitize_node(raw_node, doc_name, article_label, article_uid)
             if clean is None:
                 continue
-            nodes_by_uid.setdefault(clean["uid"], clean)
+            _put_node(nodes_by_uid, clean)
+            relations_by_id.setdefault(
+                f"{article_uid}|MENTIONS|{clean['uid']}",
+                {
+                    "id": f"{article_uid}|MENTIONS|{clean['uid']}",
+                    "source": article_uid,
+                    "target": clean["uid"],
+                    "head_type": "article",
+                    "head_id": article_node["id"],
+                    "head_label": article_label,
+                    "tail_type": clean["type"],
+                    "tail_id": clean["id"],
+                    "tail_label": clean["label"],
+                    "relation": "MENTIONS",
+                    "relation_label": _relation_label("MENTIONS"),
+                    "source_ref": f"{doc_name} · {article_label}",
+                },
+            )
 
         regulation_uid = _node_uid("regulation", document_id)
         relations_by_id.setdefault(
@@ -522,23 +682,7 @@ def _build_graph_documents_with_progress(documents: List[Dict[str, object]], ses
             message=f"正在抽取第 {article_count}/{total} 条条文",
         )
 
-    nodes = list(nodes_by_uid.values())
-    relations = list(relations_by_id.values())
-    type_counter = Counter(str(node.get("type")) for node in nodes)
-    relation_counter = Counter(str(rel.get("relation")) for rel in relations)
-    return {
-        "nodes": nodes,
-        "relations": relations,
-        "links": relations,
-        "document_summaries": [],
-        "stats": {
-            "node_count": len(nodes),
-            "relation_count": len(relations),
-            "node_types": dict(type_counter),
-            "relation_types": dict(relation_counter),
-            "updated_at": _now_iso(),
-        },
-    }
+    return _normalize_graph_shape(list(nodes_by_uid.values()), list(relations_by_id.values()))
 
 
 def _get_driver():
@@ -613,9 +757,12 @@ def _upsert_graph_to_neo4j(session_id: str, graph: Dict[str, object]) -> None:
 
     rel_rows = []
     for rel in graph.get("relations", []):
+        rel_id = str(rel.get("id") or "").strip()
+        if not rel_id:
+            rel_id = f"{rel.get('source')}|{rel.get('relation')}|{rel.get('target')}|{_safe_id(rel.get('source_ref') or rel.get('condition') or '')}"
         rel_rows.append({
             "session_id": session_id,
-            "id": rel.get("id"),
+            "id": rel_id,
             "source": rel.get("source"),
             "target": rel.get("target"),
             "head_type": rel.get("head_type"),
@@ -631,7 +778,8 @@ def _upsert_graph_to_neo4j(session_id: str, graph: Dict[str, object]) -> None:
             "evidence": rel.get("evidence"),
         })
 
-    _execute_write(
+    if node_rows:
+        _execute_write(
         """
         UNWIND $rows AS row
         MERGE (n:KGNode {session_id: row.session_id, uid: row.uid})
@@ -647,9 +795,10 @@ def _upsert_graph_to_neo4j(session_id: str, graph: Dict[str, object]) -> None:
         FOREACH (_ IN CASE WHEN row.type = 'risk' THEN [1] ELSE [] END | SET n:Risk)
         """,
         rows=node_rows,
-    )
+        )
 
-    _execute_write(
+    if rel_rows:
+        _execute_write(
         """
         UNWIND $rows AS row
         MATCH (a:KGNode {session_id: row.session_id, uid: row.source})
@@ -658,7 +807,7 @@ def _upsert_graph_to_neo4j(session_id: str, graph: Dict[str, object]) -> None:
         SET r += row
         """,
         rows=rel_rows,
-    )
+        )
 
 
 def _merge_graph_chunks(base: Dict[str, object], incoming: Dict[str, object]) -> Dict[str, object]:
@@ -679,23 +828,7 @@ def _merge_graph_chunks(base: Dict[str, object], incoming: Dict[str, object]) ->
         if rid:
             rel_map[rid] = {**rel_map.get(rid, {}), **rel}
 
-    nodes = list(node_map.values())
-    relations = list(rel_map.values())
-    type_counter = Counter(str(node.get("type")) for node in nodes)
-    relation_counter = Counter(str(rel.get("relation")) for rel in relations)
-    return {
-        "nodes": nodes,
-        "relations": relations,
-        "links": relations,
-        "document_summaries": [],
-        "stats": {
-            "node_count": len(nodes),
-            "relation_count": len(relations),
-            "node_types": dict(type_counter),
-            "relation_types": dict(relation_counter),
-            "updated_at": _now_iso(),
-        },
-    }
+    return _normalize_graph_shape(list(node_map.values()), list(rel_map.values()))
 
 
 def _stats_for_session(session_id: str) -> Dict[str, object]:
@@ -756,6 +889,15 @@ def get_graph_build_status(session_id: str | None) -> Dict[str, object]:
     with _TASK_LOCK:
         memory_status = _GRAPH_BUILD_STATUS.get(sid)
     file_status = _read_status_file(sid)
+    if memory_status is None and file_status and file_status.get("state") in {"running", "queued"}:
+        file_status = {
+            **file_status,
+            "state": "failed",
+            "message": "上次知识图谱构建已中断，请重新构建",
+            "finished_at": _now_iso(),
+            "error": "stale build status after backend restart",
+        }
+        _write_status_file(sid, file_status)
     status = dict(memory_status or file_status or {
             "session_id": sid,
             "state": "idle",
@@ -798,12 +940,12 @@ def start_graph_build(session_id: str | None, documents: List[Dict[str, object]]
         return current
 
     normalized_documents = _normalize_documents(documents)
-    article_budget = max(1, int(config.KG_MAX_ARTICLES_PER_BUILD))
+    article_budget = _article_limit()
     total_articles = 0
     for doc in normalized_documents:
         articles = _split_articles(str(doc["text"]), str(doc["chunk_id"]))
         total_articles += len(articles)
-        if total_articles >= article_budget:
+        if _article_budget_reached(total_articles, article_budget):
             total_articles = article_budget
             break
 
@@ -866,9 +1008,113 @@ def _normalize_relation(rel: Dict[str, object]) -> Dict[str, object]:
 def _normalize_node(node: Dict[str, object]) -> Dict[str, object]:
     normalized = dict(node)
     node_type = str(normalized.get("type") or "").strip()
+    if node_type:
+        canonical_id, canonical_label = _canonical_entity(
+            node_type,
+            str(normalized.get("id") or ""),
+            str(normalized.get("label") or ""),
+        )
+        normalized["id"] = canonical_id
+        normalized["label"] = canonical_label or normalized.get("label") or canonical_id
+        normalized["uid"] = _node_uid(node_type, canonical_id)
     if node_type and not normalized.get("type_label"):
         normalized["type_label"] = NODE_TYPE_LABELS.get(node_type, node_type)
     return normalized
+
+
+def _normalize_graph_shape(nodes: List[Dict[str, object]], relations: List[Dict[str, object]]) -> Dict[str, object]:
+    node_map: Dict[str, Dict[str, object]] = {}
+    uid_redirect: Dict[str, str] = {}
+    for raw_node in nodes:
+        if not isinstance(raw_node, dict):
+            continue
+        old_uid = str(raw_node.get("uid") or "").strip()
+        node = _normalize_node(raw_node)
+        uid = str(node.get("uid") or "").strip()
+        if not uid:
+            continue
+        if old_uid and old_uid != uid:
+            uid_redirect[old_uid] = uid
+        _put_node(node_map, node)
+
+    rel_map: Dict[str, Dict[str, object]] = {}
+    for raw_rel in relations:
+        if not isinstance(raw_rel, dict):
+            continue
+        rel = _normalize_relation(raw_rel)
+        source = uid_redirect.get(str(rel.get("source") or ""), str(rel.get("source") or ""))
+        target = uid_redirect.get(str(rel.get("target") or ""), str(rel.get("target") or ""))
+        if not source or not target or source == target or source not in node_map or target not in node_map:
+            continue
+        source_node = node_map[source]
+        target_node = node_map[target]
+        relation = str(rel.get("relation") or "").strip().upper()
+        rel["source"] = source
+        rel["target"] = target
+        rel["head_type"] = source_node.get("type")
+        rel["head_id"] = source_node.get("id")
+        rel["head_label"] = source_node.get("label")
+        rel["tail_type"] = target_node.get("type")
+        rel["tail_id"] = target_node.get("id")
+        rel["tail_label"] = target_node.get("label")
+        rel["relation"] = relation
+        rel["relation_label"] = _relation_label(relation)
+        rel["id"] = f"{source}|{relation}|{target}|{_safe_id(rel.get('source_ref') or rel.get('condition') or rel.get('evidence') or '')}"
+        rel_map[str(rel["id"])] = rel
+
+    normalized_nodes = list(node_map.values())
+    normalized_relations = sorted(
+        rel_map.values(),
+        key=lambda item: (_relation_priority(str(item.get("relation"))), str(item.get("head_label")), str(item.get("tail_label"))),
+    )
+    type_counter = Counter(str(node.get("type")) for node in normalized_nodes)
+    relation_counter = Counter(str(rel.get("relation")) for rel in normalized_relations)
+    return {
+        "nodes": normalized_nodes,
+        "relations": normalized_relations,
+        "links": normalized_relations,
+        "document_summaries": [],
+        "stats": {
+            "node_count": len(normalized_nodes),
+            "relation_count": len(normalized_relations),
+            "node_types": dict(type_counter),
+            "relation_types": dict(relation_counter),
+            "updated_at": _now_iso(),
+        },
+    }
+
+
+def _visible_semantic_view(nodes: List[Dict[str, object]], relations: List[Dict[str, object]], limit: int = 1000) -> Dict[str, object]:
+    visible_nodes_by_uid = {
+        str(node.get("uid")): node
+        for node in nodes
+        if str(node.get("type")) in _VISIBLE_NODE_TYPES and str(node.get("uid") or "").strip()
+    }
+    semantic_relations = [
+        rel for rel in relations
+        if str(rel.get("relation") or "").upper() not in _SUPPORT_RELATIONS
+        and str(rel.get("source")) in visible_nodes_by_uid
+        and str(rel.get("target")) in visible_nodes_by_uid
+    ]
+    semantic_relations = sorted(
+        semantic_relations,
+        key=lambda item: (_relation_priority(str(item.get("relation"))), str(item.get("head_label")), str(item.get("tail_label"))),
+    )
+    safe_limit = max(1, int(limit or 1000))
+    visible_relations = semantic_relations[:safe_limit]
+    connected_uids = {str(rel.get("source")) for rel in visible_relations} | {str(rel.get("target")) for rel in visible_relations}
+    visible_nodes = [node for uid, node in visible_nodes_by_uid.items() if uid in connected_uids]
+    return {
+        "nodes": visible_nodes,
+        "relations": visible_relations,
+        "links": visible_relations,
+        "view_stats": {
+            "node_count": len(visible_nodes),
+            "relation_count": len(visible_relations),
+        },
+        "has_more": len(semantic_relations) > len(visible_relations),
+        "truncated": len(semantic_relations) > len(visible_relations),
+    }
 
 
 def _cache_get(key: str) -> Dict[str, object] | None:
@@ -915,15 +1161,17 @@ def _finalize_graph_response(
     total_relations: int | None = None,
 ) -> Dict[str, object]:
     graph = _map_neo4j_records_to_graph(records)
-    graph["nodes"] = [_normalize_node(node) for node in graph.get("nodes", [])]
-    graph["relations"] = [_normalize_relation(rel) for rel in graph.get("relations", [])]
-    graph["links"] = graph["relations"]
+    graph = _normalize_graph_shape(list(graph.get("nodes", [])), list(graph.get("relations", [])))
     relation_count = len(graph["relations"])
     total = total_relations if total_relations is not None else relation_count
     graph["stats"] = stats or {"node_count": len(graph["nodes"]), "relation_count": relation_count}
     graph["query"] = query
-    graph["center_uid"] = center_uid
-    graph["matched_uids"] = matched_uids or ([center_uid] if center_uid else [])
+    graph["center_uid"] = _canonical_uid_from_uid(center_uid)
+    graph["matched_uids"] = list(dict.fromkeys(
+        _canonical_uid_from_uid(uid)
+        for uid in (matched_uids or ([center_uid] if center_uid else []))
+        if str(uid or "").strip()
+    ))
     graph["limit"] = limit
     graph["offset"] = offset
     graph["returned_relation_count"] = relation_count
@@ -944,9 +1192,35 @@ def _map_neo4j_records_to_graph(records: List[Dict[str, object]]) -> Dict[str, o
         for node in [source_node, target_node]:
             if not node:
                 continue
-            nodes[str(node["uid"])] = dict(node)
+            nodes[str(node["uid"])] = _merge_node_record(nodes.get(str(node["uid"])), dict(node))
         if rel:
             relations[str(rel["id"])] = dict(rel)
+
+    for node in list(nodes.values()):
+        article_uid = str(node.get("article_uid") or "").strip()
+        node_uid = str(node.get("uid") or "").strip()
+        if not article_uid or not node_uid or article_uid == node_uid or article_uid not in nodes:
+            continue
+        rel_id = f"{article_uid}|MENTIONS|{node_uid}"
+        if rel_id in relations:
+            continue
+        article = nodes[article_uid]
+        relations[rel_id] = {
+            "id": rel_id,
+            "source": article_uid,
+            "target": node_uid,
+            "head_type": "article",
+            "head_id": article.get("id"),
+            "head_label": article.get("label"),
+            "tail_type": node.get("type"),
+            "tail_id": node.get("id"),
+            "tail_label": node.get("label"),
+            "relation": "MENTIONS",
+            "relation_label": _relation_label("MENTIONS"),
+            "source_ref": node.get("source_ref") or node.get("article_label") or article.get("article_label"),
+            "virtual": True,
+        }
+
     return {"nodes": list(nodes.values()), "relations": list(relations.values()), "links": list(relations.values())}
 
 
@@ -975,13 +1249,8 @@ def clear_session_graph(session_id: str | None) -> bool:
 
 
 def _strip_support_nodes(nodes: List[Dict[str, object]], relations: List[Dict[str, object]]) -> Tuple[List[Dict[str, object]], List[Dict[str, object]]]:
-    visible_nodes = [node for node in nodes if str(node.get("type")) in _VISIBLE_NODE_TYPES]
-    visible_uids = {str(node.get("uid")) for node in visible_nodes}
-    visible_relations = [
-        rel for rel in relations
-        if str(rel.get("source")) in visible_uids and str(rel.get("target")) in visible_uids
-    ]
-    return visible_nodes, visible_relations
+    view = _visible_semantic_view(nodes, relations, limit=max(len(relations), 1))
+    return view["nodes"], view["relations"]
 
 
 def _detect_topic(keyword: str) -> Dict[str, object] | None:
@@ -1024,11 +1293,14 @@ def _relation_matches_keyword(rel: Dict[str, object], keyword: str) -> bool:
 
 
 def query_graph(graph: Dict[str, object], keyword: str = "", limit: int = 80) -> Dict[str, object]:
-    nodes = list(graph.get("nodes", []))
-    relations = list(graph.get("relations", graph.get("links", [])))
+    normalized = _normalize_graph_shape(list(graph.get("nodes", [])), list(graph.get("relations", graph.get("links", []))))
+    nodes = list(normalized.get("nodes", []))
+    relations = list(normalized.get("relations", normalized.get("links", [])))
     keyword_text = str(keyword or "").strip()
     limit = max(10, int(limit or 80))
-    visible_nodes, visible_relations = _strip_support_nodes(nodes, relations)
+    visible_view = _visible_semantic_view(nodes, relations, limit=max(len(relations), 1))
+    visible_nodes = visible_view["nodes"]
+    visible_relations = visible_view["relations"]
 
     if keyword_text:
         matched_uids = {str(node.get("uid")) for node in visible_nodes if _node_matches_keyword(node, keyword_text)}
@@ -1054,12 +1326,14 @@ def query_graph(graph: Dict[str, object], keyword: str = "", limit: int = 80) ->
             rel for rel in filtered_relations
             if str(rel.get("source")) in keep_uids and str(rel.get("target")) in keep_uids
         ]
+    connected_uids = {str(rel.get("source")) for rel in filtered_relations} | {str(rel.get("target")) for rel in filtered_relations}
+    filtered_nodes = [node for node in filtered_nodes if str(node.get("uid")) in connected_uids]
 
     return {
         "nodes": filtered_nodes,
         "relations": filtered_relations,
         "links": filtered_relations,
-        "stats": graph.get("stats", {}),
+        "stats": normalized.get("stats", graph.get("stats", {})),
         "query": keyword_text,
     }
 
@@ -1176,6 +1450,13 @@ def query_centered_graph(session_id: str | None, keyword: str = "", limit: int =
         limit=safe_limit,
         total_relations=total_relations,
     )
+    semantic_view = _visible_semantic_view(result.get("nodes", []), result.get("relations", []), limit=safe_limit)
+    result["nodes"] = semantic_view["nodes"]
+    result["relations"] = semantic_view["relations"]
+    result["links"] = semantic_view["links"]
+    result["has_more"] = semantic_view["has_more"]
+    result["truncated"] = semantic_view["truncated"]
+    result["returned_relation_count"] = len(result["relations"])
     return _cache_set(cache_key, result)
 
 

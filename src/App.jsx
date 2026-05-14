@@ -7,10 +7,23 @@ const DOCUMENT_UPLOAD_API_URL = `${BACKEND_BASE_URL}/api/documents/upload`;
 const DOCUMENT_REMOVE_API_URL = `${BACKEND_BASE_URL}/api/documents/remove`;
 const VIDEO_ANALYZE_API_URL = `${BACKEND_BASE_URL}/api/video-analyze`;
 const SENSOR_PUSH_API_URL = `${BACKEND_BASE_URL}/api/sensors/push`;
-const KNOWLEDGE_GRAPH_EXPAND_API_URL = `${BACKEND_BASE_URL}/api/knowledge-graph/expand`;
 const KNOWLEDGE_GRAPH_QUERY_API_URL = `${BACKEND_BASE_URL}/api/knowledge-graph/query`;
 const KNOWLEDGE_GRAPH_STATUS_API_URL = `${BACKEND_BASE_URL}/api/knowledge-graph/status`;
 const MAX_HISTORY_MESSAGES = 6;
+const SESSION_STORAGE_KEY = "coal-mine-agent-session-id";
+
+function createSessionId() {
+  return `session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function getInitialSessionId() {
+  if (typeof window === "undefined") return createSessionId();
+  const existing = window.localStorage.getItem(SESSION_STORAGE_KEY);
+  if (existing) return existing;
+  const next = createSessionId();
+  window.localStorage.setItem(SESSION_STORAGE_KEY, next);
+  return next;
+}
 
 const QUICK_QUESTIONS = [
   { icon: "💨", text: "瓦斯浓度超标如何处置？" },
@@ -92,38 +105,30 @@ async function pushSensorsToBackend(records, sessionId) {
 }
 
 async function fetchKnowledgeGraph(sessionId, keyword = "") {
+  const text = keyword.trim();
+  if (!text) {
+    const params = new URLSearchParams({ session_id: sessionId, limit: "1000" });
+    const response = await fetch(`${BACKEND_BASE_URL}/api/knowledge-graph?${params.toString()}`);
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.success) {
+      throw new Error(result.error || `知识图谱加载失败：${response.status}`);
+    }
+    return result;
+  }
+
   const response = await fetch(KNOWLEDGE_GRAPH_QUERY_API_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       session_id: sessionId,
-      keyword: keyword.trim(),
-      limit: keyword.trim() ? 90 : 120,
+      keyword: text,
+      limit: 160,
       depth: 1,
     }),
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok || !result.success) {
     throw new Error(result.error || `知识图谱加载失败：${response.status}`);
-  }
-  return result;
-}
-
-async function expandKnowledgeGraph(sessionId, nodeUid, limit = 60, offset = 0, direction = "both") {
-  const response = await fetch(KNOWLEDGE_GRAPH_EXPAND_API_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      session_id: sessionId,
-      node_uid: nodeUid,
-      limit,
-      offset,
-      direction,
-    }),
-  });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok || !result.success) {
-    throw new Error(result.error || `图谱展开失败：${response.status}`);
   }
   return result;
 }
@@ -139,38 +144,43 @@ async function fetchKnowledgeGraphStatus(sessionId) {
 }
 
 function compactKnowledgeGraphForView(nodes, links) {
-  const hiddenTypes = new Set(["document", "document_type", "clause"]);
-  const abstractLabels = new Set([
-    "处置阶段",
-    "预警阶段",
-    "初期处置阶段",
-    "救援处置阶段",
-    "恢复阶段",
-  ]);
-  const visibleNodes = (Array.isArray(nodes) ? nodes : []).filter(node => (
-    !hiddenTypes.has(node.type) && !abstractLabels.has(String(node.label || ""))
-  ));
+  const visibleNodes = Array.isArray(nodes) ? nodes : [];
   const visibleUids = new Set(visibleNodes.map(node => node.uid));
-  const visibleLinks = (Array.isArray(links) ? links : []).filter(link => (
-    visibleUids.has(typeof link.source === "string" ? link.source : link.source?.id || link.source?.uid) &&
-    visibleUids.has(typeof link.target === "string" ? link.target : link.target?.id || link.target?.uid)
-  ));
+  const visibleLinks = (Array.isArray(links) ? links : []).filter(link => {
+    const source = typeof link.source === "string" ? link.source : link.source?.id || link.source?.uid;
+    const target = typeof link.target === "string" ? link.target : link.target?.id || link.target?.uid;
+    return visibleUids.has(source) && visibleUids.has(target);
+  });
   return { nodes: visibleNodes, links: visibleLinks };
+}
+
+function emptyGraphData() {
+  return { nodes: [], links: [], stats: {}, centerUid: "", matchedUids: [] };
 }
 
 function graphPayloadForView(data, extra = {}) {
   const compactGraph = compactKnowledgeGraphForView(data?.nodes, data?.links || data?.relations);
   const centerUid = data?.center_uid || extra.centerUid || "";
   const matchedUids = new Set([...(Array.isArray(data?.matched_uids) ? data.matched_uids : []), centerUid].filter(Boolean));
+  const matchedList = compactGraph.nodes.filter(node => matchedUids.has(node.uid));
+  const matchedIndexByUid = new Map(matchedList.map((node, index) => [node.uid, index]));
+  const centerRadius = matchedList.length <= 1 ? 0 : Math.min(86, 30 + matchedList.length * 8);
   return {
-    nodes: compactGraph.nodes.map(node => ({
-      ...node,
-      ...(node.uid === centerUid ? { fx: 0, fy: 0 } : {}),
-      isCenter: node.uid === centerUid,
-      isMatched: matchedUids.has(node.uid),
-      expandedFrom: extra.expandedFrom || node.expandedFrom,
-    })),
-    links: compactGraph.links.map(link => ({ ...link, expandedFrom: extra.expandedFrom || link.expandedFrom })),
+    nodes: compactGraph.nodes.map(node => {
+      const matchedIndex = matchedIndexByUid.get(node.uid);
+      const isMatched = matchedIndex !== undefined;
+      const angle = matchedList.length <= 1 ? 0 : (Math.PI * 2 * matchedIndex) / matchedList.length;
+      return {
+        ...node,
+        ...(isMatched ? {
+          fx: matchedList.length <= 1 ? 0 : Math.cos(angle) * centerRadius,
+          fy: matchedList.length <= 1 ? 0 : Math.sin(angle) * centerRadius,
+        } : {}),
+        isCenter: node.uid === centerUid,
+        isMatched,
+      };
+    }),
+    links: compactGraph.links,
     stats: {
       ...(data?.stats || {}),
       view_node_count: data?.view_stats?.node_count ?? compactGraph.nodes.length,
@@ -178,40 +188,7 @@ function graphPayloadForView(data, extra = {}) {
     },
     centerUid,
     matchedUids: Array.from(matchedUids),
-    hasMore: Boolean(data?.has_more),
     fromCache: Boolean(data?.from_cache),
-  };
-}
-
-function mergeGraphData(currentGraph, incomingGraph) {
-  const nodeMap = new Map((currentGraph.nodes || []).map(node => [node.uid, node]));
-  for (const node of incomingGraph.nodes || []) {
-    if (!node?.uid) continue;
-    const existing = nodeMap.get(node.uid) || {};
-    nodeMap.set(node.uid, {
-      ...existing,
-      ...node,
-      isCenter: Boolean(existing.isCenter || node.isCenter),
-      isMatched: Boolean(existing.isMatched || node.isMatched),
-    });
-  }
-
-  const linkMap = new Map((currentGraph.links || []).map(link => [link.id || `${link.source}-${link.target}-${link.relation}-${link.condition || ""}`, link]));
-  for (const link of incomingGraph.links || []) {
-    if (!link) continue;
-    const source = typeof link.source === "string" ? link.source : link.source?.id || link.source?.uid;
-    const target = typeof link.target === "string" ? link.target : link.target?.id || link.target?.uid;
-    const key = link.id || `${source}-${target}-${link.relation}-${link.condition || ""}`;
-    linkMap.set(key, { ...(linkMap.get(key) || {}), ...link, source, target });
-  }
-
-  return {
-    nodes: Array.from(nodeMap.values()),
-    links: Array.from(linkMap.values()),
-    stats: incomingGraph.stats || currentGraph.stats || {},
-    centerUid: incomingGraph.centerUid || currentGraph.centerUid || "",
-    matchedUids: Array.from(new Set([...(currentGraph.matchedUids || []), ...(incomingGraph.matchedUids || [])])),
-    hasMore: Boolean(incomingGraph.hasMore || currentGraph.hasMore),
   };
 }
 
@@ -251,26 +228,21 @@ export default function CoalMineAgent() {
   const [sensorInput, setSensorInput] = useState('[\n  {\n    "sensor_id": "gas-01",\n    "name": "瓦斯浓度传感器",\n    "value": 1.7,\n    "unit": "%",\n    "threshold": 1.5,\n    "location": "掘进工作面",\n    "status": "报警"\n  }\n]');
   const [graphOpen, setGraphOpen] = useState(false);
   const [graphLoading, setGraphLoading] = useState(false);
-  const [graphData, setGraphData] = useState({ nodes: [], links: [], stats: {} });
+  const [graphData, setGraphData] = useState(emptyGraphData);
   const [graphKeyword, setGraphKeyword] = useState("");
   const [selectedGraphNode, setSelectedGraphNode] = useState(null);
   const [graphError, setGraphError] = useState("");
   const [graphBuildStatus, setGraphBuildStatus] = useState({ state: "idle", message: "" });
-  const [graphExpanding, setGraphExpanding] = useState(false);
-  const [graphNodeState, setGraphNodeState] = useState({});
-  const [graphTypeFilter, setGraphTypeFilter] = useState("all");
-  const [graphRelationFilter, setGraphRelationFilter] = useState("all");
   const [graphFocusedKey, setGraphFocusedKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const messagesEndRef = useRef(null);
   const graphViewportRef = useRef(null);
   const forceGraphRef = useRef(null);
   const graphQueryCacheRef = useRef(new Map());
-  const graphExpandCacheRef = useRef(new Map());
   const fileInputRef = useRef(null);
   const imageInputRef = useRef(null);
   const videoInputRef = useRef(null);
-  const sessionIdRef = useRef(`session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
+  const sessionIdRef = useRef(getInitialSessionId());
   const [graphViewportSize, setGraphViewportSize] = useState({ width: 880, height: 620 });
 
   useEffect(() => {
@@ -307,7 +279,10 @@ export default function CoalMineAgent() {
         }
         if (result.build_status.state === "completed") {
           clearInterval(timer);
+          graphQueryCacheRef.current.clear();
+          setGraphData(emptyGraphData());
           setGraphLoading(false);
+          setGraphFocusedKey(v => v + 1);
         }
       } catch (err) {
         clearInterval(timer);
@@ -360,6 +335,10 @@ export default function CoalMineAgent() {
           graphRelationCount: result.knowledge_graph?.relation_count || 0,
         }]);
         if (result.knowledge_graph?.build_status) {
+          graphQueryCacheRef.current.clear();
+          setGraphData(emptyGraphData());
+          setSelectedGraphNode(null);
+          setGraphError("");
           setGraphBuildStatus(result.knowledge_graph.build_status);
           const latest = await fetchKnowledgeGraphStatus(sessionIdRef.current).catch(() => null);
           if (latest?.build_status) {
@@ -674,10 +653,13 @@ export default function CoalMineAgent() {
     const normalizedKeyword = keyword.trim();
     const cacheKey = `${sessionIdRef.current}::${normalizedKeyword}`;
     const cached = graphQueryCacheRef.current.get(cacheKey);
-    if (cached) {
+    const cachedIsEmpty = cached && (cached.nodes?.length || 0) === 0 && (cached.links?.length || 0) === 0;
+    const completedWithResults = graphBuildStatus.state === "completed" && (
+      Number(graphBuildStatus.node_count || 0) > 0 || Number(graphBuildStatus.relation_count || 0) > 0
+    );
+    if (cached && !(cachedIsEmpty && completedWithResults)) {
       setGraphData(cached);
       setSelectedGraphNode(null);
-      setGraphNodeState({});
       setGraphLoading(false);
       setGraphError("");
       setGraphFocusedKey(v => v + 1);
@@ -691,10 +673,9 @@ export default function CoalMineAgent() {
       setGraphData(nextGraphData);
       graphQueryCacheRef.current.set(cacheKey, nextGraphData);
       setSelectedGraphNode(null);
-      setGraphNodeState({});
       setGraphFocusedKey(v => v + 1);
     } catch (err) {
-      setGraphData({ nodes: [], links: [], stats: {}, centerUid: "", matchedUids: [] });
+      setGraphData(emptyGraphData());
       setSelectedGraphNode(null);
       setGraphError(err.message);
       setMessages(prev => [...prev, {
@@ -715,9 +696,12 @@ export default function CoalMineAgent() {
     const statusResult = await fetchKnowledgeGraphStatus(sessionIdRef.current).catch(() => null);
     if (statusResult?.build_status) {
       setGraphBuildStatus(statusResult.build_status);
-      if (statusResult.build_status.state === "running") {
+      if (["queued", "running"].includes(statusResult.build_status.state)) {
         setGraphLoading(true);
         return;
+      }
+      if (statusResult.build_status.state === "completed") {
+        graphQueryCacheRef.current.clear();
       }
     }
     await loadKnowledgeGraph(graphKeyword);
@@ -726,57 +710,12 @@ export default function CoalMineAgent() {
   const closeKnowledgeGraph = () => {
     setGraphOpen(false);
     setGraphLoading(false);
-    setGraphExpanding(false);
     setSelectedGraphNode(null);
     setGraphError("");
   };
 
-  const updateGraphNodeState = (uid, patch) => {
-    setGraphNodeState(prev => ({
-      ...prev,
-      [uid]: { ...(prev[uid] || { offset: 0, expanded: false, loading: false, hasMore: false }), ...patch },
-    }));
-  };
-
-  const expandGraphNode = async (node, loadMore = false) => {
-    if (!node?.uid) return;
-    const existingState = graphNodeState[node.uid] || { offset: 0, expanded: false, loading: false, hasMore: false };
-    if (existingState.loading) return;
-    if (existingState.expanded && !loadMore && !existingState.hasMore) return;
-    const offset = loadMore ? existingState.offset || 0 : 0;
-    const cacheKey = `${sessionIdRef.current}::${node.uid}::${offset}`;
-    const cached = graphExpandCacheRef.current.get(cacheKey);
-    setGraphExpanding(true);
-    updateGraphNodeState(node.uid, { loading: true });
-    try {
-      const data = cached || await expandKnowledgeGraph(sessionIdRef.current, node.uid, 60, offset);
-      if (!cached) {
-        graphExpandCacheRef.current.set(cacheKey, data);
-      }
-      const incomingGraph = graphPayloadForView(data, { expandedFrom: node.uid, centerUid: graphData.centerUid });
-      setGraphData(prev => mergeGraphData(prev, incomingGraph));
-      updateGraphNodeState(node.uid, {
-        loading: false,
-        expanded: true,
-        hasMore: Boolean(data.has_more),
-        offset: offset + (data.returned_relation_count || (data.links || data.relations || []).length || 0),
-      });
-    } catch (err) {
-      updateGraphNodeState(node.uid, { loading: false });
-      setGraphError(err.message);
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: `⚠️ 图谱邻居展开失败：${err.message}`,
-        timestamp: new Date(),
-      }]);
-    } finally {
-      setGraphExpanding(false);
-    }
-  };
-
-  const handleGraphNodeClick = async (node) => {
+  const handleGraphNodeClick = (node) => {
     setSelectedGraphNode(node);
-    await expandGraphNode(node, false);
   };
 
   const fmt = (text) => {
@@ -822,29 +761,21 @@ export default function CoalMineAgent() {
   }[type] || "#cbd5e1");
 
   const buildGraphData = (nodes, links) => {
-    const safeNodes = (Array.isArray(nodes) ? nodes : []).filter(node => graphTypeFilter === "all" || node.type === graphTypeFilter);
+    const safeNodes = Array.isArray(nodes) ? nodes : [];
     const visibleUids = new Set(safeNodes.map(node => node.uid));
     const safeLinks = dedupeGraphLinks((Array.isArray(links) ? links : []).filter(link => (
-      visibleUids.has(link.source) &&
-      visibleUids.has(link.target) &&
-      (graphRelationFilter === "all" || link.relation === graphRelationFilter)
+      visibleUids.has(link.source) && visibleUids.has(link.target)
     )));
     if (safeNodes.length === 0) {
       return { nodes: [], links: [] };
     }
 
-    const graphNodes = safeNodes.map(node => {
-      const state = graphNodeState[node.uid] || {};
-      return {
-        ...node,
-        id: node.uid,
-        color: node.isCenter ? "#ef4444" : node.isMatched ? "#f59e0b" : nodeColor(node.type),
-        val: selectedGraphNode?.uid === node.uid ? 18 : node.isCenter ? 20 : node.isMatched ? 15 : node.type === "hazard" ? 13 : 9,
-        loading: Boolean(state.loading),
-        expanded: Boolean(state.expanded),
-        hasMore: Boolean(state.hasMore),
-      };
-    });
+    const graphNodes = safeNodes.map(node => ({
+      ...node,
+      id: node.uid,
+      color: node.isCenter ? "#ef4444" : node.isMatched ? "#f59e0b" : nodeColor(node.type),
+      val: selectedGraphNode?.uid === node.uid ? 18 : node.isCenter ? 20 : node.isMatched ? 15 : node.type === "hazard" ? 13 : 9,
+    }));
     const graphLinks = safeLinks.map(link => ({
       ...link,
       source: link.source,
@@ -869,11 +800,16 @@ export default function CoalMineAgent() {
     if (!graphOpen || !forceGraphRef.current || !graphData.nodes.length) return undefined;
     const timer = setTimeout(() => {
       try {
-        forceGraphRef.current.zoomToFit(520, 70);
+        if (graphData.matchedUids?.length || graphData.centerUid) {
+          forceGraphRef.current.centerAt(0, 0, 420);
+          forceGraphRef.current.zoom(1.55, 420);
+        } else {
+          forceGraphRef.current.zoomToFit(520, 70);
+        }
       } catch {}
     }, 220);
     return () => clearTimeout(timer);
-  }, [graphOpen, graphFocusedKey]);
+  }, [graphOpen, graphFocusedKey, graphData.centerUid, graphData.matchedUids]);
 
   const renderGraphDialog = () => {
     if (!graphOpen) return null;
@@ -898,7 +834,6 @@ export default function CoalMineAgent() {
               <div style={{ fontSize: "0.65rem", color: "#64748b", marginTop: "0.15rem" }}>
                 展示节点 {stats.view_node_count ?? graphData.nodes.length ?? 0} 个 · 展示关系 {stats.view_relation_count ?? graphData.links.length ?? 0} 条
                 {graphData.centerUid ? ` · 中心节点 ${graphData.centerUid}` : ""}
-                {graphData.hasMore ? " · 结果已截断，可继续展开节点" : ""}
                 {(stats.node_count || stats.relation_count) ? `（后端保留溯源节点 ${stats.node_count || 0} 个、关系 ${stats.relation_count || 0} 条）` : ""}
               </div>
             </div>
@@ -916,29 +851,8 @@ export default function CoalMineAgent() {
           </div>
 
           <div style={{ padding: "0.55rem 1rem", borderBottom: "1px solid rgba(34,211,238,0.10)", display: "flex", gap: "0.6rem", alignItems: "center", flexWrap: "wrap" }}>
-            <select value={graphTypeFilter} onChange={e => setGraphTypeFilter(e.target.value)} style={{ background: "rgba(15,23,42,0.9)", border: "1px solid rgba(34,211,238,0.22)", borderRadius: "8px", color: "#e2e8f0", padding: "0.38rem 0.55rem", fontSize: "0.72rem" }}>
-              <option value="all">全部节点类型</option>
-              <option value="regulation">规程</option>
-              <option value="article">条文</option>
-              <option value="hazard">灾害类型</option>
-              <option value="condition">条件约束</option>
-              <option value="step">处置步骤</option>
-              <option value="role">责任主体</option>
-              <option value="risk">风险点</option>
-              <option value="equipment">设备设施</option>
-            </select>
-            <select value={graphRelationFilter} onChange={e => setGraphRelationFilter(e.target.value)} style={{ background: "rgba(15,23,42,0.9)", border: "1px solid rgba(34,211,238,0.22)", borderRadius: "8px", color: "#e2e8f0", padding: "0.38rem 0.55rem", fontSize: "0.72rem" }}>
-              <option value="all">全部关系类型</option>
-              <option value="CONTAINS">包含</option>
-              <option value="NEXT">下一步</option>
-              <option value="APPLIES_TO">适用于</option>
-              <option value="REQUIRES">需要</option>
-              <option value="PERFORMED_BY">执行主体</option>
-              <option value="HAS_RISK">存在风险</option>
-              <option value="IF">条件</option>
-            </select>
-            <div style={{ fontSize: "0.68rem", color: graphExpanding ? "#fcd34d" : "#64748b" }}>
-              {graphExpanding ? "正在展开邻居…" : "搜索生成中心图，点击节点按需展开下一跳"}
+            <div style={{ fontSize: "0.68rem", color: "#64748b" }}>
+              搜索框为空时展示完整图谱；输入关键词后聚焦相关子图，点击节点只查看详情。
             </div>
           </div>
 
@@ -1001,10 +915,10 @@ export default function CoalMineAgent() {
                   nodeCanvasObject={(node, ctx, globalScale) => {
                     const label = String(node.label || node.id || "");
                     const radius = Math.sqrt(Math.max(node.val || 8, 1)) * 3.1;
-                    if (node.isCenter || node.expanded || node.loading || node.hasMore) {
+                    if (node.isCenter || selectedGraphNode?.uid === node.uid) {
                       ctx.beginPath();
                       ctx.arc(node.x, node.y, radius + (node.isCenter ? 7 : 4), 0, 2 * Math.PI, false);
-                      ctx.strokeStyle = node.loading ? "#fcd34d" : node.hasMore ? "#38bdf8" : node.isCenter ? "#fca5a5" : "#67e8f9";
+                      ctx.strokeStyle = node.isCenter ? "#fca5a5" : "#67e8f9";
                       ctx.lineWidth = node.isCenter ? 2.5 : 1.6;
                       ctx.stroke();
                     }
@@ -1014,12 +928,6 @@ export default function CoalMineAgent() {
                     ctx.textBaseline = "middle";
                     ctx.fillStyle = node.isCenter ? "#fecaca" : node.isMatched ? "#fde68a" : "#dbeafe";
                     ctx.fillText(label.slice(0, node.isCenter ? 24 : 18), node.x + 8, node.y);
-                    if (node.loading || node.expanded || node.hasMore) {
-                      ctx.font = `${Math.max(7, 9 / globalScale)}px sans-serif`;
-                      ctx.fillStyle = node.loading ? "#fcd34d" : node.hasMore ? "#67e8f9" : "#86efac";
-                      ctx.textAlign = "center";
-                      ctx.fillText(node.loading ? "展开中" : node.hasMore ? "可继续" : "已展开", node.x, node.y - 14);
-                    }
                   }}
                   linkCanvasObjectMode={() => "after"}
                   linkCanvasObject={(link, ctx, globalScale) => {
@@ -1069,24 +977,6 @@ export default function CoalMineAgent() {
                       </div>
                     </div>
                   )}
-                  <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginTop: "0.2rem" }}>
-                    <button
-                      onClick={() => expandGraphNode(selectedGraphNode, false)}
-                      disabled={graphNodeState[selectedGraphNode.uid]?.loading || (graphNodeState[selectedGraphNode.uid]?.expanded && !graphNodeState[selectedGraphNode.uid]?.hasMore)}
-                      style={{ padding: "0.36rem 0.55rem", borderRadius: "7px", border: "1px solid rgba(34,211,238,0.28)", background: "rgba(34,211,238,0.10)", color: "#67e8f9", cursor: graphNodeState[selectedGraphNode.uid]?.loading ? "not-allowed" : "pointer", fontSize: "0.66rem", fontWeight: 700 }}
-                    >
-                      {graphNodeState[selectedGraphNode.uid]?.loading ? "展开中…" : graphNodeState[selectedGraphNode.uid]?.expanded ? "已展开" : "展开下一跳"}
-                    </button>
-                    {graphNodeState[selectedGraphNode.uid]?.hasMore && (
-                      <button
-                        onClick={() => expandGraphNode(selectedGraphNode, true)}
-                        disabled={graphNodeState[selectedGraphNode.uid]?.loading}
-                        style={{ padding: "0.36rem 0.55rem", borderRadius: "7px", border: "1px solid rgba(245,158,11,0.32)", background: "rgba(245,158,11,0.10)", color: "#fcd34d", cursor: graphNodeState[selectedGraphNode.uid]?.loading ? "not-allowed" : "pointer", fontSize: "0.66rem", fontWeight: 700 }}
-                      >
-                        继续展开
-                      </button>
-                    )}
-                  </div>
                   <div style={{ marginTop: "0.4rem", color: "#67e8f9", fontWeight: 800 }}>相邻关系</div>
                   {selectedRelations.length === 0 ? (
                     <div style={{ color: "#64748b" }}>暂无相邻关系</div>
@@ -1101,11 +991,9 @@ export default function CoalMineAgent() {
                 </div>
               ) : (
                 <div style={{ color: "#64748b", fontSize: "0.7rem", lineHeight: 1.8 }}>
-                  图谱现在采用关键词中心图模式：检索后只召回中心一跳关系，点击节点再按需加载下一跳，高出度节点会分批继续展开。
+                  图谱已改为稳定视图：节点点击只用于查看来源和相邻关系，不再动态展开。
                   <div style={{ marginTop: "0.8rem", display: "flex", gap: "0.28rem", flexWrap: "wrap" }}>
                     {Object.entries({
-                      regulation: "规程",
-                      article: "条文",
                       hazard: "灾害",
                       condition: "条件",
                       step: "步骤",
