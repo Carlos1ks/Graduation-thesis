@@ -21,6 +21,7 @@ from knowledge_graph import (
     build_and_store_session_graph,
     get_session_graph,
     query_graph,
+    query_centered_graph,
     clear_session_graph,
     expand_graph_neighbors,
     start_graph_build,
@@ -569,9 +570,13 @@ def get_knowledge_graph():
     except (TypeError, ValueError):
         limit = 160
 
-    graph = get_session_graph(session_id)
-    view = query_graph(graph, keyword=keyword, limit=limit)
-    stats = graph.get("stats", {}) if isinstance(graph, dict) else {}
+    if keyword:
+        view = query_centered_graph(session_id=session_id, keyword=keyword, limit=limit)
+        stats = view.get("stats", {})
+    else:
+        graph = get_session_graph(session_id)
+        view = query_graph(graph, keyword=keyword, limit=limit)
+        stats = graph.get("stats", {}) if isinstance(graph, dict) else {}
     return jsonify({
         "success": True,
         "session_id": str(session_id or "default"),
@@ -585,6 +590,11 @@ def get_knowledge_graph():
         },
         "relation_types": stats.get("relation_types", {}),
         "query": keyword,
+        "center_uid": view.get("center_uid", ""),
+        "matched_uids": view.get("matched_uids", []),
+        "has_more": view.get("has_more", False),
+        "truncated": view.get("truncated", False),
+        "from_cache": view.get("from_cache", False),
     })
 
 
@@ -595,25 +605,33 @@ def query_knowledge_graph():
     session_id = str(payload.get('session_id', '')).strip() or None
     keyword = str(payload.get('keyword', '')).strip()
     try:
-        limit = int(payload.get("limit") or 160)
+        limit = int(payload.get("limit") or 80)
     except (TypeError, ValueError):
-        limit = 160
+        limit = 80
+    try:
+        depth = int(payload.get("depth") or 1)
+    except (TypeError, ValueError):
+        depth = 1
 
-    graph = get_session_graph(session_id)
-    view = query_graph(graph, keyword=keyword, limit=limit)
+    view = query_centered_graph(session_id=session_id, keyword=keyword, limit=limit, depth=depth)
     return jsonify({
         "success": True,
         "session_id": str(session_id or "default"),
         "nodes": view.get("nodes", []),
         "links": view.get("links", []),
         "relations": view.get("relations", []),
-        "stats": graph.get("stats", {}),
+        "stats": view.get("stats", {}),
         "view_stats": {
             "node_count": len(view.get("nodes", [])),
             "relation_count": len(view.get("relations", [])),
         },
-        "relation_types": graph.get("stats", {}).get("relation_types", {}),
+        "relation_types": view.get("stats", {}).get("relation_types", {}),
         "query": keyword,
+        "center_uid": view.get("center_uid", ""),
+        "matched_uids": view.get("matched_uids", []),
+        "has_more": view.get("has_more", False),
+        "truncated": view.get("truncated", False),
+        "from_cache": view.get("from_cache", False),
     })
 
 
@@ -652,8 +670,13 @@ def expand_knowledge_graph():
         limit = int(payload.get("limit") or 60)
     except (TypeError, ValueError):
         limit = 60
+    try:
+        offset = int(payload.get("offset") or 0)
+    except (TypeError, ValueError):
+        offset = 0
+    direction = str(payload.get("direction") or "both").strip().lower()
 
-    graph = expand_graph_neighbors(session_id=session_id, node_uid=node_uid, limit=limit)
+    graph = expand_graph_neighbors(session_id=session_id, node_uid=node_uid, limit=limit, offset=offset, direction=direction)
     return jsonify({
         "success": True,
         "session_id": str(session_id or "default"),
@@ -662,6 +685,13 @@ def expand_knowledge_graph():
         "links": graph.get("links", []),
         "relations": graph.get("relations", []),
         "stats": graph.get("stats", {}),
+        "offset": graph.get("offset", offset),
+        "limit": graph.get("limit", limit),
+        "has_more": graph.get("has_more", False),
+        "truncated": graph.get("truncated", False),
+        "from_cache": graph.get("from_cache", False),
+        "returned_relation_count": graph.get("returned_relation_count", len(graph.get("relations", []))),
+        "total_relation_count": graph.get("total_relation_count", len(graph.get("relations", []))),
     })
 
 

@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from collections import Counter
 from concurrent.futures import Future, ThreadPoolExecutor
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
@@ -28,6 +30,10 @@ _GRAPH_BUILD_FUTURES: Dict[str, Future] = {}
 _STATUS_DIR = Path(__file__).resolve().parent / ".graph_status"
 _ARTICLE_SPLIT_PATTERN = re.compile(r"(?=第[一二三四五六七八九十百千万零两\d]+条)")
 _ARTICLE_LABEL_PATTERN = re.compile(r"第[一二三四五六七八九十百千万零两\d]+条")
+_GRAPH_QUERY_CACHE: Dict[str, Tuple[float, Dict[str, object]]] = {}
+_GRAPH_QUERY_CACHE_LOCK = RLock()
+_GRAPH_QUERY_CACHE_TTL_SECONDS = 60
+_GRAPH_QUERY_CACHE_MAX_ITEMS = 256
 
 _VISIBLE_NODE_TYPES = {
     "hazard",
@@ -79,6 +85,16 @@ ALLOWED_RELATIONS = {
     "IF",
 }
 
+RELATION_LABEL_OVERRIDES = {
+    "CONTAINS": "包含",
+    "NEXT": "下一步",
+    "APPLIES_TO": "适用于",
+    "REQUIRES": "需要",
+    "PERFORMED_BY": "执行主体",
+    "HAS_RISK": "存在风险",
+    "IF": "条件",
+}
+
 RELATION_TYPE_MAP = {
     "CONTAINS": "CONTAINS",
     "NEXT": "NEXT",
@@ -88,6 +104,20 @@ RELATION_TYPE_MAP = {
     "HAS_RISK": "HAS_RISK",
     "IF": "IF",
 }
+
+RELATION_PRIORITY = {
+    "APPLIES_TO": 1,
+    "REQUIRES": 2,
+    "PERFORMED_BY": 3,
+    "HAS_RISK": 4,
+    "IF": 5,
+    "NEXT": 6,
+    "CONTAINS": 9,
+}
+
+def _relation_label(rel_type: str) -> str:
+    code = str(rel_type or "").strip()
+    return RELATION_LABEL_OVERRIDES.get(code.upper()) or RELATION_LABELS.get(code) or RELATION_LABELS.get(code.lower()) or code
 
 
 def _build_llm() -> ChatOpenAI:
@@ -277,7 +307,7 @@ def _sanitize_relation(
         "tail_id": target_id,
         "tail_label": nodes_by_uid[target_uid]["label"],
         "relation": rel_type,
-        "relation_label": RELATION_LABELS.get(rel_type, rel_type),
+        "relation_label": _relation_label(rel_type),
         "source_ref": f"{doc_name} · {article_label}",
         "condition": condition,
         "evidence": evidence,
@@ -349,7 +379,7 @@ def _build_graph_documents(documents: List[Dict[str, object]]) -> Dict[str, obje
                         "tail_id": article_node["id"],
                         "tail_label": article_label,
                         "relation": "CONTAINS",
-                        "relation_label": "包含条文",
+                        "relation_label": _relation_label("CONTAINS"),
                         "source_ref": doc_name,
                     },
                 )
@@ -825,6 +855,85 @@ def start_graph_build(session_id: str | None, documents: List[Dict[str, object]]
     return get_graph_build_status(sid)
 
 
+def _normalize_relation(rel: Dict[str, object]) -> Dict[str, object]:
+    normalized = dict(rel)
+    relation = str(normalized.get("relation") or "").strip()
+    normalized["relation"] = relation
+    normalized["relation_label"] = _relation_label(normalized.get("relation_label") or relation)
+    return normalized
+
+
+def _normalize_node(node: Dict[str, object]) -> Dict[str, object]:
+    normalized = dict(node)
+    node_type = str(normalized.get("type") or "").strip()
+    if node_type and not normalized.get("type_label"):
+        normalized["type_label"] = NODE_TYPE_LABELS.get(node_type, node_type)
+    return normalized
+
+
+def _cache_get(key: str) -> Dict[str, object] | None:
+    now = time.time()
+    with _GRAPH_QUERY_CACHE_LOCK:
+        item = _GRAPH_QUERY_CACHE.get(key)
+        if not item:
+            return None
+        created_at, value = item
+        if now - created_at > _GRAPH_QUERY_CACHE_TTL_SECONDS:
+            _GRAPH_QUERY_CACHE.pop(key, None)
+            return None
+        cached = deepcopy(value)
+        cached["from_cache"] = True
+        return cached
+
+
+def _cache_set(key: str, value: Dict[str, object]) -> Dict[str, object]:
+    with _GRAPH_QUERY_CACHE_LOCK:
+        if len(_GRAPH_QUERY_CACHE) >= _GRAPH_QUERY_CACHE_MAX_ITEMS:
+            oldest_key = min(_GRAPH_QUERY_CACHE, key=lambda item: _GRAPH_QUERY_CACHE[item][0])
+            _GRAPH_QUERY_CACHE.pop(oldest_key, None)
+        snapshot = deepcopy(value)
+        snapshot["from_cache"] = False
+        _GRAPH_QUERY_CACHE[key] = (time.time(), snapshot)
+    result = deepcopy(value)
+    result["from_cache"] = False
+    return result
+
+
+def _relation_priority(relation: str) -> int:
+    return RELATION_PRIORITY.get(str(relation or "").upper(), 50)
+
+
+def _finalize_graph_response(
+    records: List[Dict[str, object]],
+    *,
+    stats: Dict[str, object] | None = None,
+    query: str = "",
+    center_uid: str = "",
+    matched_uids: List[str] | None = None,
+    limit: int = 80,
+    offset: int = 0,
+    total_relations: int | None = None,
+) -> Dict[str, object]:
+    graph = _map_neo4j_records_to_graph(records)
+    graph["nodes"] = [_normalize_node(node) for node in graph.get("nodes", [])]
+    graph["relations"] = [_normalize_relation(rel) for rel in graph.get("relations", [])]
+    graph["links"] = graph["relations"]
+    relation_count = len(graph["relations"])
+    total = total_relations if total_relations is not None else relation_count
+    graph["stats"] = stats or {"node_count": len(graph["nodes"]), "relation_count": relation_count}
+    graph["query"] = query
+    graph["center_uid"] = center_uid
+    graph["matched_uids"] = matched_uids or ([center_uid] if center_uid else [])
+    graph["limit"] = limit
+    graph["offset"] = offset
+    graph["returned_relation_count"] = relation_count
+    graph["total_relation_count"] = total
+    graph["has_more"] = offset + relation_count < total
+    graph["truncated"] = graph["has_more"] or relation_count >= limit
+    graph["from_cache"] = False
+    return graph
+
+
 def _map_neo4j_records_to_graph(records: List[Dict[str, object]]) -> Dict[str, object]:
     nodes: Dict[str, Dict[str, object]] = {}
     relations: Dict[str, Dict[str, object]] = {}
@@ -852,9 +961,8 @@ def get_session_graph(session_id: str | None) -> Dict[str, object]:
         """,
         session_id=sid,
     )
-    graph = _map_neo4j_records_to_graph(records)
+    graph = _finalize_graph_response(records, stats=_stats_for_session(sid), limit=len(records) or 1)
     graph["document_summaries"] = []
-    graph["stats"] = _stats_for_session(sid)
     return graph
 
 
@@ -956,32 +1064,215 @@ def query_graph(graph: Dict[str, object], keyword: str = "", limit: int = 80) ->
     }
 
 
-def expand_graph_neighbors(session_id: str | None, node_uid: str, limit: int = 60) -> Dict[str, object]:
+def query_centered_graph(session_id: str | None, keyword: str = "", limit: int = 80, depth: int = 1) -> Dict[str, object]:
     sid = _get_session_id(session_id)
-    target_uid = str(node_uid or "").strip()
-    if not target_uid:
-        return {"nodes": [], "relations": [], "links": [], "stats": {"node_count": 0, "relation_count": 0}}
+    keyword_text = str(keyword or "").strip()
+    safe_limit = min(160, max(10, int(limit or 80)))
+    safe_depth = min(2, max(1, int(depth or 1)))
+    cache_key = f"center::{sid}::{keyword_text}::{safe_limit}::{safe_depth}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+    if not config.NEO4J_ENABLED:
+        return {"nodes": [], "relations": [], "links": [], "stats": {"node_count": 0, "relation_count": 0}, "query": keyword_text, "center_uid": "", "matched_uids": [], "has_more": False, "truncated": False, "from_cache": False}
+
+    if keyword_text:
+        center_rows = _execute_read(
+            """
+            MATCH (n:KGNode {session_id: $session_id})
+            WITH n,
+                 CASE
+                   WHEN toLower(coalesce(n.label, '')) = toLower($keyword) THEN 0
+                   WHEN toLower(coalesce(n.id, '')) = toLower($keyword) THEN 1
+                   WHEN toLower(coalesce(n.label, '')) CONTAINS toLower($keyword) THEN 2
+                   WHEN toLower(coalesce(n.id, '')) CONTAINS toLower($keyword) THEN 3
+                   WHEN toLower(coalesce(n.type_label, '')) CONTAINS toLower($keyword) THEN 4
+                   WHEN any(source IN coalesce(n.sources, []) WHERE toLower(toString(source)) CONTAINS toLower($keyword)) THEN 5
+                   ELSE 99
+                 END AS score
+            WHERE score < 99
+            RETURN n.uid AS uid, score
+            ORDER BY score ASC, size(coalesce(n.label, '')) ASC
+            LIMIT 6
+            """,
+            session_id=sid,
+            keyword=keyword_text,
+        )
+        matched_uids = [str(row.get("uid")) for row in center_rows if row.get("uid")]
+        if not matched_uids:
+            center_rows = _execute_read(
+                """
+                MATCH (a:KGNode {session_id: $session_id})-[r:KG_REL {session_id: $session_id}]->(b:KGNode {session_id: $session_id})
+                WHERE toLower(coalesce(r.head_label, '')) CONTAINS toLower($keyword)
+                   OR toLower(coalesce(r.tail_label, '')) CONTAINS toLower($keyword)
+                   OR toLower(coalesce(r.relation_label, '')) CONTAINS toLower($keyword)
+                   OR toLower(coalesce(r.condition, '')) CONTAINS toLower($keyword)
+                   OR toLower(coalesce(r.evidence, '')) CONTAINS toLower($keyword)
+                RETURN a.uid AS source_uid, b.uid AS target_uid
+                LIMIT 6
+                """,
+                session_id=sid,
+                keyword=keyword_text,
+            )
+            matched_uids = []
+            for row in center_rows:
+                if row.get("source_uid"):
+                    matched_uids.append(str(row["source_uid"]))
+                if row.get("target_uid"):
+                    matched_uids.append(str(row["target_uid"]))
+            matched_uids = list(dict.fromkeys(matched_uids))[:6]
+    else:
+        center_rows = _execute_read(
+            """
+            MATCH (n:KGNode {session_id: $session_id})
+            OPTIONAL MATCH (n)-[r1:KG_REL {session_id: $session_id}]-()
+            WITH n, count(r1) AS degree
+            WHERE degree > 0
+            RETURN n.uid AS uid, degree
+            ORDER BY degree DESC
+            LIMIT 1
+            """,
+            session_id=sid,
+        )
+        matched_uids = [str(row.get("uid")) for row in center_rows if row.get("uid")]
+
+    if not matched_uids:
+        result = _finalize_graph_response([], stats=_stats_for_session(sid), query=keyword_text, limit=safe_limit)
+        return _cache_set(cache_key, result)
+
     records = _execute_read(
         """
-        MATCH (center:KGNode {session_id: $session_id, uid: $uid})
-        OPTIONAL MATCH (center)-[r1:KG_REL {session_id: $session_id}]->(nbr1:KGNode {session_id: $session_id})
-        OPTIONAL MATCH (nbr2:KGNode {session_id: $session_id})-[r2:KG_REL {session_id: $session_id}]->(center)
-        WITH center,
-             collect(DISTINCT {source_node: properties(center), rel: properties(r1), target_node: properties(nbr1)}) +
-             collect(DISTINCT {source_node: properties(nbr2), rel: properties(r2), target_node: properties(center)}) AS rows
-        UNWIND rows AS row
-        WITH row
-        WHERE row.rel IS NOT NULL
-        RETURN row.source_node AS source_node, row.rel AS rel, row.target_node AS target_node
-        LIMIT $limit
+        MATCH (center:KGNode {session_id: $session_id})
+        WHERE center.uid IN $uids
+        MATCH (center)-[r:KG_REL {session_id: $session_id}]-(neighbor:KGNode {session_id: $session_id})
+        WITH center, r, neighbor,
+             CASE coalesce(r.relation, '')
+               WHEN 'APPLIES_TO' THEN 1
+               WHEN 'REQUIRES' THEN 2
+               WHEN 'PERFORMED_BY' THEN 3
+               WHEN 'HAS_RISK' THEN 4
+               WHEN 'IF' THEN 5
+               WHEN 'NEXT' THEN 6
+               WHEN 'CONTAINS' THEN 9
+               ELSE 50
+             END AS rel_order
+        ORDER BY center.uid, rel_order ASC, coalesce(r.relation_label, '') ASC, coalesce(neighbor.label, '') ASC
+        WITH collect({source_node: properties(startNode(r)), rel: properties(r), target_node: properties(endNode(r))}) AS rows
+        WITH rows, size(rows) AS total
+        UNWIND rows[..$limit] AS row
+        RETURN row.source_node AS source_node, row.rel AS rel, row.target_node AS target_node, total
         """,
         session_id=sid,
-        uid=target_uid,
-        limit=max(10, int(limit or 60)),
+        uids=matched_uids,
+        limit=safe_limit,
     )
-    graph = _map_neo4j_records_to_graph(records)
-    graph["stats"] = {"node_count": len(graph.get("nodes", [])), "relation_count": len(graph.get("relations", []))}
-    return graph
+    total_relations = int(records[0].get("total") or len(records)) if records else 0
+    result = _finalize_graph_response(
+        records,
+        stats=_stats_for_session(sid),
+        query=keyword_text,
+        center_uid=matched_uids[0],
+        matched_uids=matched_uids,
+        limit=safe_limit,
+        total_relations=total_relations,
+    )
+    return _cache_set(cache_key, result)
+
+
+def expand_graph_neighbors(session_id: str | None, node_uid: str, limit: int = 60, offset: int = 0, direction: str = "both") -> Dict[str, object]:
+    sid = _get_session_id(session_id)
+    target_uid = str(node_uid or "").strip()
+    safe_limit = min(120, max(10, int(limit or 60)))
+    safe_offset = max(0, int(offset or 0))
+    safe_direction = str(direction or "both").strip().lower()
+    if safe_direction not in {"both", "out", "in"}:
+        safe_direction = "both"
+    if not target_uid:
+        return {"nodes": [], "relations": [], "links": [], "stats": {"node_count": 0, "relation_count": 0}, "has_more": False, "from_cache": False}
+    cache_key = f"expand::{sid}::{target_uid}::{safe_limit}::{safe_offset}::{safe_direction}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    if safe_direction == "out":
+        query = """
+        MATCH (center:KGNode {session_id: $session_id, uid: $uid})-[r:KG_REL {session_id: $session_id}]->(neighbor:KGNode {session_id: $session_id})
+        WITH r,
+             CASE coalesce(r.relation, '')
+               WHEN 'APPLIES_TO' THEN 1
+               WHEN 'REQUIRES' THEN 2
+               WHEN 'PERFORMED_BY' THEN 3
+               WHEN 'HAS_RISK' THEN 4
+               WHEN 'IF' THEN 5
+               WHEN 'NEXT' THEN 6
+               WHEN 'CONTAINS' THEN 9
+               ELSE 50
+             END AS rel_order
+        ORDER BY rel_order ASC, coalesce(r.relation_label, '') ASC, coalesce(neighbor.label, '') ASC
+        WITH collect({source_node: properties(startNode(r)), rel: properties(r), target_node: properties(endNode(r))}) AS rows
+        WITH rows, size(rows) AS total
+        UNWIND rows[$offset..$end] AS row
+        RETURN row.source_node AS source_node, row.rel AS rel, row.target_node AS target_node, total
+        """
+    elif safe_direction == "in":
+        query = """
+        MATCH (neighbor:KGNode {session_id: $session_id})-[r:KG_REL {session_id: $session_id}]->(center:KGNode {session_id: $session_id, uid: $uid})
+        WITH r,
+             CASE coalesce(r.relation, '')
+               WHEN 'APPLIES_TO' THEN 1
+               WHEN 'REQUIRES' THEN 2
+               WHEN 'PERFORMED_BY' THEN 3
+               WHEN 'HAS_RISK' THEN 4
+               WHEN 'IF' THEN 5
+               WHEN 'NEXT' THEN 6
+               WHEN 'CONTAINS' THEN 9
+               ELSE 50
+             END AS rel_order
+        ORDER BY rel_order ASC, coalesce(r.relation_label, '') ASC, coalesce(neighbor.label, '') ASC
+        WITH collect({source_node: properties(startNode(r)), rel: properties(r), target_node: properties(endNode(r))}) AS rows
+        WITH rows, size(rows) AS total
+        UNWIND rows[$offset..$end] AS row
+        RETURN row.source_node AS source_node, row.rel AS rel, row.target_node AS target_node, total
+        """
+    else:
+        query = """
+        MATCH (center:KGNode {session_id: $session_id, uid: $uid})-[r:KG_REL {session_id: $session_id}]-(neighbor:KGNode {session_id: $session_id})
+        WITH r, neighbor,
+             CASE coalesce(r.relation, '')
+               WHEN 'APPLIES_TO' THEN 1
+               WHEN 'REQUIRES' THEN 2
+               WHEN 'PERFORMED_BY' THEN 3
+               WHEN 'HAS_RISK' THEN 4
+               WHEN 'IF' THEN 5
+               WHEN 'NEXT' THEN 6
+               WHEN 'CONTAINS' THEN 9
+               ELSE 50
+             END AS rel_order
+        ORDER BY rel_order ASC, coalesce(r.relation_label, '') ASC, coalesce(neighbor.label, '') ASC
+        WITH collect({source_node: properties(startNode(r)), rel: properties(r), target_node: properties(endNode(r))}) AS rows
+        WITH rows, size(rows) AS total
+        UNWIND rows[$offset..$end] AS row
+        RETURN row.source_node AS source_node, row.rel AS rel, row.target_node AS target_node, total
+        """
+
+    records = _execute_read(
+        query,
+        session_id=sid,
+        uid=target_uid,
+        offset=safe_offset,
+        end=safe_offset + safe_limit,
+    )
+    total_relations = int(records[0].get("total") or len(records)) if records else 0
+    result = _finalize_graph_response(
+        records,
+        query=target_uid,
+        center_uid=target_uid,
+        matched_uids=[target_uid],
+        limit=safe_limit,
+        offset=safe_offset,
+        total_relations=total_relations,
+    )
+    return _cache_set(cache_key, result)
 
 
 def _relation_text(rel: Dict[str, object]) -> str:
