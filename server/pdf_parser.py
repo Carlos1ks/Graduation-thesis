@@ -8,6 +8,7 @@ import tempfile
 import requests
 import base64
 from pathlib import Path
+import json
 from config import config
 from retrieval import (
     ingest_document,
@@ -26,6 +27,7 @@ from knowledge_graph import (
     expand_graph_neighbors,
     start_graph_build,
     get_graph_build_status,
+    import_triples_graph,
 )
 
 # LangChain Agent
@@ -531,6 +533,41 @@ def upload_document():
         return jsonify({'error': str(e)}), 400
     except RuntimeError as e:
         return jsonify({'error': str(e)}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/knowledge-graph/triples/upload', methods=['POST'])
+def upload_knowledge_graph_triples():
+    """Upload pre-extracted triples JSON and write it directly to Neo4j."""
+    if 'file' not in request.files:
+        return jsonify({'error': '未找到三元组文件'}), 400
+
+    file = request.files['file']
+    session_id = str(request.form.get('session_id', '')).strip() or None
+    file_name = str(getattr(file, 'filename', '') or 'triples.json')
+
+    try:
+        raw = file.read()
+        if not raw:
+            return jsonify({'error': '三元组文件为空'}), 400
+        payload = json.loads(raw.decode('utf-8-sig'))
+        graph = import_triples_graph(session_id=session_id, payload=payload, doc_name=file_name)
+        stats = graph.get("stats", {})
+        return jsonify({
+            "success": True,
+            "session_id": str(session_id or "default"),
+            "file_name": file_name,
+            "node_count": int(stats.get("node_count") or len(graph.get("nodes", []))),
+            "relation_count": int(stats.get("relation_count") or len(graph.get("relations", []))),
+            "knowledge_graph": {
+                "build_status": get_graph_build_status(session_id),
+            },
+        })
+    except json.JSONDecodeError as e:
+        return jsonify({'error': f'三元组 JSON 解析失败: {str(e)}'}), 400
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

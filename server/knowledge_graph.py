@@ -28,7 +28,7 @@ _BUILD_EXECUTOR = ThreadPoolExecutor(max_workers=1)
 _GRAPH_BUILD_STATUS: Dict[str, Dict[str, object]] = {}
 _GRAPH_BUILD_FUTURES: Dict[str, Future] = {}
 _STATUS_DIR = Path(__file__).resolve().parent / ".graph_status"
-_ARTICLE_SPLIT_PATTERN = re.compile(r"(?=第[一二三四五六七八九十百千万零两\d]+条)")
+_ARTICLE_SPLIT_PATTERN = re.compile(r"(?=第[一二三四五六七八九十百千万零两\d]+条(?:\s|$))")
 _ARTICLE_LABEL_PATTERN = re.compile(r"第[一二三四五六七八九十百千万零两\d]+条")
 _GRAPH_QUERY_CACHE: Dict[str, Tuple[float, Dict[str, object]]] = {}
 _GRAPH_QUERY_CACHE_LOCK = RLock()
@@ -226,14 +226,17 @@ def _normalize_node_key_text(value: str) -> str:
 
 def _canonical_entity(node_type: str, node_id: str, label: str) -> Tuple[str, str]:
     clean_type = str(node_type or "").strip().lower()
-    haystack = f"{node_id} {label}".lower()
-    normalized = _normalize_node_key_text(f"{node_id}{label}")
+    raw_id = str(node_id or "").strip()
+    raw_label = str(label or raw_id).strip()
+    haystack = f"{raw_id} {raw_label}".lower()
     for canonical_id, canonical_label, aliases in _CANONICAL_NODE_RULES.get(clean_type, []):
         if any(str(alias).lower() in haystack for alias in aliases):
             return canonical_id, canonical_label
     if clean_type in {"hazard", "risk", "step", "role", "equipment", "condition"}:
-        return normalized, str(label or node_id).strip()
-    return str(node_id or normalized).strip(), str(label or node_id).strip()
+        canonical_id = _safe_id(raw_id) if raw_id else _normalize_node_key_text(raw_label)
+        return canonical_id, raw_label or canonical_id
+    canonical_id = _safe_id(raw_id) if raw_id else _normalize_node_key_text(raw_label)
+    return canonical_id, raw_label or canonical_id
 
 
 def _resolve_node_uid(nodes_by_uid: Dict[str, Dict[str, object]], node_type: str, raw_id: str) -> str:
@@ -421,6 +424,7 @@ def _sanitize_relation(
     doc_name: str,
     article_label: str,
 ) -> Dict[str, object] | None:
+    article_label = str(rel.get("article_label") or article_label or "").strip()
     rel_type = str(rel.get("type") or "").strip().upper()
     if rel_type not in ALLOWED_RELATIONS:
         return None
@@ -748,6 +752,7 @@ def _upsert_graph_to_neo4j(session_id: str, graph: Dict[str, object]) -> None:
             "type_label": node.get("type_label"),
             "id": node.get("id"),
             "label": node.get("label"),
+            "aliases": node.get("aliases") or [],
             "doc_name": node.get("doc_name"),
             "article_label": node.get("article_label"),
             "text_excerpt": node.get("text_excerpt"),
@@ -997,9 +1002,67 @@ def start_graph_build(session_id: str | None, documents: List[Dict[str, object]]
     return get_graph_build_status(sid)
 
 
+def _build_graph_from_extracted_payload(payload: Dict[str, object], doc_name: str = "uploaded triples") -> Dict[str, object]:
+    if not isinstance(payload, dict):
+        raise ValueError("三元组文件必须是 JSON 对象")
+    nodes_by_uid: Dict[str, Dict[str, object]] = {}
+    relations_by_id: Dict[str, Dict[str, object]] = {}
+
+    article_label = str(payload.get("article_label") or "上传三元组").strip()
+    article_uid = _node_uid("article", _safe_id(f"{doc_name}:{article_label}"))
+    raw_nodes = payload.get("nodes") if isinstance(payload.get("nodes"), list) else []
+    raw_relations = payload.get("relationships") if isinstance(payload.get("relationships"), list) else []
+    if not raw_relations:
+        raw_relations = payload.get("relations") if isinstance(payload.get("relations"), list) else []
+    if not raw_relations:
+        raw_relations = payload.get("links") if isinstance(payload.get("links"), list) else []
+
+    for raw_node in raw_nodes:
+        if not isinstance(raw_node, dict):
+            continue
+        clean = _sanitize_node(raw_node, doc_name, article_label, article_uid)
+        if clean:
+            _put_node(nodes_by_uid, clean)
+
+    for raw_rel in raw_relations:
+        if not isinstance(raw_rel, dict):
+            continue
+        clean_rel = _sanitize_relation(raw_rel, nodes_by_uid, doc_name, article_label)
+        if clean_rel:
+            relations_by_id[clean_rel["id"]] = clean_rel
+
+    graph = _normalize_graph_shape(list(nodes_by_uid.values()), list(relations_by_id.values()))
+    if not graph["nodes"] or not graph["relations"]:
+        raise ValueError("三元组文件没有可导入的节点或关系")
+    return graph
+
+
+def import_triples_graph(session_id: str | None, payload: Dict[str, object], doc_name: str = "uploaded triples") -> Dict[str, object]:
+    sid = _get_session_id(session_id)
+    graph = _build_graph_from_extracted_payload(payload, doc_name=doc_name)
+    if config.NEO4J_ENABLED:
+        _write_graph_to_neo4j(sid, graph)
+    _cache_clear()
+    stats = graph.get("stats", {})
+    _set_build_status(
+        sid,
+        state="completed",
+        message="三元组已导入 Neo4j",
+        started_at=_now_iso(),
+        finished_at=_now_iso(),
+        node_count=int(stats.get("node_count") or 0),
+        relation_count=int(stats.get("relation_count") or 0),
+        current=int(stats.get("relation_count") or 0),
+        total=int(stats.get("relation_count") or 0),
+        progress_percent=100,
+        error="",
+    )
+    return graph
+
+
 def _normalize_relation(rel: Dict[str, object]) -> Dict[str, object]:
     normalized = dict(rel)
-    relation = str(normalized.get("relation") or "").strip()
+    relation = str(normalized.get("relation") or normalized.get("type") or "").strip().upper()
     normalized["relation"] = relation
     normalized["relation_label"] = _relation_label(normalized.get("relation_label") or relation)
     return normalized
@@ -1143,6 +1206,11 @@ def _cache_set(key: str, value: Dict[str, object]) -> Dict[str, object]:
     result = deepcopy(value)
     result["from_cache"] = False
     return result
+
+
+def _cache_clear() -> None:
+    with _GRAPH_QUERY_CACHE_LOCK:
+        _GRAPH_QUERY_CACHE.clear()
 
 
 def _relation_priority(relation: str) -> int:

@@ -1,0 +1,51 @@
+{
+  "nodes": [
+    {
+      "type": "hazard",
+      "id": "gas",
+      "label": "瓦斯灾害"
+    },
+    {
+      "type": "step",
+      "id": "stop_work",
+      "label": "停止作业"
+    },
+    {
+      "type": "step",
+      "id": "evacuate",
+      "label": "撤离人员"
+    },
+    {
+      "type": "role",
+      "id": "dispatch",
+      "label": "调度室"
+    }
+  ],
+  "relationships": [
+    {
+      "source_id": "gas",
+      "source_type": "hazard",
+      "target_id": "stop_work",
+      "target_type": "step",
+      "type": "APPLIES_TO",
+      "condition": "瓦斯超限",
+      "evidence": "瓦斯超限时必须停止作业"
+    },
+    {
+      "source_id": "gas",
+      "source_type": "hazard",
+      "target_id": "evacuate",
+      "target_type": "step",
+      "type": "REQUIRES",
+      "evidence": "撤离人员"
+    },
+    {
+      "source_id": "stop_work",
+      "source_type": "step",
+      "target_id": "dispatch",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "evidence": "由调度室统一指挥"
+    }
+  ]
+}

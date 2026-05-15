@@ -7,7 +7,7 @@ from uuid import uuid4
 from config import config
 
 _DEFAULT_SESSION_ID = "default"
-_ARTICLE_SPLIT_PATTERN = re.compile(r"(?=第[一二三四五六七八九十百千万零两\d]+条)")
+_ARTICLE_SPLIT_PATTERN = re.compile(r"(?=第[一二三四五六七八九十百千万零两\d]+条(?:\s|$))")
 _ARTICLE_LABEL_PATTERN = re.compile(r"第[一二三四五六七八九十百千万零两\d]+条")
 _SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[。；！？])")
 _HASH_EMBEDDING_DIM = 384

@@ -5,6 +5,7 @@ const BACKEND_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const CHAT_API_URL = `${BACKEND_BASE_URL}/api/agent-chat`;
 const DOCUMENT_UPLOAD_API_URL = `${BACKEND_BASE_URL}/api/documents/upload`;
 const DOCUMENT_REMOVE_API_URL = `${BACKEND_BASE_URL}/api/documents/remove`;
+const TRIPLES_UPLOAD_API_URL = `${BACKEND_BASE_URL}/api/knowledge-graph/triples/upload`;
 const VIDEO_ANALYZE_API_URL = `${BACKEND_BASE_URL}/api/video-analyze`;
 const SENSOR_PUSH_API_URL = `${BACKEND_BASE_URL}/api/sensors/push`;
 const KNOWLEDGE_GRAPH_QUERY_API_URL = `${BACKEND_BASE_URL}/api/knowledge-graph/query`;
@@ -70,6 +71,22 @@ async function removeDocumentFromBackend(documentId, sessionId) {
   if (!response.ok || !result.success) {
     throw new Error(result.error || `文档移除失败：${response.status}`);
   }
+}
+
+async function uploadTriplesToBackend(file, sessionId) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("session_id", sessionId);
+
+  const response = await fetch(TRIPLES_UPLOAD_API_URL, {
+    method: "POST",
+    body: formData,
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `三元组上传失败：${response.status}`);
+  }
+  return result;
 }
 
 async function uploadVideoToBackend(file, sessionId) {
@@ -158,6 +175,17 @@ function emptyGraphData() {
   return { nodes: [], links: [], stats: {}, centerUid: "", matchedUids: [] };
 }
 
+function graphNodeDisplayLabel(node) {
+  const candidates = [
+    node?.label,
+    ...(Array.isArray(node?.aliases) ? node.aliases : []),
+  ];
+  const readable = candidates
+    .map(value => String(value || "").trim())
+    .find(value => /[\u4e00-\u9fa5]/.test(value));
+  return readable || String(node?.label || node?.name || node?.id || "").trim();
+}
+
 function graphPayloadForView(data, extra = {}) {
   const compactGraph = compactKnowledgeGraphForView(data?.nodes, data?.links || data?.relations);
   const centerUid = data?.center_uid || extra.centerUid || "";
@@ -240,6 +268,7 @@ export default function CoalMineAgent() {
   const forceGraphRef = useRef(null);
   const graphQueryCacheRef = useRef(new Map());
   const fileInputRef = useRef(null);
+  const triplesInputRef = useRef(null);
   const imageInputRef = useRef(null);
   const videoInputRef = useRef(null);
   const sessionIdRef = useRef(getInitialSessionId());
@@ -363,6 +392,46 @@ export default function CoalMineAgent() {
   };
 
   // 处理图片上传
+  const handleTriplesUpload = async (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    setUploading(true);
+    for (const file of files) {
+      try {
+        const result = await uploadTriplesToBackend(file, sessionIdRef.current);
+        graphQueryCacheRef.current.clear();
+        setGraphData(emptyGraphData());
+        setSelectedGraphNode(null);
+        setGraphError("");
+        setGraphBuildStatus(result.knowledge_graph?.build_status || {
+          state: "completed",
+          progress_percent: 100,
+          node_count: result.node_count || 0,
+          relation_count: result.relation_count || 0,
+        });
+        setGraphOpen(true);
+        const data = await fetchKnowledgeGraph(sessionIdRef.current, "");
+        const nextGraphData = graphPayloadForView(data);
+        setGraphData(nextGraphData);
+        graphQueryCacheRef.current.set(`${sessionIdRef.current}::`, nextGraphData);
+        setGraphFocusedKey(v => v + 1);
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          content: `已导入三元组文件 **${result.file_name || file.name}**，写入 ${result.node_count || 0} 个节点、${result.relation_count || 0} 条关系。`,
+          timestamp: new Date(),
+        }]);
+      } catch (err) {
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          content: `三元组文件 **${file.name}** 导入失败：${err.message}`,
+          timestamp: new Date(),
+        }]);
+      }
+    }
+    setUploading(false);
+    e.target.value = "";
+  };
+
   const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files);
     if (!files.length) return;
@@ -773,6 +842,7 @@ export default function CoalMineAgent() {
     const graphNodes = safeNodes.map(node => ({
       ...node,
       id: node.uid,
+      displayLabel: graphNodeDisplayLabel(node),
       color: node.isCenter ? "#ef4444" : node.isMatched ? "#f59e0b" : nodeColor(node.type),
       val: selectedGraphNode?.uid === node.uid ? 18 : node.isCenter ? 20 : node.isMatched ? 15 : node.type === "hazard" ? 13 : 9,
     }));
@@ -909,11 +979,11 @@ export default function CoalMineAgent() {
                   linkWidth={(link) => link.duplicateCount > 1 ? 1.6 : 1}
                   nodeColor={(node) => node.color}
                   nodeVal={(node) => node.val}
-                  nodeLabel={(node) => `${node.label || node.id || ""}${node.type ? ` (${node.type})` : ""}`}
+                  nodeLabel={(node) => `${node.displayLabel || graphNodeDisplayLabel(node)}${node.type ? ` (${node.type})` : ""}`}
                   linkLabel={(link) => [link.relation_label, link.condition].filter(Boolean).join(" | ")}
                   nodeCanvasObjectMode={() => "after"}
                   nodeCanvasObject={(node, ctx, globalScale) => {
-                    const label = String(node.label || node.id || "");
+                    const label = String(node.displayLabel || graphNodeDisplayLabel(node) || "");
                     const radius = Math.sqrt(Math.max(node.val || 8, 1)) * 3.1;
                     if (node.isCenter || selectedGraphNode?.uid === node.uid) {
                       ctx.beginPath();
@@ -963,7 +1033,7 @@ export default function CoalMineAgent() {
               <div style={{ fontSize: "0.75rem", color: "#67e8f9", fontWeight: 800, marginBottom: "0.55rem" }}>图谱详情</div>
               {selectedGraphNode ? (
                 <div style={{ display: "grid", gap: "0.45rem", fontSize: "0.68rem", color: "#cbd5e1", lineHeight: 1.6 }}>
-                  <div style={{ fontSize: "0.86rem", color: selectedGraphNode.isCenter ? "#fca5a5" : nodeColor(selectedGraphNode.type), fontWeight: 800 }}>{selectedGraphNode.label}</div>
+                  <div style={{ fontSize: "0.86rem", color: selectedGraphNode.isCenter ? "#fca5a5" : nodeColor(selectedGraphNode.type), fontWeight: 800 }}>{graphNodeDisplayLabel(selectedGraphNode)}</div>
                   <div><span style={{ color: "#94a3b8" }}>类型：</span>{selectedGraphNode.type_label || selectedGraphNode.type}</div>
                   {selectedGraphNode.isCenter && <div style={{ color: "#fecaca" }}>当前搜索中心节点</div>}
                   {selectedGraphNode.text_excerpt && <div style={{ color: "#94a3b8", whiteSpace: "pre-wrap" }}>{selectedGraphNode.text_excerpt}</div>}
@@ -1192,6 +1262,7 @@ export default function CoalMineAgent() {
               {/* Upload */}
               <div style={{ padding: "0.55rem" }}>
                 <input ref={fileInputRef} type="file" accept=".txt,.docx,.pdf" multiple onChange={handleUpload} style={{ display: "none" }} />
+                <input ref={triplesInputRef} type="file" accept=".json,application/json" onChange={handleTriplesUpload} style={{ display: "none" }} />
                 <input ref={imageInputRef} type="file" accept="image/*" multiple onChange={handleImageUpload} style={{ display: "none" }} />
                 <input ref={videoInputRef} type="file" accept="video/*" multiple onChange={handleVideoUpload} style={{ display: "none" }} />
                 <button onClick={() => fileInputRef.current?.click()} disabled={uploading} style={{ width: "100%", padding: "0.5rem", background: "linear-gradient(135deg,rgba(74,222,128,0.15),rgba(34,211,238,0.1))", border: "1px dashed rgba(74,222,128,0.45)", borderRadius: "7px", color: uploading ? "#4ade8055" : "#4ade80", cursor: uploading ? "not-allowed" : "pointer", fontSize: "0.73rem", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem" }}>
@@ -1199,6 +1270,11 @@ export default function CoalMineAgent() {
                 </button>
                 <div style={{ fontSize: "0.6rem", color: "#475569", textAlign: "center", marginTop: "0.3rem" }}>TXT · DOCX · PDF</div>
                 
+                <button onClick={() => triplesInputRef.current?.click()} disabled={uploading} style={{ width: "100%", padding: "0.5rem", marginTop: "0.45rem", background: "linear-gradient(135deg,rgba(34,211,238,0.15),rgba(20,184,166,0.1))", border: "1px dashed rgba(34,211,238,0.45)", borderRadius: "7px", color: uploading ? "#22d3ee55" : "#67e8f9", cursor: uploading ? "not-allowed" : "pointer", fontSize: "0.73rem", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem" }}>
+                  上传三元组
+                </button>
+                <div style={{ fontSize: "0.6rem", color: "#475569", textAlign: "center", marginTop: "0.3rem" }}>JSON · 直接写入 Neo4j</div>
+
                 <button onClick={() => imageInputRef.current?.click()} disabled={imageUploading} style={{ width: "100%", padding: "0.5rem", marginTop: "0.45rem", background: "linear-gradient(135deg,rgba(59,130,246,0.15),rgba(14,165,233,0.1))", border: "1px dashed rgba(59,130,246,0.45)", borderRadius: "7px", color: imageUploading ? "#60a5fa55" : "#60a5fa", cursor: imageUploading ? "not-allowed" : "pointer", fontSize: "0.73rem", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem" }}>
                   {imageUploading ? "📸 上传中..." : "📸 上传现场图片"}
                 </button>

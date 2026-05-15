@@ -1,0 +1,4393 @@
+{
+  "doc_name": "煤矿安全规程2022.pdf",
+  "source_pdf": "C:\\self\\Draft_py\\煤矿安全规程2022.pdf",
+  "page_count": 324,
+  "article_count": 30,
+  "extracted_at": "2026-05-14T20:23:15+0800",
+  "nodes": [
+    {
+      "type": "regulation",
+      "id": "regulation_5",
+      "label": "第五条"
+    },
+    {
+      "type": "role",
+      "id": "safety_management_org",
+      "label": "专门机构"
+    },
+    {
+      "type": "equipment",
+      "id": "safety_equipment",
+      "label": "装备"
+    },
+    {
+      "type": "role",
+      "id": "employee",
+      "label": "从业人员"
+    },
+    {
+      "type": "step",
+      "id": "stop_work",
+      "label": "停止作业"
+    },
+    {
+      "type": "step",
+      "id": "evacuate",
+      "label": "撤到安全地点"
+    },
+    {
+      "type": "step",
+      "id": "refuse_work",
+      "label": "拒绝作业"
+    },
+    {
+      "type": "condition",
+      "id": "danger_present",
+      "label": "工作地点出现险情"
+    },
+    {
+      "type": "condition",
+      "id": "safety_not_guaranteed",
+      "label": "险情未处理且不能保证人身安全"
+    },
+    {
+      "type": "regulation",
+      "id": "regulation_9",
+      "label": "第九条"
+    },
+    {
+      "type": "step",
+      "id": "safety_training",
+      "label": "进行安全教育和培训"
+    },
+    {
+      "type": "step",
+      "id": "assess_training",
+      "label": "培训不合格不得上岗"
+    },
+    {
+      "type": "step",
+      "id": "certify_special_ops",
+      "label": "特种作业人员培训合格并取得资格证书"
+    },
+    {
+      "type": "step",
+      "id": "certify_managers",
+      "label": "主要负责人和安全生产管理人员考核合格"
+    },
+    {
+      "type": "step",
+      "id": "certify_mine_manager",
+      "label": "矿长具备安全专业知识和事故处理能力"
+    },
+    {
+      "type": "role",
+      "id": "employees",
+      "label": "从业人员"
+    },
+    {
+      "type": "role",
+      "id": "managers",
+      "label": "主要负责人和安全生产管理人员"
+    },
+    {
+      "type": "role",
+      "id": "special_ops",
+      "label": "特种作业人员"
+    },
+    {
+      "type": "role",
+      "id": "mine_manager",
+      "label": "矿长"
+    },
+    {
+      "type": "regulation",
+      "id": "regulation_10",
+      "label": "第十条"
+    },
+    {
+      "type": "step",
+      "id": "use_safety_certified_products",
+      "label": "使用安全标志管理产品"
+    },
+    {
+      "type": "step",
+      "id": "obtain_safety_mark",
+      "label": "取得煤矿矿用产品安全标志"
+    },
+    {
+      "type": "step",
+      "id": "test_new_technology",
+      "label": "论证并制定安全措施"
+    },
+    {
+      "type": "step",
+      "id": "test_new_equipment",
+      "label": "进行安全性能检验"
+    },
+    {
+      "type": "step",
+      "id": "obtain_industrial_trial_mark",
+      "label": "取得工业性试验安全标志"
+    },
+    {
+      "type": "step",
+      "id": "promote_automation",
+      "label": "推广自动化、智能化开采"
+    },
+    {
+      "type": "step",
+      "id": "reduce_underground_workers",
+      "label": "减少井下作业人数"
+    },
+    {
+      "type": "step",
+      "id": "prohibit_hazardous_technology",
+      "label": "严禁使用淘汰技术、工艺、材料和设备"
+    },
+    {
+      "type": "equipment",
+      "id": "safety_certified_equipment",
+      "label": "安全标志管理产品"
+    },
+    {
+      "type": "equipment",
+      "id": "new_equipment",
+      "label": "新设备"
+    },
+    {
+      "type": "equipment",
+      "id": "new_materials",
+      "label": "新材料"
+    },
+    {
+      "type": "hazard",
+      "id": "production_safety_hazard",
+      "label": "生产安全危害"
+    },
+    {
+      "type": "hazard",
+      "id": "occupational_disease_hazard",
+      "label": "职业病危害"
+    },
+    {
+      "type": "condition",
+      "id": "involving_safe_production",
+      "label": "涉及安全生产"
+    },
+    {
+      "type": "condition",
+      "id": "national_ban",
+      "label": "国家明令禁止"
+    },
+    {
+      "type": "regulation",
+      "id": "regulation_12",
+      "label": "煤矿必须编制年度灾害预防和处理计划"
+    },
+    {
+      "type": "step",
+      "id": "compile_plan",
+      "label": "编制年度灾害预防和处理计划"
+    },
+    {
+      "type": "step",
+      "id": "modify_plan",
+      "label": "根据具体情况及时修改计划"
+    },
+    {
+      "type": "step",
+      "id": "implement_plan",
+      "label": "组织实施灾害预防和处理计划"
+    },
+    {
+      "type": "regulation",
+      "id": "regulation_13",
+      "label": "第十三条"
+    },
+    {
+      "type": "step",
+      "id": "wear_safety_gear",
+      "label": "戴安全帽等个体防护用品"
+    },
+    {
+      "type": "step",
+      "id": "wear_reflective_clothing",
+      "label": "穿带有反光标识的工作服"
+    },
+    {
+      "type": "step",
+      "id": "no_alcohol_before_entry",
+      "label": "入井前严禁饮酒"
+    },
+    {
+      "type": "step",
+      "id": "establish_check_in_system",
+      "label": "建立入井检身制度"
+    },
+    {
+      "type": "step",
+      "id": "establish_headcount_system",
+      "label": "建立出入井人员清点制度"
+    },
+    {
+      "type": "step",
+      "id": "monitor_personnel_info",
+      "label": "掌握井下人员数量、位置等实时信息"
+    },
+    {
+      "type": "step",
+      "id": "carry_self_rescuer",
+      "label": "随身携带自救器"
+    },
+    {
+      "type": "step",
+      "id": "carry_id_card",
+      "label": "随身携带标识卡"
+    },
+    {
+      "type": "step",
+      "id": "carry_miner_lamp",
+      "label": "随身携带矿灯"
+    },
+    {
+      "type": "step",
+      "id": "no_smoking_items",
+      "label": "严禁携带烟草和点火物品"
+    },
+    {
+      "type": "step",
+      "id": "no_synthetic_clothing",
+      "label": "严禁穿化纤衣服"
+    },
+    {
+      "type": "role",
+      "id": "entry_personnel",
+      "label": "入井（场）人员"
+    },
+    {
+      "type": "role",
+      "id": "mine_operator",
+      "label": "煤矿"
+    },
+    {
+      "type": "regulation",
+      "id": "regulation_16",
+      "label": "第十六条"
+    },
+    {
+      "type": "step",
+      "id": "maintain_power",
+      "label": "保证矿井供电正常运行"
+    },
+    {
+      "type": "step",
+      "id": "maintain_ventilation",
+      "label": "保证矿井通风正常运行"
+    },
+    {
+      "type": "step",
+      "id": "maintain_drainage",
+      "label": "保证矿井排水正常运行"
+    },
+    {
+      "type": "step",
+      "id": "maintain_monitoring",
+      "label": "保证安全监控系统正常运行"
+    },
+    {
+      "type": "step",
+      "id": "implement_duty",
+      "label": "落实24小时值班制度"
+    },
+    {
+      "type": "step",
+      "id": "conduct_safety_check",
+      "label": "进行全面安全检查"
+    },
+    {
+      "type": "condition",
+      "id": "during_shutdown",
+      "label": "停工停产期间"
+    },
+    {
+      "type": "condition",
+      "id": "before_resumption",
+      "label": "复工复产前"
+    },
+    {
+      "type": "regulation",
+      "id": "regulation_17",
+      "label": "第十七条"
+    },
+    {
+      "type": "step",
+      "id": "establish_rescue_org",
+      "label": "建立应急救援组织"
+    },
+    {
+      "type": "step",
+      "id": "improve_regulations",
+      "label": "健全规章制度"
+    },
+    {
+      "type": "step",
+      "id": "prepare_rescue_plan",
+      "label": "编制应急救援预案"
+    },
+    {
+      "type": "step",
+      "id": "reserve_equipment",
+      "label": "储备应急救援物资、装备"
+    },
+    {
+      "type": "step",
+      "id": "inspect_supplement",
+      "label": "定期检查补充"
+    },
+    {
+      "type": "step",
+      "id": "establish_safety_system",
+      "label": "建立矿井安全避险系统"
+    },
+    {
+      "type": "step",
+      "id": "conduct_training",
+      "label": "对井下人员进行安全避险和应急救援培训"
+    },
+    {
+      "type": "step",
+      "id": "organize_drill",
+      "label": "组织应急演练"
+    },
+    {
+      "type": "role",
+      "id": "coal_mine_enterprise",
+      "label": "煤矿企业"
+    },
+    {
+      "type": "role",
+      "id": "mine",
+      "label": "煤矿"
+    },
+    {
+      "type": "equipment",
+      "id": "rescue_equipment",
+      "label": "应急救援装备"
+    },
+    {
+      "type": "equipment",
+      "id": "safety_system",
+      "label": "矿井安全避险系统"
+    },
+    {
+      "type": "regulation",
+      "id": "regulation_18",
+      "label": "第十八条"
+    },
+    {
+      "type": "step",
+      "id": "establish_trauma_system",
+      "label": "建立创伤急救系统"
+    },
+    {
+      "type": "equipment",
+      "id": "ambulance",
+      "label": "救护车辆"
+    },
+    {
+      "type": "equipment",
+      "id": "first_aid_equipment",
+      "label": "急救器材"
+    },
+    {
+      "type": "equipment",
+      "id": "first_aid_gear",
+      "label": "急救装备"
+    },
+    {
+      "type": "equipment",
+      "id": "medicines",
+      "label": "药品"
+    },
+    {
+      "type": "role",
+      "id": "mine_enterprise_principal_responsible_person",
+      "label": "煤矿企业主要负责人"
+    },
+    {
+      "type": "role",
+      "id": "technical_responsible_person",
+      "label": "技术负责人"
+    },
+    {
+      "type": "step",
+      "id": "organize_rescue",
+      "label": "组织抢救"
+    },
+    {
+      "type": "step",
+      "id": "rescue_command",
+      "label": "负责抢救指挥"
+    },
+    {
+      "type": "step",
+      "id": "report_accident",
+      "label": "及时上报事故"
+    },
+    {
+      "type": "condition",
+      "id": "after_accident",
+      "label": "煤矿发生事故后"
+    },
+    {
+      "type": "regulation",
+      "id": "regulation_21",
+      "label": "煤矿闭坑前必须编制闭坑报告"
+    },
+    {
+      "type": "step",
+      "id": "compile_closure_report",
+      "label": "编制闭坑报告"
+    },
+    {
+      "type": "step",
+      "id": "submit_for_approval",
+      "label": "报省级煤炭行业管理部门批准"
+    },
+    {
+      "type": "step",
+      "id": "include_geological_data",
+      "label": "提供完善的地质资料"
+    },
+    {
+      "type": "step",
+      "id": "mark_areas_on_maps",
+      "label": "在图件上标注采空区、煤柱、井筒、巷道、火区、地面沉陷区"
+    },
+    {
+      "type": "step",
+      "id": "explain_unclear_situations",
+      "label": "情况不清的应当予以说明"
+    },
+    {
+      "type": "condition",
+      "id": "before_mine_closure",
+      "label": "煤矿闭坑前"
+    },
+    {
+      "type": "regulation",
+      "id": "regulation_23",
+      "label": "第二十三条"
+    },
+    {
+      "type": "condition",
+      "id": "insufficient_geological_data",
+      "label": "地质资料不能满足设计需要"
+    },
+    {
+      "type": "step",
+      "id": "no_design",
+      "label": "不得进行煤矿设计"
+    },
+    {
+      "type": "condition",
+      "id": "geological_discrepancy",
+      "label": "矿井地质、水文地质等条件与原地质资料出入较大"
+    },
+    {
+      "type": "step",
+      "id": "supplementary_survey",
+      "label": "开展补充地质勘探工作"
+    },
+    {
+      "type": "regulation",
+      "id": "regulation_25",
+      "label": "第二十五条"
+    },
+    {
+      "type": "step",
+      "id": "drill_inspection_hole",
+      "label": "施工井筒检查孔"
+    },
+    {
+      "type": "condition",
+      "id": "before_shaft_design",
+      "label": "井筒设计前"
+    },
+    {
+      "type": "condition",
+      "id": "complex_geology",
+      "label": "地质条件复杂"
+    },
+    {
+      "type": "step",
+      "id": "increase_hole_count",
+      "label": "增加检查孔数量"
+    },
+    {
+      "type": "step",
+      "id": "full_core_sampling",
+      "label": "全孔取芯"
+    },
+    {
+      "type": "step",
+      "id": "digital_logging",
+      "label": "全孔数字测井"
+    },
+    {
+      "type": "step",
+      "id": "pump_test_by_aquifer",
+      "label": "分含水层进行抽水试验"
+    },
+    {
+      "type": "step",
+      "id": "sample_gas_self_ignition_dust",
+      "label": "采测煤层瓦斯、自燃、煤尘爆炸性煤样"
+    },
+    {
+      "type": "step",
+      "id": "measure_hydrogeo_params",
+      "label": "采测水文地质及工程地质参数"
+    },
+    {
+      "type": "step",
+      "id": "identify_geological_structure",
+      "label": "查明地质构造和岩（土）层特征"
+    },
+    {
+      "type": "step",
+      "id": "log_geological_profile",
+      "label": "详细编录钻孔完整地质剖面"
+    },
+    {
+      "type": "regulation",
+      "id": "regulation_26",
+      "label": "新建矿井开工前安全准备"
+    },
+    {
+      "type": "step",
+      "id": "review_borehole_data",
+      "label": "复查井筒检查孔资料"
+    },
+    {
+      "type": "step",
+      "id": "verify_drilling_info",
+      "label": "调查核实钻孔位置及封孔质量"
+    },
+    {
+      "type": "step",
+      "id": "investigate_goaf",
+      "label": "调查采空区情况"
+    },
+    {
+      "type": "step",
+      "id": "investigate_adjacent_mines",
+      "label": "调查邻近矿井生产情况和地质资料"
+    },
+    {
+      "type": "step",
+      "id": "plot_data_on_plan",
+      "label": "将相关资料标绘在采掘工程平面图上"
+    },
+    {
+      "type": "step",
+      "id": "prepare_technical_scheme",
+      "label": "编制主要井巷揭煤、过地质构造及含水层技术方案"
+    },
+    {
+      "type": "step",
+      "id": "prepare_geological_diagram",
+      "label": "编制主要井巷工程的预想地质图及其说明书"
+    },
+    {
+      "type": "condition",
+      "id": "before_construction",
+      "label": "新建矿井开工前"
+    },
+    {
+      "type": "article",
+      "id": "article_27",
+      "label": "第二十七条"
+    },
+    {
+      "type": "step",
+      "id": "verify_geological_data",
+      "label": "验证井筒检查孔地质资料"
+    },
+    {
+      "type": "condition",
+      "id": "abnormal_geological_factors",
+      "label": "发现影响施工的异常地质因素"
+    },
+    {
+      "type": "step",
+      "id": "take_detection_measures",
+      "label": "采取探测措施"
+    },
+    {
+      "type": "step",
+      "id": "take_preventive_measures",
+      "label": "采取预防措施"
+    },
+    {
+      "type": "regulation",
+      "id": "regulation_28",
+      "label": "煤矿安全规程第二十八条"
+    },
+    {
+      "type": "step",
+      "id": "observe_describe",
+      "label": "观测及描述地质构造"
+    },
+    {
+      "type": "step",
+      "id": "analyze_predict",
+      "label": "实施地质预测、预报"
+    },
+    {
+      "type": "condition",
+      "id": "coal_seam_exposed",
+      "label": "揭露的煤层"
+    },
+    {
+      "type": "condition",
+      "id": "fault_exposed",
+      "label": "揭露的断层"
+    },
+    {
+      "type": "condition",
+      "id": "fold_exposed",
+      "label": "揭露的褶皱"
+    },
+    {
+      "type": "condition",
+      "id": "intrusive_rock_exposed",
+      "label": "揭露的岩浆岩体"
+    },
+    {
+      "type": "condition",
+      "id": "collapse_column_exposed",
+      "label": "揭露的陷落柱"
+    },
+    {
+      "type": "condition",
+      "id": "water_bearing_layer_exposed",
+      "label": "揭露的含水岩层"
+    },
+    {
+      "type": "condition",
+      "id": "mine_water_inflow",
+      "label": "矿井涌水量"
+    },
+    {
+      "type": "condition",
+      "id": "main_water_outlet",
+      "label": "主要出水点"
+    },
+    {
+      "type": "article",
+      "id": "article_29",
+      "label": "第二十九条"
+    },
+    {
+      "type": "step",
+      "id": "explore_geological_conditions",
+      "label": "探明地质条件"
+    },
+    {
+      "type": "step",
+      "id": "compile_geological_report",
+      "label": "编制揭煤地质说明书"
+    },
+    {
+      "type": "condition",
+      "id": "before_exposing_coal_seam",
+      "label": "井巷揭煤前"
+    },
+    {
+      "type": "role",
+      "id": "geological_team",
+      "label": "地质技术团队"
+    }
+  ],
+  "relationships": [
+    {
+      "source_id": "regulation_5",
+      "source_type": "regulation",
+      "target_id": "safety_management_org",
+      "target_type": "role",
+      "type": "REQUIRES",
+      "condition": "",
+      "evidence": "煤矿企业必须设置专门机构负责煤矿安全生产与职业病危害防治管理工作",
+      "article_label": "第五条"
+    },
+    {
+      "source_id": "safety_management_org",
+      "source_type": "role",
+      "target_id": "safety_equipment",
+      "target_type": "equipment",
+      "type": "REQUIRES",
+      "condition": "满足工作需要",
+      "evidence": "配备满足工作需要的人员及装备",
+      "article_label": "第五条"
+    },
+    {
+      "source_id": "employee",
+      "source_type": "role",
+      "target_id": "stop_work",
+      "target_type": "step",
+      "type": "PERFORMED_BY",
+      "condition": "工作地点出现险情",
+      "evidence": "当工作地点出现险情时，有权立即停止作业",
+      "article_label": "第八条"
+    },
+    {
+      "source_id": "employee",
+      "source_type": "role",
+      "target_id": "evacuate",
+      "target_type": "step",
+      "type": "PERFORMED_BY",
+      "condition": "工作地点出现险情",
+      "evidence": "当工作地点出现险情时，有权立即停止作业，撤到安全地点",
+      "article_label": "第八条"
+    },
+    {
+      "source_id": "employee",
+      "source_type": "role",
+      "target_id": "refuse_work",
+      "target_type": "step",
+      "type": "PERFORMED_BY",
+      "condition": "险情未处理且不能保证人身安全",
+      "evidence": "当险情没有得到处理不能保证人身安全时，有权拒绝作业",
+      "article_label": "第八条"
+    },
+    {
+      "source_id": "regulation_9",
+      "source_type": "regulation",
+      "target_id": "safety_training",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "煤矿企业必须对从业人员进行安全教育和培训",
+      "article_label": "第九条"
+    },
+    {
+      "source_id": "safety_training",
+      "source_type": "step",
+      "target_id": "employees",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "煤矿企业必须对从业人员进行安全教育和培训",
+      "article_label": "第九条"
+    },
+    {
+      "source_id": "regulation_9",
+      "source_type": "regulation",
+      "target_id": "assess_training",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "培训不合格的，不得上岗作业",
+      "article_label": "第九条"
+    },
+    {
+      "source_id": "regulation_9",
+      "source_type": "regulation",
+      "target_id": "certify_managers",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "主要负责人和安全生产管理人员必须具备煤矿安全生产知识和管理能力，并经考核合格",
+      "article_label": "第九条"
+    },
+    {
+      "source_id": "certify_managers",
+      "source_type": "step",
+      "target_id": "managers",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "主要负责人和安全生产管理人员必须具备煤矿安全生产知识和管理能力，并经考核合格",
+      "article_label": "第九条"
+    },
+    {
+      "source_id": "regulation_9",
+      "source_type": "regulation",
+      "target_id": "certify_special_ops",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "特种作业人员必须按国家有关规定培训合格，取得资格证书，方可上岗作业",
+      "article_label": "第九条"
+    },
+    {
+      "source_id": "certify_special_ops",
+      "source_type": "step",
+      "target_id": "special_ops",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "特种作业人员必须按国家有关规定培训合格，取得资格证书，方可上岗作业",
+      "article_label": "第九条"
+    },
+    {
+      "source_id": "regulation_9",
+      "source_type": "regulation",
+      "target_id": "certify_mine_manager",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "矿长必须具备安全专业知识，具有组织、领导安全生产和处理煤矿事故的能力",
+      "article_label": "第九条"
+    },
+    {
+      "source_id": "certify_mine_manager",
+      "source_type": "step",
+      "target_id": "mine_manager",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "矿长必须具备安全专业知识，具有组织、领导安全生产和处理煤矿事故的能力",
+      "article_label": "第九条"
+    },
+    {
+      "source_id": "regulation_10",
+      "source_type": "regulation",
+      "target_id": "use_safety_certified_products",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "煤矿使用的纳入安全标志管理的产品，必须取得煤矿矿用产品安全标志",
+      "article_label": "第十条"
+    },
+    {
+      "source_id": "use_safety_certified_products",
+      "source_type": "step",
+      "target_id": "obtain_safety_mark",
+      "target_type": "step",
+      "type": "REQUIRES",
+      "condition": "",
+      "evidence": "必须取得煤矿矿用产品安全标志",
+      "article_label": "第十条"
+    },
+    {
+      "source_id": "regulation_10",
+      "source_type": "regulation",
+      "target_id": "test_new_technology",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "试验涉及安全生产的新技术、新工艺必须经过论证并制定安全措施",
+      "article_label": "第十条"
+    },
+    {
+      "source_id": "test_new_technology",
+      "source_type": "step",
+      "target_id": "involving_safe_production",
+      "target_type": "condition",
+      "type": "IF",
+      "condition": "",
+      "evidence": "试验涉及安全生产的新技术、新工艺",
+      "article_label": "第十条"
+    },
+    {
+      "source_id": "regulation_10",
+      "source_type": "regulation",
+      "target_id": "test_new_equipment",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "新设备、新材料必须经过安全性能检验",
+      "article_label": "第十条"
+    },
+    {
+      "source_id": "test_new_equipment",
+      "source_type": "step",
+      "target_id": "obtain_industrial_trial_mark",
+      "target_type": "step",
+      "type": "REQUIRES",
+      "condition": "",
+      "evidence": "取得产品工业性试验安全标志",
+      "article_label": "第十条"
+    },
+    {
+      "source_id": "regulation_10",
+      "source_type": "regulation",
+      "target_id": "promote_automation",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "积极推广自动化、智能化开采",
+      "article_label": "第十条"
+    },
+    {
+      "source_id": "promote_automation",
+      "source_type": "step",
+      "target_id": "reduce_underground_workers",
+      "target_type": "step",
+      "type": "NEXT",
+      "condition": "",
+      "evidence": "减少井下作业人数",
+      "article_label": "第十条"
+    },
+    {
+      "source_id": "regulation_10",
+      "source_type": "regulation",
+      "target_id": "prohibit_hazardous_technology",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "严禁使用国家明令禁止使用或者淘汰的危及生产安全和可能产生职业病危害的技术、工艺、材料和设备",
+      "article_label": "第十条"
+    },
+    {
+      "source_id": "prohibit_hazardous_technology",
+      "source_type": "step",
+      "target_id": "production_safety_hazard",
+      "target_type": "hazard",
+      "type": "HAS_RISK",
+      "condition": "",
+      "evidence": "危及生产安全",
+      "article_label": "第十条"
+    },
+    {
+      "source_id": "prohibit_hazardous_technology",
+      "source_type": "step",
+      "target_id": "occupational_disease_hazard",
+      "target_type": "hazard",
+      "type": "HAS_RISK",
+      "condition": "",
+      "evidence": "可能产生职业病危害",
+      "article_label": "第十条"
+    },
+    {
+      "source_id": "prohibit_hazardous_technology",
+      "source_type": "step",
+      "target_id": "national_ban",
+      "target_type": "condition",
+      "type": "IF",
+      "condition": "",
+      "evidence": "国家明令禁止使用或者淘汰的",
+      "article_label": "第十条"
+    },
+    {
+      "source_id": "regulation_12",
+      "source_type": "regulation",
+      "target_id": "compile_plan",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "煤矿必须编制年度灾害预防和处理计划",
+      "article_label": "第十二条"
+    },
+    {
+      "source_id": "regulation_12",
+      "source_type": "regulation",
+      "target_id": "modify_plan",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "并根据具体情况及时修改",
+      "article_label": "第十二条"
+    },
+    {
+      "source_id": "compile_plan",
+      "source_type": "step",
+      "target_id": "implement_plan",
+      "target_type": "step",
+      "type": "NEXT",
+      "condition": "",
+      "evidence": "灾害预防和处理计划由矿长负责组织实施",
+      "article_label": "第十二条"
+    },
+    {
+      "source_id": "implement_plan",
+      "source_type": "step",
+      "target_id": "mine_manager",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "灾害预防和处理计划由矿长负责组织实施",
+      "article_label": "第十二条"
+    },
+    {
+      "source_id": "regulation_13",
+      "source_type": "regulation",
+      "target_id": "wear_safety_gear",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "入井（场）人员必须戴安全帽等个体防护用品",
+      "article_label": "第十三条"
+    },
+    {
+      "source_id": "regulation_13",
+      "source_type": "regulation",
+      "target_id": "wear_reflective_clothing",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "穿带有反光标识的工作服",
+      "article_label": "第十三条"
+    },
+    {
+      "source_id": "regulation_13",
+      "source_type": "regulation",
+      "target_id": "no_alcohol_before_entry",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "入井（场）前严禁饮酒",
+      "article_label": "第十三条"
+    },
+    {
+      "source_id": "regulation_13",
+      "source_type": "regulation",
+      "target_id": "establish_check_in_system",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "煤矿必须建立入井检身制度",
+      "article_label": "第十三条"
+    },
+    {
+      "source_id": "regulation_13",
+      "source_type": "regulation",
+      "target_id": "establish_headcount_system",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "必须建立出入井人员清点制度",
+      "article_label": "第十三条"
+    },
+    {
+      "source_id": "regulation_13",
+      "source_type": "regulation",
+      "target_id": "monitor_personnel_info",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "必须掌握井下人员数量、位置等实时信息",
+      "article_label": "第十三条"
+    },
+    {
+      "source_id": "regulation_13",
+      "source_type": "regulation",
+      "target_id": "carry_self_rescuer",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "入井人员必须随身携带自救器",
+      "article_label": "第十三条"
+    },
+    {
+      "source_id": "regulation_13",
+      "source_type": "regulation",
+      "target_id": "carry_id_card",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "随身携带标识卡",
+      "article_label": "第十三条"
+    },
+    {
+      "source_id": "regulation_13",
+      "source_type": "regulation",
+      "target_id": "carry_miner_lamp",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "随身携带矿灯",
+      "article_label": "第十三条"
+    },
+    {
+      "source_id": "regulation_13",
+      "source_type": "regulation",
+      "target_id": "no_smoking_items",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "严禁携带烟草和点火物品",
+      "article_label": "第十三条"
+    },
+    {
+      "source_id": "regulation_13",
+      "source_type": "regulation",
+      "target_id": "no_synthetic_clothing",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "严禁穿化纤衣服",
+      "article_label": "第十三条"
+    },
+    {
+      "source_id": "wear_safety_gear",
+      "source_type": "step",
+      "target_id": "entry_personnel",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "入井（场）人员必须戴安全帽等个体防护用品",
+      "article_label": "第十三条"
+    },
+    {
+      "source_id": "wear_reflective_clothing",
+      "source_type": "step",
+      "target_id": "entry_personnel",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "穿带有反光标识的工作服",
+      "article_label": "第十三条"
+    },
+    {
+      "source_id": "no_alcohol_before_entry",
+      "source_type": "step",
+      "target_id": "entry_personnel",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "入井（场）前严禁饮酒",
+      "article_label": "第十三条"
+    },
+    {
+      "source_id": "carry_self_rescuer",
+      "source_type": "step",
+      "target_id": "entry_personnel",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "入井人员必须随身携带自救器",
+      "article_label": "第十三条"
+    },
+    {
+      "source_id": "carry_id_card",
+      "source_type": "step",
+      "target_id": "entry_personnel",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "随身携带标识卡",
+      "article_label": "第十三条"
+    },
+    {
+      "source_id": "carry_miner_lamp",
+      "source_type": "step",
+      "target_id": "entry_personnel",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "随身携带矿灯",
+      "article_label": "第十三条"
+    },
+    {
+      "source_id": "no_smoking_items",
+      "source_type": "step",
+      "target_id": "entry_personnel",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "严禁携带烟草和点火物品",
+      "article_label": "第十三条"
+    },
+    {
+      "source_id": "no_synthetic_clothing",
+      "source_type": "step",
+      "target_id": "entry_personnel",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "严禁穿化纤衣服",
+      "article_label": "第十三条"
+    },
+    {
+      "source_id": "establish_check_in_system",
+      "source_type": "step",
+      "target_id": "mine_operator",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "煤矿必须建立入井检身制度",
+      "article_label": "第十三条"
+    },
+    {
+      "source_id": "establish_headcount_system",
+      "source_type": "step",
+      "target_id": "mine_operator",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "必须建立出入井人员清点制度",
+      "article_label": "第十三条"
+    },
+    {
+      "source_id": "monitor_personnel_info",
+      "source_type": "step",
+      "target_id": "mine_operator",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "必须掌握井下人员数量、位置等实时信息",
+      "article_label": "第十三条"
+    },
+    {
+      "source_id": "regulation_16",
+      "source_type": "regulation",
+      "target_id": "maintain_power",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "during_shutdown",
+      "evidence": "井工煤矿必须制定停工停产期间的安全技术措施，保证矿井供电、通风、排水和安全监控系统正常运行",
+      "article_label": "第十六条"
+    },
+    {
+      "source_id": "regulation_16",
+      "source_type": "regulation",
+      "target_id": "maintain_ventilation",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "during_shutdown",
+      "evidence": "井工煤矿必须制定停工停产期间的安全技术措施，保证矿井供电、通风、排水和安全监控系统正常运行",
+      "article_label": "第十六条"
+    },
+    {
+      "source_id": "regulation_16",
+      "source_type": "regulation",
+      "target_id": "maintain_drainage",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "during_shutdown",
+      "evidence": "井工煤矿必须制定停工停产期间的安全技术措施，保证矿井供电、通风、排水和安全监控系统正常运行",
+      "article_label": "第十六条"
+    },
+    {
+      "source_id": "regulation_16",
+      "source_type": "regulation",
+      "target_id": "maintain_monitoring",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "during_shutdown",
+      "evidence": "井工煤矿必须制定停工停产期间的安全技术措施，保证矿井供电、通风、排水和安全监控系统正常运行",
+      "article_label": "第十六条"
+    },
+    {
+      "source_id": "regulation_16",
+      "source_type": "regulation",
+      "target_id": "implement_duty",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "during_shutdown",
+      "evidence": "落实24h值班制度",
+      "article_label": "第十六条"
+    },
+    {
+      "source_id": "regulation_16",
+      "source_type": "regulation",
+      "target_id": "conduct_safety_check",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "before_resumption",
+      "evidence": "复工复产前必须进行全面安全检查",
+      "article_label": "第十六条"
+    },
+    {
+      "source_id": "regulation_17",
+      "source_type": "regulation",
+      "target_id": "establish_rescue_org",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "煤矿企业必须建立应急救援组织",
+      "article_label": "第十七条"
+    },
+    {
+      "source_id": "regulation_17",
+      "source_type": "regulation",
+      "target_id": "improve_regulations",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "健全规章制度",
+      "article_label": "第十七条"
+    },
+    {
+      "source_id": "regulation_17",
+      "source_type": "regulation",
+      "target_id": "prepare_rescue_plan",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "编制应急救援预案",
+      "article_label": "第十七条"
+    },
+    {
+      "source_id": "regulation_17",
+      "source_type": "regulation",
+      "target_id": "reserve_equipment",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "储备应急救援物资、装备",
+      "article_label": "第十七条"
+    },
+    {
+      "source_id": "regulation_17",
+      "source_type": "regulation",
+      "target_id": "inspect_supplement",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "并定期检查补充",
+      "article_label": "第十七条"
+    },
+    {
+      "source_id": "regulation_17",
+      "source_type": "regulation",
+      "target_id": "establish_safety_system",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "煤矿必须建立矿井安全避险系统",
+      "article_label": "第十七条"
+    },
+    {
+      "source_id": "regulation_17",
+      "source_type": "regulation",
+      "target_id": "conduct_training",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "对井下人员进行安全避险和应急救援培训",
+      "article_label": "第十七条"
+    },
+    {
+      "source_id": "regulation_17",
+      "source_type": "regulation",
+      "target_id": "organize_drill",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "每年至少组织 1 次应急演练",
+      "article_label": "第十七条"
+    },
+    {
+      "source_id": "establish_rescue_org",
+      "source_type": "step",
+      "target_id": "coal_mine_enterprise",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "煤矿企业必须建立应急救援组织",
+      "article_label": "第十七条"
+    },
+    {
+      "source_id": "improve_regulations",
+      "source_type": "step",
+      "target_id": "coal_mine_enterprise",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "健全规章制度",
+      "article_label": "第十七条"
+    },
+    {
+      "source_id": "prepare_rescue_plan",
+      "source_type": "step",
+      "target_id": "coal_mine_enterprise",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "编制应急救援预案",
+      "article_label": "第十七条"
+    },
+    {
+      "source_id": "reserve_equipment",
+      "source_type": "step",
+      "target_id": "coal_mine_enterprise",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "储备应急救援物资、装备",
+      "article_label": "第十七条"
+    },
+    {
+      "source_id": "inspect_supplement",
+      "source_type": "step",
+      "target_id": "coal_mine_enterprise",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "并定期检查补充",
+      "article_label": "第十七条"
+    },
+    {
+      "source_id": "establish_safety_system",
+      "source_type": "step",
+      "target_id": "mine",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "煤矿必须建立矿井安全避险系统",
+      "article_label": "第十七条"
+    },
+    {
+      "source_id": "conduct_training",
+      "source_type": "step",
+      "target_id": "mine",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "对井下人员进行安全避险和应急救援培训",
+      "article_label": "第十七条"
+    },
+    {
+      "source_id": "organize_drill",
+      "source_type": "step",
+      "target_id": "mine",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "每年至少组织 1 次应急演练",
+      "article_label": "第十七条"
+    },
+    {
+      "source_id": "reserve_equipment",
+      "source_type": "step",
+      "target_id": "rescue_equipment",
+      "target_type": "equipment",
+      "type": "REQUIRES",
+      "condition": "",
+      "evidence": "储备应急救援物资、装备",
+      "article_label": "第十七条"
+    },
+    {
+      "source_id": "establish_safety_system",
+      "source_type": "step",
+      "target_id": "safety_system",
+      "target_type": "equipment",
+      "type": "REQUIRES",
+      "condition": "",
+      "evidence": "建立矿井安全避险系统",
+      "article_label": "第十七条"
+    },
+    {
+      "source_id": "regulation_18",
+      "source_type": "regulation",
+      "target_id": "establish_trauma_system",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "煤矿企业应当有创伤急救系统为其服务",
+      "article_label": "第十八条"
+    },
+    {
+      "source_id": "establish_trauma_system",
+      "source_type": "step",
+      "target_id": "ambulance",
+      "target_type": "equipment",
+      "type": "REQUIRES",
+      "condition": "",
+      "evidence": "创伤急救系统应当配备救护车辆",
+      "article_label": "第十八条"
+    },
+    {
+      "source_id": "establish_trauma_system",
+      "source_type": "step",
+      "target_id": "first_aid_equipment",
+      "target_type": "equipment",
+      "type": "REQUIRES",
+      "condition": "",
+      "evidence": "创伤急救系统应当配备急救器材",
+      "article_label": "第十八条"
+    },
+    {
+      "source_id": "establish_trauma_system",
+      "source_type": "step",
+      "target_id": "first_aid_gear",
+      "target_type": "equipment",
+      "type": "REQUIRES",
+      "condition": "",
+      "evidence": "创伤急救系统应当配备急救装备",
+      "article_label": "第十八条"
+    },
+    {
+      "source_id": "establish_trauma_system",
+      "source_type": "step",
+      "target_id": "medicines",
+      "target_type": "equipment",
+      "type": "REQUIRES",
+      "condition": "",
+      "evidence": "创伤急救系统应当配备药品",
+      "article_label": "第十八条"
+    },
+    {
+      "source_id": "establish_trauma_system",
+      "source_type": "step",
+      "target_id": "coal_mine_enterprise",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "煤矿企业应当有创伤急救系统为其服务",
+      "article_label": "第十八条"
+    },
+    {
+      "source_id": "after_accident",
+      "source_type": "condition",
+      "target_id": "organize_rescue",
+      "target_type": "step",
+      "type": "IF",
+      "condition": "煤矿发生事故后",
+      "evidence": "煤矿发生事故后，煤矿企业主要负责人和技术负责人必须立即采取措施组织抢救",
+      "article_label": "第十九条"
+    },
+    {
+      "source_id": "organize_rescue",
+      "source_type": "step",
+      "target_id": "mine_enterprise_principal_responsible_person",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "煤矿企业主要负责人和技术负责人必须立即采取措施组织抢救",
+      "article_label": "第十九条"
+    },
+    {
+      "source_id": "organize_rescue",
+      "source_type": "step",
+      "target_id": "technical_responsible_person",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "煤矿企业主要负责人和技术负责人必须立即采取措施组织抢救",
+      "article_label": "第十九条"
+    },
+    {
+      "source_id": "rescue_command",
+      "source_type": "step",
+      "target_id": "mine_manager",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "矿长负责抢救指挥",
+      "article_label": "第十九条"
+    },
+    {
+      "source_id": "after_accident",
+      "source_type": "condition",
+      "target_id": "report_accident",
+      "target_type": "step",
+      "type": "IF",
+      "condition": "煤矿发生事故后",
+      "evidence": "并按有关规定及时上报",
+      "article_label": "第十九条"
+    },
+    {
+      "source_id": "regulation_21",
+      "source_type": "regulation",
+      "target_id": "compile_closure_report",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "before_mine_closure",
+      "evidence": "煤矿闭坑前，煤矿企业必须编制闭坑报告",
+      "article_label": "第二十一条"
+    },
+    {
+      "source_id": "compile_closure_report",
+      "source_type": "step",
+      "target_id": "submit_for_approval",
+      "target_type": "step",
+      "type": "NEXT",
+      "condition": "",
+      "evidence": "并报省级煤炭行业管理部门批准",
+      "article_label": "第二十一条"
+    },
+    {
+      "source_id": "compile_closure_report",
+      "source_type": "step",
+      "target_id": "include_geological_data",
+      "target_type": "step",
+      "type": "REQUIRES",
+      "condition": "",
+      "evidence": "矿井闭坑报告必须有完善的各种地质资料",
+      "article_label": "第二十一条"
+    },
+    {
+      "source_id": "include_geological_data",
+      "source_type": "step",
+      "target_id": "mark_areas_on_maps",
+      "target_type": "step",
+      "type": "NEXT",
+      "condition": "",
+      "evidence": "在相应图件上标注采空区、煤柱、井筒、巷道、火区、地面沉陷区等",
+      "article_label": "第二十一条"
+    },
+    {
+      "source_id": "mark_areas_on_maps",
+      "source_type": "step",
+      "target_id": "explain_unclear_situations",
+      "target_type": "step",
+      "type": "NEXT",
+      "condition": "",
+      "evidence": "情况不清的应当予以说明",
+      "article_label": "第二十一条"
+    },
+    {
+      "source_id": "compile_closure_report",
+      "source_type": "step",
+      "target_id": "coal_mine_enterprise",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "煤矿企业必须编制闭坑报告",
+      "article_label": "第二十一条"
+    },
+    {
+      "source_id": "regulation_23",
+      "source_type": "regulation",
+      "target_id": "insufficient_geological_data",
+      "target_type": "condition",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "当煤矿地质资料不能满足设计需要时，不得进行煤矿设计",
+      "article_label": "第二十三条"
+    },
+    {
+      "source_id": "insufficient_geological_data",
+      "source_type": "condition",
+      "target_id": "no_design",
+      "target_type": "step",
+      "type": "IF",
+      "condition": "",
+      "evidence": "当煤矿地质资料不能满足设计需要时，不得进行煤矿设计",
+      "article_label": "第二十三条"
+    },
+    {
+      "source_id": "regulation_23",
+      "source_type": "regulation",
+      "target_id": "geological_discrepancy",
+      "target_type": "condition",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "矿井建设期间，因矿井地质、水文地质等条件与原地质资料出入较大时，必须针对所存在的地质问题开展补充地质勘探工作",
+      "article_label": "第二十三条"
+    },
+    {
+      "source_id": "geological_discrepancy",
+      "source_type": "condition",
+      "target_id": "supplementary_survey",
+      "target_type": "step",
+      "type": "IF",
+      "condition": "",
+      "evidence": "矿井建设期间，因矿井地质、水文地质等条件与原地质资料出入较大时，必须针对所存在的地质问题开展补充地质勘探工作",
+      "article_label": "第二十三条"
+    },
+    {
+      "source_id": "regulation_25",
+      "source_type": "regulation",
+      "target_id": "drill_inspection_hole",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "before_shaft_design",
+      "evidence": "井筒设计前，必须按下列要求施工井筒检查孔",
+      "article_label": "第二十五条"
+    },
+    {
+      "source_id": "drill_inspection_hole",
+      "source_type": "step",
+      "target_id": "increase_hole_count",
+      "target_type": "step",
+      "type": "NEXT",
+      "condition": "complex_geology",
+      "evidence": "地质条件复杂时，应当增加检查孔数量",
+      "article_label": "第二十五条"
+    },
+    {
+      "source_id": "drill_inspection_hole",
+      "source_type": "step",
+      "target_id": "full_core_sampling",
+      "target_type": "step",
+      "type": "REQUIRES",
+      "condition": "",
+      "evidence": "井筒检查孔必须全孔取芯",
+      "article_label": "第二十五条"
+    },
+    {
+      "source_id": "drill_inspection_hole",
+      "source_type": "step",
+      "target_id": "digital_logging",
+      "target_type": "step",
+      "type": "REQUIRES",
+      "condition": "",
+      "evidence": "全孔数字测井",
+      "article_label": "第二十五条"
+    },
+    {
+      "source_id": "drill_inspection_hole",
+      "source_type": "step",
+      "target_id": "pump_test_by_aquifer",
+      "target_type": "step",
+      "type": "REQUIRES",
+      "condition": "",
+      "evidence": "必须分含水层（组）进行抽水试验",
+      "article_label": "第二十五条"
+    },
+    {
+      "source_id": "drill_inspection_hole",
+      "source_type": "step",
+      "target_id": "sample_gas_self_ignition_dust",
+      "target_type": "step",
+      "type": "REQUIRES",
+      "condition": "",
+      "evidence": "分煤层采测煤层瓦斯、煤层自燃、煤尘爆炸性煤样",
+      "article_label": "第二十五条"
+    },
+    {
+      "source_id": "drill_inspection_hole",
+      "source_type": "step",
+      "target_id": "measure_hydrogeo_params",
+      "target_type": "step",
+      "type": "REQUIRES",
+      "condition": "",
+      "evidence": "采测钻孔水文地质及工程地质参数",
+      "article_label": "第二十五条"
+    },
+    {
+      "source_id": "drill_inspection_hole",
+      "source_type": "step",
+      "target_id": "identify_geological_structure",
+      "target_type": "step",
+      "type": "REQUIRES",
+      "condition": "",
+      "evidence": "查明地质构造和岩（土）层特征",
+      "article_label": "第二十五条"
+    },
+    {
+      "source_id": "drill_inspection_hole",
+      "source_type": "step",
+      "target_id": "log_geological_profile",
+      "target_type": "step",
+      "type": "REQUIRES",
+      "condition": "",
+      "evidence": "详细编录钻孔完整地质剖面",
+      "article_label": "第二十五条"
+    },
+    {
+      "source_id": "regulation_26",
+      "source_type": "regulation",
+      "target_id": "review_borehole_data",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "before_construction",
+      "evidence": "新建矿井开工前必须复查井筒检查孔资料",
+      "article_label": "第二十六条"
+    },
+    {
+      "source_id": "regulation_26",
+      "source_type": "regulation",
+      "target_id": "verify_drilling_info",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "before_construction",
+      "evidence": "调查核实钻孔位置及封孔质量",
+      "article_label": "第二十六条"
+    },
+    {
+      "source_id": "regulation_26",
+      "source_type": "regulation",
+      "target_id": "investigate_goaf",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "before_construction",
+      "evidence": "调查采空区情况",
+      "article_label": "第二十六条"
+    },
+    {
+      "source_id": "regulation_26",
+      "source_type": "regulation",
+      "target_id": "investigate_adjacent_mines",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "before_construction",
+      "evidence": "调查邻近矿井生产情况和地质资料",
+      "article_label": "第二十六条"
+    },
+    {
+      "source_id": "regulation_26",
+      "source_type": "regulation",
+      "target_id": "plot_data_on_plan",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "before_construction",
+      "evidence": "将相关资料标绘在采掘工程平面图上",
+      "article_label": "第二十六条"
+    },
+    {
+      "source_id": "regulation_26",
+      "source_type": "regulation",
+      "target_id": "prepare_technical_scheme",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "before_construction",
+      "evidence": "编制主要井巷揭煤、过地质构造及含水层技术方案",
+      "article_label": "第二十六条"
+    },
+    {
+      "source_id": "regulation_26",
+      "source_type": "regulation",
+      "target_id": "prepare_geological_diagram",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "before_construction",
+      "evidence": "编制主要井巷工程的预想地质图及其说明书",
+      "article_label": "第二十六条"
+    },
+    {
+      "source_id": "article_27",
+      "source_type": "article",
+      "target_id": "verify_geological_data",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "井筒施工期间应当验证井筒检查孔取得的各种地质资料",
+      "article_label": "第二十七条"
+    },
+    {
+      "source_id": "verify_geological_data",
+      "source_type": "step",
+      "target_id": "take_detection_measures",
+      "target_type": "step",
+      "type": "NEXT",
+      "condition": "发现影响施工的异常地质因素",
+      "evidence": "当发现影响施工的异常地质因素时，应当采取探测和预防措施",
+      "article_label": "第二十七条"
+    },
+    {
+      "source_id": "verify_geological_data",
+      "source_type": "step",
+      "target_id": "take_preventive_measures",
+      "target_type": "step",
+      "type": "NEXT",
+      "condition": "发现影响施工的异常地质因素",
+      "evidence": "当发现影响施工的异常地质因素时，应当采取探测和预防措施",
+      "article_label": "第二十七条"
+    },
+    {
+      "source_id": "take_detection_measures",
+      "source_type": "step",
+      "target_id": "abnormal_geological_factors",
+      "target_type": "condition",
+      "type": "IF",
+      "condition": "",
+      "evidence": "当发现影响施工的异常地质因素时，应当采取探测和预防措施",
+      "article_label": "第二十七条"
+    },
+    {
+      "source_id": "take_preventive_measures",
+      "source_type": "step",
+      "target_id": "abnormal_geological_factors",
+      "target_type": "condition",
+      "type": "IF",
+      "condition": "",
+      "evidence": "当发现影响施工的异常地质因素时，应当采取探测和预防措施",
+      "article_label": "第二十七条"
+    },
+    {
+      "source_id": "regulation_28",
+      "source_type": "regulation",
+      "target_id": "observe_describe",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "煤矿建设、生产阶段，必须对揭露的煤层、断层、褶皱、岩浆岩体、陷落柱、含水岩层，矿井涌水量及主要出水点等进行观测及描述",
+      "article_label": "第二十八条"
+    },
+    {
+      "source_id": "regulation_28",
+      "source_type": "regulation",
+      "target_id": "analyze_predict",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "综合分析，实施地质预测、预报",
+      "article_label": "第二十八条"
+    },
+    {
+      "source_id": "observe_describe",
+      "source_type": "step",
+      "target_id": "coal_seam_exposed",
+      "target_type": "condition",
+      "type": "IF",
+      "condition": "",
+      "evidence": "对揭露的煤层...进行观测及描述",
+      "article_label": "第二十八条"
+    },
+    {
+      "source_id": "observe_describe",
+      "source_type": "step",
+      "target_id": "fault_exposed",
+      "target_type": "condition",
+      "type": "IF",
+      "condition": "",
+      "evidence": "对揭露的断层...进行观测及描述",
+      "article_label": "第二十八条"
+    },
+    {
+      "source_id": "observe_describe",
+      "source_type": "step",
+      "target_id": "fold_exposed",
+      "target_type": "condition",
+      "type": "IF",
+      "condition": "",
+      "evidence": "对揭露的褶皱...进行观测及描述",
+      "article_label": "第二十八条"
+    },
+    {
+      "source_id": "observe_describe",
+      "source_type": "step",
+      "target_id": "intrusive_rock_exposed",
+      "target_type": "condition",
+      "type": "IF",
+      "condition": "",
+      "evidence": "对揭露的岩浆岩体...进行观测及描述",
+      "article_label": "第二十八条"
+    },
+    {
+      "source_id": "observe_describe",
+      "source_type": "step",
+      "target_id": "collapse_column_exposed",
+      "target_type": "condition",
+      "type": "IF",
+      "condition": "",
+      "evidence": "对揭露的陷落柱...进行观测及描述",
+      "article_label": "第二十八条"
+    },
+    {
+      "source_id": "observe_describe",
+      "source_type": "step",
+      "target_id": "water_bearing_layer_exposed",
+      "target_type": "condition",
+      "type": "IF",
+      "condition": "",
+      "evidence": "对揭露的含水岩层...进行观测及描述",
+      "article_label": "第二十八条"
+    },
+    {
+      "source_id": "observe_describe",
+      "source_type": "step",
+      "target_id": "mine_water_inflow",
+      "target_type": "condition",
+      "type": "IF",
+      "condition": "",
+      "evidence": "对矿井涌水量...进行观测及描述",
+      "article_label": "第二十八条"
+    },
+    {
+      "source_id": "observe_describe",
+      "source_type": "step",
+      "target_id": "main_water_outlet",
+      "target_type": "condition",
+      "type": "IF",
+      "condition": "",
+      "evidence": "对主要出水点...进行观测及描述",
+      "article_label": "第二十八条"
+    },
+    {
+      "source_id": "analyze_predict",
+      "source_type": "step",
+      "target_id": "observe_describe",
+      "target_type": "step",
+      "type": "NEXT",
+      "condition": "",
+      "evidence": "综合分析，实施地质预测、预报",
+      "article_label": "第二十八条"
+    },
+    {
+      "source_id": "article_29",
+      "source_type": "article",
+      "target_id": "explore_geological_conditions",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "井巷揭煤前，应当探明煤层厚度、地质构造、瓦斯地质、水文地质及顶底板等地质条件",
+      "article_label": "第二十九条"
+    },
+    {
+      "source_id": "article_29",
+      "source_type": "article",
+      "target_id": "compile_geological_report",
+      "target_type": "step",
+      "type": "CONTAINS",
+      "condition": "",
+      "evidence": "编制揭煤地质说明书",
+      "article_label": "第二十九条"
+    },
+    {
+      "source_id": "explore_geological_conditions",
+      "source_type": "step",
+      "target_id": "before_exposing_coal_seam",
+      "target_type": "condition",
+      "type": "IF",
+      "condition": "",
+      "evidence": "井巷揭煤前，应当探明……",
+      "article_label": "第二十九条"
+    },
+    {
+      "source_id": "compile_geological_report",
+      "source_type": "step",
+      "target_id": "before_exposing_coal_seam",
+      "target_type": "condition",
+      "type": "IF",
+      "condition": "",
+      "evidence": "井巷揭煤前，……编制揭煤地质说明书",
+      "article_label": "第二十九条"
+    },
+    {
+      "source_id": "explore_geological_conditions",
+      "source_type": "step",
+      "target_id": "geological_team",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "探明……地质条件",
+      "article_label": "第二十九条"
+    },
+    {
+      "source_id": "compile_geological_report",
+      "source_type": "step",
+      "target_id": "geological_team",
+      "target_type": "role",
+      "type": "PERFORMED_BY",
+      "condition": "",
+      "evidence": "编制揭煤地质说明书",
+      "article_label": "第二十九条"
+    }
+  ],
+  "articles": [
+    {
+      "index": 1,
+      "article_label": "第一条",
+      "text": "第一条 为保障煤矿安全生产和从业人员的人身安全与健 康，防止煤矿事故与职业病危害，根据《煤炭法》《矿山安全法》 《安全生产法》《职业病防治法》《煤矿安全监察条例》和《安 全生产许可证条例》等，制定本规程。",
+      "nodes": [],
+      "relationships": []
+    },
+    {
+      "index": 2,
+      "article_label": "第二条",
+      "text": "第二条 在中华人民共和国领域内从事煤炭生产和煤矿建 设活动，必须遵守本规程。",
+      "nodes": [],
+      "relationships": []
+    },
+    {
+      "index": 3,
+      "article_label": "第三条",
+      "text": "第三条 煤炭生产实行安全生产许可证制度。未取得安全生 产许可证的，不得从事煤炭生产活动。",
+      "nodes": [],
+      "relationships": []
+    },
+    {
+      "index": 4,
+      "article_label": "第四条",
+      "text": "第四条 从事煤炭生产与煤矿建设的企业（以下统称煤矿企 业）必须遵守国家有关安全生产的法律、法规、规章、规程、标 准和技术规范。 煤矿企业必须加强安全生产管理，建立健全各级负责人、各 部门、各岗位安全生产与职业病危害防治责任制。 煤矿企业必须建立健全安全生产与职业病危害防治目标管 理、投入、奖惩、技术措施审批、培训、办公会议制度，安全检 查制度，安全风险分级管控工作制度，事故隐患排查、治理、报 告制度，事故报告与责任追究制度等。 煤矿企业必须制定重要设备材料的查验制度，做好检查验收 和记录，防爆、阻燃抗静电、保护等安全性能不合格的不得入井 使用。 煤矿企业必须建立各种设备、设施检查维修制度，定期进行 检查维修，并做好记录。 煤矿必须制定本单位的作业规程和操作规程。",
+      "nodes": [],
+      "relationships": []
+    },
+    {
+      "index": 5,
+      "article_label": "第五条",
+      "text": "第五条 煤矿企业必须设置专门机构负责煤矿安全生产与 职业病危害防治管理工作，配备满足工作需要的人员及装备。",
+      "nodes": [
+        {
+          "type": "regulation",
+          "id": "regulation_5",
+          "label": "第五条"
+        },
+        {
+          "type": "role",
+          "id": "safety_management_org",
+          "label": "专门机构"
+        },
+        {
+          "type": "equipment",
+          "id": "safety_equipment",
+          "label": "装备"
+        }
+      ],
+      "relationships": [
+        {
+          "source_id": "regulation_5",
+          "source_type": "regulation",
+          "target_id": "safety_management_org",
+          "target_type": "role",
+          "type": "REQUIRES",
+          "condition": "",
+          "evidence": "煤矿企业必须设置专门机构负责煤矿安全生产与职业病危害防治管理工作",
+          "article_label": "第五条"
+        },
+        {
+          "source_id": "safety_management_org",
+          "source_type": "role",
+          "target_id": "safety_equipment",
+          "target_type": "equipment",
+          "type": "REQUIRES",
+          "condition": "满足工作需要",
+          "evidence": "配备满足工作需要的人员及装备",
+          "article_label": "第五条"
+        }
+      ]
+    },
+    {
+      "index": 6,
+      "article_label": "第六条",
+      "text": "第六条 煤矿建设项目的安全设施和职业病危害防护设施， 必须与主体工程同时设计、同时施工、同时投入使用。",
+      "nodes": [],
+      "relationships": []
+    },
+    {
+      "index": 7,
+      "article_label": "第七条",
+      "text": "第七条 对作业场所和工作岗位存在的危险有害因素及防 范措施、事故应急措施、职业病危害及其后果、职业病危害防护 措施等，煤矿企业应当履行告知义务，从业人员有权了解并提出 建议。",
+      "nodes": [],
+      "relationships": []
+    },
+    {
+      "index": 8,
+      "article_label": "第八条",
+      "text": "第八条 煤矿安全生产与职业病危害防治工作必须实行群 众监督。煤矿企业必须支持群众组织的监督活动，发挥群众的监 督作用。 从业人员有权制止违章作业，拒绝违章指挥；当工作地点出 现险情时，有权立即停止作业，撤到安全地点；当险情没有得到 处理不能保证人身安全时，有权拒绝作业。 从业人员必须遵守煤矿安全生产规章制度、作业规程和操作 规程，严禁违章指挥、违章作业。",
+      "nodes": [
+        {
+          "type": "role",
+          "id": "employee",
+          "label": "从业人员"
+        },
+        {
+          "type": "step",
+          "id": "stop_work",
+          "label": "停止作业"
+        },
+        {
+          "type": "step",
+          "id": "evacuate",
+          "label": "撤到安全地点"
+        },
+        {
+          "type": "step",
+          "id": "refuse_work",
+          "label": "拒绝作业"
+        },
+        {
+          "type": "condition",
+          "id": "danger_present",
+          "label": "工作地点出现险情"
+        },
+        {
+          "type": "condition",
+          "id": "safety_not_guaranteed",
+          "label": "险情未处理且不能保证人身安全"
+        }
+      ],
+      "relationships": [
+        {
+          "source_id": "employee",
+          "source_type": "role",
+          "target_id": "stop_work",
+          "target_type": "step",
+          "type": "PERFORMED_BY",
+          "condition": "工作地点出现险情",
+          "evidence": "当工作地点出现险情时，有权立即停止作业",
+          "article_label": "第八条"
+        },
+        {
+          "source_id": "employee",
+          "source_type": "role",
+          "target_id": "evacuate",
+          "target_type": "step",
+          "type": "PERFORMED_BY",
+          "condition": "工作地点出现险情",
+          "evidence": "当工作地点出现险情时，有权立即停止作业，撤到安全地点",
+          "article_label": "第八条"
+        },
+        {
+          "source_id": "employee",
+          "source_type": "role",
+          "target_id": "refuse_work",
+          "target_type": "step",
+          "type": "PERFORMED_BY",
+          "condition": "险情未处理且不能保证人身安全",
+          "evidence": "当险情没有得到处理不能保证人身安全时，有权拒绝作业",
+          "article_label": "第八条"
+        }
+      ]
+    },
+    {
+      "index": 9,
+      "article_label": "第九条",
+      "text": "第九条 煤矿企业必须对从业人员进行安全教育和培训。培 训不合格的，不得上岗作业。 主要负责人和安全生产管理人员必须具备煤矿安全生产知 识和管理能力，并经考核合格。特种作业人员必须按国家有关规 定培训合格，取得资格证书，方可上岗作业。 矿长必须具备安全专业知识，具有组织、领导安全生产和处 理煤矿事故的能力。",
+      "nodes": [
+        {
+          "type": "regulation",
+          "id": "regulation_9",
+          "label": "第九条"
+        },
+        {
+          "type": "step",
+          "id": "safety_training",
+          "label": "进行安全教育和培训"
+        },
+        {
+          "type": "step",
+          "id": "assess_training",
+          "label": "培训不合格不得上岗"
+        },
+        {
+          "type": "step",
+          "id": "certify_special_ops",
+          "label": "特种作业人员培训合格并取得资格证书"
+        },
+        {
+          "type": "step",
+          "id": "certify_managers",
+          "label": "主要负责人和安全生产管理人员考核合格"
+        },
+        {
+          "type": "step",
+          "id": "certify_mine_manager",
+          "label": "矿长具备安全专业知识和事故处理能力"
+        },
+        {
+          "type": "role",
+          "id": "employees",
+          "label": "从业人员"
+        },
+        {
+          "type": "role",
+          "id": "managers",
+          "label": "主要负责人和安全生产管理人员"
+        },
+        {
+          "type": "role",
+          "id": "special_ops",
+          "label": "特种作业人员"
+        },
+        {
+          "type": "role",
+          "id": "mine_manager",
+          "label": "矿长"
+        }
+      ],
+      "relationships": [
+        {
+          "source_id": "regulation_9",
+          "source_type": "regulation",
+          "target_id": "safety_training",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "煤矿企业必须对从业人员进行安全教育和培训",
+          "article_label": "第九条"
+        },
+        {
+          "source_id": "safety_training",
+          "source_type": "step",
+          "target_id": "employees",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "煤矿企业必须对从业人员进行安全教育和培训",
+          "article_label": "第九条"
+        },
+        {
+          "source_id": "regulation_9",
+          "source_type": "regulation",
+          "target_id": "assess_training",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "培训不合格的，不得上岗作业",
+          "article_label": "第九条"
+        },
+        {
+          "source_id": "regulation_9",
+          "source_type": "regulation",
+          "target_id": "certify_managers",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "主要负责人和安全生产管理人员必须具备煤矿安全生产知识和管理能力，并经考核合格",
+          "article_label": "第九条"
+        },
+        {
+          "source_id": "certify_managers",
+          "source_type": "step",
+          "target_id": "managers",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "主要负责人和安全生产管理人员必须具备煤矿安全生产知识和管理能力，并经考核合格",
+          "article_label": "第九条"
+        },
+        {
+          "source_id": "regulation_9",
+          "source_type": "regulation",
+          "target_id": "certify_special_ops",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "特种作业人员必须按国家有关规定培训合格，取得资格证书，方可上岗作业",
+          "article_label": "第九条"
+        },
+        {
+          "source_id": "certify_special_ops",
+          "source_type": "step",
+          "target_id": "special_ops",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "特种作业人员必须按国家有关规定培训合格，取得资格证书，方可上岗作业",
+          "article_label": "第九条"
+        },
+        {
+          "source_id": "regulation_9",
+          "source_type": "regulation",
+          "target_id": "certify_mine_manager",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "矿长必须具备安全专业知识，具有组织、领导安全生产和处理煤矿事故的能力",
+          "article_label": "第九条"
+        },
+        {
+          "source_id": "certify_mine_manager",
+          "source_type": "step",
+          "target_id": "mine_manager",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "矿长必须具备安全专业知识，具有组织、领导安全生产和处理煤矿事故的能力",
+          "article_label": "第九条"
+        }
+      ]
+    },
+    {
+      "index": 10,
+      "article_label": "第十条",
+      "text": "第十条 煤矿使用的纳入安全标志管理的产品，必须取得煤 矿矿用产品安全标志。未取得煤矿矿用产品安全标志的，不得使 用。 试验涉及安全生产的新技术、新工艺必须经过论证并制定安 全措施；新设备、新材料必须经过安全性能检验，取得产品工业 性试验安全标志。 积极推广自动化、智能化开采，减少井下作业人数。 严禁使用国家明令禁止使用或者淘汰的危及生产安全和可 能产生职业病危害的技术、工艺、材料和设备。",
+      "nodes": [
+        {
+          "type": "regulation",
+          "id": "regulation_10",
+          "label": "第十条"
+        },
+        {
+          "type": "step",
+          "id": "use_safety_certified_products",
+          "label": "使用安全标志管理产品"
+        },
+        {
+          "type": "step",
+          "id": "obtain_safety_mark",
+          "label": "取得煤矿矿用产品安全标志"
+        },
+        {
+          "type": "step",
+          "id": "test_new_technology",
+          "label": "论证并制定安全措施"
+        },
+        {
+          "type": "step",
+          "id": "test_new_equipment",
+          "label": "进行安全性能检验"
+        },
+        {
+          "type": "step",
+          "id": "obtain_industrial_trial_mark",
+          "label": "取得工业性试验安全标志"
+        },
+        {
+          "type": "step",
+          "id": "promote_automation",
+          "label": "推广自动化、智能化开采"
+        },
+        {
+          "type": "step",
+          "id": "reduce_underground_workers",
+          "label": "减少井下作业人数"
+        },
+        {
+          "type": "step",
+          "id": "prohibit_hazardous_technology",
+          "label": "严禁使用淘汰技术、工艺、材料和设备"
+        },
+        {
+          "type": "equipment",
+          "id": "safety_certified_equipment",
+          "label": "安全标志管理产品"
+        },
+        {
+          "type": "equipment",
+          "id": "new_equipment",
+          "label": "新设备"
+        },
+        {
+          "type": "equipment",
+          "id": "new_materials",
+          "label": "新材料"
+        },
+        {
+          "type": "hazard",
+          "id": "production_safety_hazard",
+          "label": "生产安全危害"
+        },
+        {
+          "type": "hazard",
+          "id": "occupational_disease_hazard",
+          "label": "职业病危害"
+        },
+        {
+          "type": "condition",
+          "id": "involving_safe_production",
+          "label": "涉及安全生产"
+        },
+        {
+          "type": "condition",
+          "id": "national_ban",
+          "label": "国家明令禁止"
+        }
+      ],
+      "relationships": [
+        {
+          "source_id": "regulation_10",
+          "source_type": "regulation",
+          "target_id": "use_safety_certified_products",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "煤矿使用的纳入安全标志管理的产品，必须取得煤矿矿用产品安全标志",
+          "article_label": "第十条"
+        },
+        {
+          "source_id": "use_safety_certified_products",
+          "source_type": "step",
+          "target_id": "obtain_safety_mark",
+          "target_type": "step",
+          "type": "REQUIRES",
+          "condition": "",
+          "evidence": "必须取得煤矿矿用产品安全标志",
+          "article_label": "第十条"
+        },
+        {
+          "source_id": "regulation_10",
+          "source_type": "regulation",
+          "target_id": "test_new_technology",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "试验涉及安全生产的新技术、新工艺必须经过论证并制定安全措施",
+          "article_label": "第十条"
+        },
+        {
+          "source_id": "test_new_technology",
+          "source_type": "step",
+          "target_id": "involving_safe_production",
+          "target_type": "condition",
+          "type": "IF",
+          "condition": "",
+          "evidence": "试验涉及安全生产的新技术、新工艺",
+          "article_label": "第十条"
+        },
+        {
+          "source_id": "regulation_10",
+          "source_type": "regulation",
+          "target_id": "test_new_equipment",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "新设备、新材料必须经过安全性能检验",
+          "article_label": "第十条"
+        },
+        {
+          "source_id": "test_new_equipment",
+          "source_type": "step",
+          "target_id": "obtain_industrial_trial_mark",
+          "target_type": "step",
+          "type": "REQUIRES",
+          "condition": "",
+          "evidence": "取得产品工业性试验安全标志",
+          "article_label": "第十条"
+        },
+        {
+          "source_id": "regulation_10",
+          "source_type": "regulation",
+          "target_id": "promote_automation",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "积极推广自动化、智能化开采",
+          "article_label": "第十条"
+        },
+        {
+          "source_id": "promote_automation",
+          "source_type": "step",
+          "target_id": "reduce_underground_workers",
+          "target_type": "step",
+          "type": "NEXT",
+          "condition": "",
+          "evidence": "减少井下作业人数",
+          "article_label": "第十条"
+        },
+        {
+          "source_id": "regulation_10",
+          "source_type": "regulation",
+          "target_id": "prohibit_hazardous_technology",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "严禁使用国家明令禁止使用或者淘汰的危及生产安全和可能产生职业病危害的技术、工艺、材料和设备",
+          "article_label": "第十条"
+        },
+        {
+          "source_id": "prohibit_hazardous_technology",
+          "source_type": "step",
+          "target_id": "production_safety_hazard",
+          "target_type": "hazard",
+          "type": "HAS_RISK",
+          "condition": "",
+          "evidence": "危及生产安全",
+          "article_label": "第十条"
+        },
+        {
+          "source_id": "prohibit_hazardous_technology",
+          "source_type": "step",
+          "target_id": "occupational_disease_hazard",
+          "target_type": "hazard",
+          "type": "HAS_RISK",
+          "condition": "",
+          "evidence": "可能产生职业病危害",
+          "article_label": "第十条"
+        },
+        {
+          "source_id": "prohibit_hazardous_technology",
+          "source_type": "step",
+          "target_id": "national_ban",
+          "target_type": "condition",
+          "type": "IF",
+          "condition": "",
+          "evidence": "国家明令禁止使用或者淘汰的",
+          "article_label": "第十条"
+        }
+      ]
+    },
+    {
+      "index": 11,
+      "article_label": "第十一条",
+      "text": "第十一条 煤矿企业在编制生产建设长远发展规划和年度 生产建设计划时，必须编制安全技术与职业病危害防治发展规划 和安全技术措施计划。安全技术措施与职业病危害防治所需费用、 材料和设备等必须列入企业财务、供应计划。 煤炭生产与煤矿建设的安全投入和职业病危害防治费用提 取、使用必须符合国家有关规定。",
+      "nodes": [],
+      "relationships": []
+    },
+    {
+      "index": 12,
+      "article_label": "第十二条",
+      "text": "第十二条 煤矿必须编制年度灾害预防和处理计划，并根据 具体情况及时修改。灾害预防和处理计划由矿长负责组织实施。",
+      "nodes": [
+        {
+          "type": "regulation",
+          "id": "regulation_12",
+          "label": "煤矿必须编制年度灾害预防和处理计划"
+        },
+        {
+          "type": "step",
+          "id": "compile_plan",
+          "label": "编制年度灾害预防和处理计划"
+        },
+        {
+          "type": "step",
+          "id": "modify_plan",
+          "label": "根据具体情况及时修改计划"
+        },
+        {
+          "type": "role",
+          "id": "mine_manager",
+          "label": "矿长"
+        },
+        {
+          "type": "step",
+          "id": "implement_plan",
+          "label": "组织实施灾害预防和处理计划"
+        }
+      ],
+      "relationships": [
+        {
+          "source_id": "regulation_12",
+          "source_type": "regulation",
+          "target_id": "compile_plan",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "煤矿必须编制年度灾害预防和处理计划",
+          "article_label": "第十二条"
+        },
+        {
+          "source_id": "regulation_12",
+          "source_type": "regulation",
+          "target_id": "modify_plan",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "并根据具体情况及时修改",
+          "article_label": "第十二条"
+        },
+        {
+          "source_id": "compile_plan",
+          "source_type": "step",
+          "target_id": "implement_plan",
+          "target_type": "step",
+          "type": "NEXT",
+          "condition": "",
+          "evidence": "灾害预防和处理计划由矿长负责组织实施",
+          "article_label": "第十二条"
+        },
+        {
+          "source_id": "implement_plan",
+          "source_type": "step",
+          "target_id": "mine_manager",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "灾害预防和处理计划由矿长负责组织实施",
+          "article_label": "第十二条"
+        }
+      ]
+    },
+    {
+      "index": 13,
+      "article_label": "第十三条",
+      "text": "第十三条 入井（场）人员必须戴安全帽等个体防护用品， 穿带有反光标识的工作服。入井（场）前严禁饮酒。 煤矿必须建立入井检身制度和出入井人员清点制度；必须掌 握井下人员数量、位置等实时信息。 入井人员必须随身携带自救器、标识卡和矿灯，严禁携带烟 草和点火物品，严禁穿化纤衣服。",
+      "nodes": [
+        {
+          "type": "regulation",
+          "id": "regulation_13",
+          "label": "第十三条"
+        },
+        {
+          "type": "step",
+          "id": "wear_safety_gear",
+          "label": "戴安全帽等个体防护用品"
+        },
+        {
+          "type": "step",
+          "id": "wear_reflective_clothing",
+          "label": "穿带有反光标识的工作服"
+        },
+        {
+          "type": "step",
+          "id": "no_alcohol_before_entry",
+          "label": "入井前严禁饮酒"
+        },
+        {
+          "type": "step",
+          "id": "establish_check_in_system",
+          "label": "建立入井检身制度"
+        },
+        {
+          "type": "step",
+          "id": "establish_headcount_system",
+          "label": "建立出入井人员清点制度"
+        },
+        {
+          "type": "step",
+          "id": "monitor_personnel_info",
+          "label": "掌握井下人员数量、位置等实时信息"
+        },
+        {
+          "type": "step",
+          "id": "carry_self_rescuer",
+          "label": "随身携带自救器"
+        },
+        {
+          "type": "step",
+          "id": "carry_id_card",
+          "label": "随身携带标识卡"
+        },
+        {
+          "type": "step",
+          "id": "carry_miner_lamp",
+          "label": "随身携带矿灯"
+        },
+        {
+          "type": "step",
+          "id": "no_smoking_items",
+          "label": "严禁携带烟草和点火物品"
+        },
+        {
+          "type": "step",
+          "id": "no_synthetic_clothing",
+          "label": "严禁穿化纤衣服"
+        },
+        {
+          "type": "role",
+          "id": "entry_personnel",
+          "label": "入井（场）人员"
+        },
+        {
+          "type": "role",
+          "id": "mine_operator",
+          "label": "煤矿"
+        }
+      ],
+      "relationships": [
+        {
+          "source_id": "regulation_13",
+          "source_type": "regulation",
+          "target_id": "wear_safety_gear",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "入井（场）人员必须戴安全帽等个体防护用品",
+          "article_label": "第十三条"
+        },
+        {
+          "source_id": "regulation_13",
+          "source_type": "regulation",
+          "target_id": "wear_reflective_clothing",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "穿带有反光标识的工作服",
+          "article_label": "第十三条"
+        },
+        {
+          "source_id": "regulation_13",
+          "source_type": "regulation",
+          "target_id": "no_alcohol_before_entry",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "入井（场）前严禁饮酒",
+          "article_label": "第十三条"
+        },
+        {
+          "source_id": "regulation_13",
+          "source_type": "regulation",
+          "target_id": "establish_check_in_system",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "煤矿必须建立入井检身制度",
+          "article_label": "第十三条"
+        },
+        {
+          "source_id": "regulation_13",
+          "source_type": "regulation",
+          "target_id": "establish_headcount_system",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "必须建立出入井人员清点制度",
+          "article_label": "第十三条"
+        },
+        {
+          "source_id": "regulation_13",
+          "source_type": "regulation",
+          "target_id": "monitor_personnel_info",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "必须掌握井下人员数量、位置等实时信息",
+          "article_label": "第十三条"
+        },
+        {
+          "source_id": "regulation_13",
+          "source_type": "regulation",
+          "target_id": "carry_self_rescuer",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "入井人员必须随身携带自救器",
+          "article_label": "第十三条"
+        },
+        {
+          "source_id": "regulation_13",
+          "source_type": "regulation",
+          "target_id": "carry_id_card",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "随身携带标识卡",
+          "article_label": "第十三条"
+        },
+        {
+          "source_id": "regulation_13",
+          "source_type": "regulation",
+          "target_id": "carry_miner_lamp",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "随身携带矿灯",
+          "article_label": "第十三条"
+        },
+        {
+          "source_id": "regulation_13",
+          "source_type": "regulation",
+          "target_id": "no_smoking_items",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "严禁携带烟草和点火物品",
+          "article_label": "第十三条"
+        },
+        {
+          "source_id": "regulation_13",
+          "source_type": "regulation",
+          "target_id": "no_synthetic_clothing",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "严禁穿化纤衣服",
+          "article_label": "第十三条"
+        },
+        {
+          "source_id": "wear_safety_gear",
+          "source_type": "step",
+          "target_id": "entry_personnel",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "入井（场）人员必须戴安全帽等个体防护用品",
+          "article_label": "第十三条"
+        },
+        {
+          "source_id": "wear_reflective_clothing",
+          "source_type": "step",
+          "target_id": "entry_personnel",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "穿带有反光标识的工作服",
+          "article_label": "第十三条"
+        },
+        {
+          "source_id": "no_alcohol_before_entry",
+          "source_type": "step",
+          "target_id": "entry_personnel",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "入井（场）前严禁饮酒",
+          "article_label": "第十三条"
+        },
+        {
+          "source_id": "carry_self_rescuer",
+          "source_type": "step",
+          "target_id": "entry_personnel",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "入井人员必须随身携带自救器",
+          "article_label": "第十三条"
+        },
+        {
+          "source_id": "carry_id_card",
+          "source_type": "step",
+          "target_id": "entry_personnel",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "随身携带标识卡",
+          "article_label": "第十三条"
+        },
+        {
+          "source_id": "carry_miner_lamp",
+          "source_type": "step",
+          "target_id": "entry_personnel",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "随身携带矿灯",
+          "article_label": "第十三条"
+        },
+        {
+          "source_id": "no_smoking_items",
+          "source_type": "step",
+          "target_id": "entry_personnel",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "严禁携带烟草和点火物品",
+          "article_label": "第十三条"
+        },
+        {
+          "source_id": "no_synthetic_clothing",
+          "source_type": "step",
+          "target_id": "entry_personnel",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "严禁穿化纤衣服",
+          "article_label": "第十三条"
+        },
+        {
+          "source_id": "establish_check_in_system",
+          "source_type": "step",
+          "target_id": "mine_operator",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "煤矿必须建立入井检身制度",
+          "article_label": "第十三条"
+        },
+        {
+          "source_id": "establish_headcount_system",
+          "source_type": "step",
+          "target_id": "mine_operator",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "必须建立出入井人员清点制度",
+          "article_label": "第十三条"
+        },
+        {
+          "source_id": "monitor_personnel_info",
+          "source_type": "step",
+          "target_id": "mine_operator",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "必须掌握井下人员数量、位置等实时信息",
+          "article_label": "第十三条"
+        }
+      ]
+    },
+    {
+      "index": 14,
+      "article_label": "第十四条",
+      "text": "第十四条 井工煤矿必须按规定填绘反映实际情况的下列 图纸： （一）矿井地质图和水文地质图。 （二）井上、下对照图。 （三）巷道布置图。 （四）采掘工程平面图。 （五）通风系统图。 （六）井下运输系统图。 （七）安全监控布置图和断电控制图、人员位置监测系统图。 （八）压风、排水、防尘、防火注浆、抽采瓦斯等管路系统 图。 （九）井下通信系统图。 （十）井上、下配电系统图和井下电气设备布置图。 （十一）井下避灾路线图。",
+      "nodes": [],
+      "relationships": []
+    },
+    {
+      "index": 15,
+      "article_label": "第十五条",
+      "text": "第十五条 露天煤矿必须按规定填绘反映实际情况的下列 图纸： （一）地形地质图。 （二）工程地质平面图、断面图。 （三）综合水文地质图。 （四）采剥、排土工程平面图和运输系统图。 （五）供配电系统图。 （六）通信系统图。 （七）防排水系统图。 （八）边坡监测系统平面图。 （九）井工采空区与露天矿平面对照图。",
+      "nodes": [],
+      "relationships": []
+    },
+    {
+      "index": 16,
+      "article_label": "第十六条",
+      "text": "第十六条 井工煤矿必须制定停工停产期间的安全技术措 施，保证矿井供电、通风、排水和安全监控系统正常运行，落实 24h 值班制度。复工复产前必须进行全面安全检查。",
+      "nodes": [
+        {
+          "type": "regulation",
+          "id": "regulation_16",
+          "label": "第十六条"
+        },
+        {
+          "type": "step",
+          "id": "maintain_power",
+          "label": "保证矿井供电正常运行"
+        },
+        {
+          "type": "step",
+          "id": "maintain_ventilation",
+          "label": "保证矿井通风正常运行"
+        },
+        {
+          "type": "step",
+          "id": "maintain_drainage",
+          "label": "保证矿井排水正常运行"
+        },
+        {
+          "type": "step",
+          "id": "maintain_monitoring",
+          "label": "保证安全监控系统正常运行"
+        },
+        {
+          "type": "step",
+          "id": "implement_duty",
+          "label": "落实24小时值班制度"
+        },
+        {
+          "type": "step",
+          "id": "conduct_safety_check",
+          "label": "进行全面安全检查"
+        },
+        {
+          "type": "condition",
+          "id": "during_shutdown",
+          "label": "停工停产期间"
+        },
+        {
+          "type": "condition",
+          "id": "before_resumption",
+          "label": "复工复产前"
+        }
+      ],
+      "relationships": [
+        {
+          "source_id": "regulation_16",
+          "source_type": "regulation",
+          "target_id": "maintain_power",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "during_shutdown",
+          "evidence": "井工煤矿必须制定停工停产期间的安全技术措施，保证矿井供电、通风、排水和安全监控系统正常运行",
+          "article_label": "第十六条"
+        },
+        {
+          "source_id": "regulation_16",
+          "source_type": "regulation",
+          "target_id": "maintain_ventilation",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "during_shutdown",
+          "evidence": "井工煤矿必须制定停工停产期间的安全技术措施，保证矿井供电、通风、排水和安全监控系统正常运行",
+          "article_label": "第十六条"
+        },
+        {
+          "source_id": "regulation_16",
+          "source_type": "regulation",
+          "target_id": "maintain_drainage",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "during_shutdown",
+          "evidence": "井工煤矿必须制定停工停产期间的安全技术措施，保证矿井供电、通风、排水和安全监控系统正常运行",
+          "article_label": "第十六条"
+        },
+        {
+          "source_id": "regulation_16",
+          "source_type": "regulation",
+          "target_id": "maintain_monitoring",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "during_shutdown",
+          "evidence": "井工煤矿必须制定停工停产期间的安全技术措施，保证矿井供电、通风、排水和安全监控系统正常运行",
+          "article_label": "第十六条"
+        },
+        {
+          "source_id": "regulation_16",
+          "source_type": "regulation",
+          "target_id": "implement_duty",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "during_shutdown",
+          "evidence": "落实24h值班制度",
+          "article_label": "第十六条"
+        },
+        {
+          "source_id": "regulation_16",
+          "source_type": "regulation",
+          "target_id": "conduct_safety_check",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "before_resumption",
+          "evidence": "复工复产前必须进行全面安全检查",
+          "article_label": "第十六条"
+        }
+      ]
+    },
+    {
+      "index": 17,
+      "article_label": "第十七条",
+      "text": "第十七条 煤矿企业必须建立应急救援组织，健全规章制度， 编制应急救援预案，储备应急救援物资、装备并定期检查补充。 煤矿必须建立矿井安全避险系统，对井下人员进行安全避险 和应急救援培训，每年至少组织 1 次应急演练。",
+      "nodes": [
+        {
+          "type": "regulation",
+          "id": "regulation_17",
+          "label": "第十七条"
+        },
+        {
+          "type": "step",
+          "id": "establish_rescue_org",
+          "label": "建立应急救援组织"
+        },
+        {
+          "type": "step",
+          "id": "improve_regulations",
+          "label": "健全规章制度"
+        },
+        {
+          "type": "step",
+          "id": "prepare_rescue_plan",
+          "label": "编制应急救援预案"
+        },
+        {
+          "type": "step",
+          "id": "reserve_equipment",
+          "label": "储备应急救援物资、装备"
+        },
+        {
+          "type": "step",
+          "id": "inspect_supplement",
+          "label": "定期检查补充"
+        },
+        {
+          "type": "step",
+          "id": "establish_safety_system",
+          "label": "建立矿井安全避险系统"
+        },
+        {
+          "type": "step",
+          "id": "conduct_training",
+          "label": "对井下人员进行安全避险和应急救援培训"
+        },
+        {
+          "type": "step",
+          "id": "organize_drill",
+          "label": "组织应急演练"
+        },
+        {
+          "type": "role",
+          "id": "coal_mine_enterprise",
+          "label": "煤矿企业"
+        },
+        {
+          "type": "role",
+          "id": "mine",
+          "label": "煤矿"
+        },
+        {
+          "type": "equipment",
+          "id": "rescue_equipment",
+          "label": "应急救援装备"
+        },
+        {
+          "type": "equipment",
+          "id": "safety_system",
+          "label": "矿井安全避险系统"
+        }
+      ],
+      "relationships": [
+        {
+          "source_id": "regulation_17",
+          "source_type": "regulation",
+          "target_id": "establish_rescue_org",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "煤矿企业必须建立应急救援组织",
+          "article_label": "第十七条"
+        },
+        {
+          "source_id": "regulation_17",
+          "source_type": "regulation",
+          "target_id": "improve_regulations",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "健全规章制度",
+          "article_label": "第十七条"
+        },
+        {
+          "source_id": "regulation_17",
+          "source_type": "regulation",
+          "target_id": "prepare_rescue_plan",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "编制应急救援预案",
+          "article_label": "第十七条"
+        },
+        {
+          "source_id": "regulation_17",
+          "source_type": "regulation",
+          "target_id": "reserve_equipment",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "储备应急救援物资、装备",
+          "article_label": "第十七条"
+        },
+        {
+          "source_id": "regulation_17",
+          "source_type": "regulation",
+          "target_id": "inspect_supplement",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "并定期检查补充",
+          "article_label": "第十七条"
+        },
+        {
+          "source_id": "regulation_17",
+          "source_type": "regulation",
+          "target_id": "establish_safety_system",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "煤矿必须建立矿井安全避险系统",
+          "article_label": "第十七条"
+        },
+        {
+          "source_id": "regulation_17",
+          "source_type": "regulation",
+          "target_id": "conduct_training",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "对井下人员进行安全避险和应急救援培训",
+          "article_label": "第十七条"
+        },
+        {
+          "source_id": "regulation_17",
+          "source_type": "regulation",
+          "target_id": "organize_drill",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "每年至少组织 1 次应急演练",
+          "article_label": "第十七条"
+        },
+        {
+          "source_id": "establish_rescue_org",
+          "source_type": "step",
+          "target_id": "coal_mine_enterprise",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "煤矿企业必须建立应急救援组织",
+          "article_label": "第十七条"
+        },
+        {
+          "source_id": "improve_regulations",
+          "source_type": "step",
+          "target_id": "coal_mine_enterprise",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "健全规章制度",
+          "article_label": "第十七条"
+        },
+        {
+          "source_id": "prepare_rescue_plan",
+          "source_type": "step",
+          "target_id": "coal_mine_enterprise",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "编制应急救援预案",
+          "article_label": "第十七条"
+        },
+        {
+          "source_id": "reserve_equipment",
+          "source_type": "step",
+          "target_id": "coal_mine_enterprise",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "储备应急救援物资、装备",
+          "article_label": "第十七条"
+        },
+        {
+          "source_id": "inspect_supplement",
+          "source_type": "step",
+          "target_id": "coal_mine_enterprise",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "并定期检查补充",
+          "article_label": "第十七条"
+        },
+        {
+          "source_id": "establish_safety_system",
+          "source_type": "step",
+          "target_id": "mine",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "煤矿必须建立矿井安全避险系统",
+          "article_label": "第十七条"
+        },
+        {
+          "source_id": "conduct_training",
+          "source_type": "step",
+          "target_id": "mine",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "对井下人员进行安全避险和应急救援培训",
+          "article_label": "第十七条"
+        },
+        {
+          "source_id": "organize_drill",
+          "source_type": "step",
+          "target_id": "mine",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "每年至少组织 1 次应急演练",
+          "article_label": "第十七条"
+        },
+        {
+          "source_id": "reserve_equipment",
+          "source_type": "step",
+          "target_id": "rescue_equipment",
+          "target_type": "equipment",
+          "type": "REQUIRES",
+          "condition": "",
+          "evidence": "储备应急救援物资、装备",
+          "article_label": "第十七条"
+        },
+        {
+          "source_id": "establish_safety_system",
+          "source_type": "step",
+          "target_id": "safety_system",
+          "target_type": "equipment",
+          "type": "REQUIRES",
+          "condition": "",
+          "evidence": "建立矿井安全避险系统",
+          "article_label": "第十七条"
+        }
+      ]
+    },
+    {
+      "index": 18,
+      "article_label": "第十八条",
+      "text": "第十八条 煤矿企业应当有创伤急救系统为其服务。创伤急 救系统应当配备救护车辆、急救器材、急救装备和药品等。",
+      "nodes": [
+        {
+          "type": "regulation",
+          "id": "regulation_18",
+          "label": "第十八条"
+        },
+        {
+          "type": "step",
+          "id": "establish_trauma_system",
+          "label": "建立创伤急救系统"
+        },
+        {
+          "type": "equipment",
+          "id": "ambulance",
+          "label": "救护车辆"
+        },
+        {
+          "type": "equipment",
+          "id": "first_aid_equipment",
+          "label": "急救器材"
+        },
+        {
+          "type": "equipment",
+          "id": "first_aid_gear",
+          "label": "急救装备"
+        },
+        {
+          "type": "equipment",
+          "id": "medicines",
+          "label": "药品"
+        },
+        {
+          "type": "role",
+          "id": "coal_mine_enterprise",
+          "label": "煤矿企业"
+        }
+      ],
+      "relationships": [
+        {
+          "source_id": "regulation_18",
+          "source_type": "regulation",
+          "target_id": "establish_trauma_system",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "煤矿企业应当有创伤急救系统为其服务",
+          "article_label": "第十八条"
+        },
+        {
+          "source_id": "establish_trauma_system",
+          "source_type": "step",
+          "target_id": "ambulance",
+          "target_type": "equipment",
+          "type": "REQUIRES",
+          "condition": "",
+          "evidence": "创伤急救系统应当配备救护车辆",
+          "article_label": "第十八条"
+        },
+        {
+          "source_id": "establish_trauma_system",
+          "source_type": "step",
+          "target_id": "first_aid_equipment",
+          "target_type": "equipment",
+          "type": "REQUIRES",
+          "condition": "",
+          "evidence": "创伤急救系统应当配备急救器材",
+          "article_label": "第十八条"
+        },
+        {
+          "source_id": "establish_trauma_system",
+          "source_type": "step",
+          "target_id": "first_aid_gear",
+          "target_type": "equipment",
+          "type": "REQUIRES",
+          "condition": "",
+          "evidence": "创伤急救系统应当配备急救装备",
+          "article_label": "第十八条"
+        },
+        {
+          "source_id": "establish_trauma_system",
+          "source_type": "step",
+          "target_id": "medicines",
+          "target_type": "equipment",
+          "type": "REQUIRES",
+          "condition": "",
+          "evidence": "创伤急救系统应当配备药品",
+          "article_label": "第十八条"
+        },
+        {
+          "source_id": "establish_trauma_system",
+          "source_type": "step",
+          "target_id": "coal_mine_enterprise",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "煤矿企业应当有创伤急救系统为其服务",
+          "article_label": "第十八条"
+        }
+      ]
+    },
+    {
+      "index": 19,
+      "article_label": "第十九条",
+      "text": "第十九条 煤矿发生事故后，煤矿企业主要负责人和技术负 责人必须立即采取措施组织抢救，矿长负责抢救指挥，并按有关 规定及时上报。",
+      "nodes": [
+        {
+          "type": "role",
+          "id": "mine_enterprise_principal_responsible_person",
+          "label": "煤矿企业主要负责人"
+        },
+        {
+          "type": "role",
+          "id": "technical_responsible_person",
+          "label": "技术负责人"
+        },
+        {
+          "type": "role",
+          "id": "mine_manager",
+          "label": "矿长"
+        },
+        {
+          "type": "step",
+          "id": "organize_rescue",
+          "label": "组织抢救"
+        },
+        {
+          "type": "step",
+          "id": "rescue_command",
+          "label": "负责抢救指挥"
+        },
+        {
+          "type": "step",
+          "id": "report_accident",
+          "label": "及时上报事故"
+        },
+        {
+          "type": "condition",
+          "id": "after_accident",
+          "label": "煤矿发生事故后"
+        }
+      ],
+      "relationships": [
+        {
+          "source_id": "after_accident",
+          "source_type": "condition",
+          "target_id": "organize_rescue",
+          "target_type": "step",
+          "type": "IF",
+          "condition": "煤矿发生事故后",
+          "evidence": "煤矿发生事故后，煤矿企业主要负责人和技术负责人必须立即采取措施组织抢救",
+          "article_label": "第十九条"
+        },
+        {
+          "source_id": "organize_rescue",
+          "source_type": "step",
+          "target_id": "mine_enterprise_principal_responsible_person",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "煤矿企业主要负责人和技术负责人必须立即采取措施组织抢救",
+          "article_label": "第十九条"
+        },
+        {
+          "source_id": "organize_rescue",
+          "source_type": "step",
+          "target_id": "technical_responsible_person",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "煤矿企业主要负责人和技术负责人必须立即采取措施组织抢救",
+          "article_label": "第十九条"
+        },
+        {
+          "source_id": "rescue_command",
+          "source_type": "step",
+          "target_id": "mine_manager",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "矿长负责抢救指挥",
+          "article_label": "第十九条"
+        },
+        {
+          "source_id": "after_accident",
+          "source_type": "condition",
+          "target_id": "report_accident",
+          "target_type": "step",
+          "type": "IF",
+          "condition": "煤矿发生事故后",
+          "evidence": "并按有关规定及时上报",
+          "article_label": "第十九条"
+        }
+      ]
+    },
+    {
+      "index": 20,
+      "article_label": "第二十条",
+      "text": "第二十条 国家实行资质管理的，煤矿企业应当委托具有国 家规定资质的机构为其提供鉴定、检测、检验等服务，鉴定、检 测、检验机构对其作出的结果负责。",
+      "nodes": [],
+      "relationships": []
+    },
+    {
+      "index": 21,
+      "article_label": "第二十一条",
+      "text": "第二十一条 煤矿闭坑前，煤矿企业必须编制闭坑报告，并 报省级煤炭行业管理部门批准。 矿井闭坑报告必须有完善的各种地质资料，在相应图件上标 注采空区、煤柱、井筒、巷道、火区、地面沉陷区等，情况不清 的应当予以说明。 第二编 地质保障",
+      "nodes": [
+        {
+          "type": "regulation",
+          "id": "regulation_21",
+          "label": "煤矿闭坑前必须编制闭坑报告"
+        },
+        {
+          "type": "step",
+          "id": "compile_closure_report",
+          "label": "编制闭坑报告"
+        },
+        {
+          "type": "step",
+          "id": "submit_for_approval",
+          "label": "报省级煤炭行业管理部门批准"
+        },
+        {
+          "type": "step",
+          "id": "include_geological_data",
+          "label": "提供完善的地质资料"
+        },
+        {
+          "type": "step",
+          "id": "mark_areas_on_maps",
+          "label": "在图件上标注采空区、煤柱、井筒、巷道、火区、地面沉陷区"
+        },
+        {
+          "type": "step",
+          "id": "explain_unclear_situations",
+          "label": "情况不清的应当予以说明"
+        },
+        {
+          "type": "role",
+          "id": "coal_mine_enterprise",
+          "label": "煤矿企业"
+        },
+        {
+          "type": "condition",
+          "id": "before_mine_closure",
+          "label": "煤矿闭坑前"
+        }
+      ],
+      "relationships": [
+        {
+          "source_id": "regulation_21",
+          "source_type": "regulation",
+          "target_id": "compile_closure_report",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "before_mine_closure",
+          "evidence": "煤矿闭坑前，煤矿企业必须编制闭坑报告",
+          "article_label": "第二十一条"
+        },
+        {
+          "source_id": "compile_closure_report",
+          "source_type": "step",
+          "target_id": "submit_for_approval",
+          "target_type": "step",
+          "type": "NEXT",
+          "condition": "",
+          "evidence": "并报省级煤炭行业管理部门批准",
+          "article_label": "第二十一条"
+        },
+        {
+          "source_id": "compile_closure_report",
+          "source_type": "step",
+          "target_id": "include_geological_data",
+          "target_type": "step",
+          "type": "REQUIRES",
+          "condition": "",
+          "evidence": "矿井闭坑报告必须有完善的各种地质资料",
+          "article_label": "第二十一条"
+        },
+        {
+          "source_id": "include_geological_data",
+          "source_type": "step",
+          "target_id": "mark_areas_on_maps",
+          "target_type": "step",
+          "type": "NEXT",
+          "condition": "",
+          "evidence": "在相应图件上标注采空区、煤柱、井筒、巷道、火区、地面沉陷区等",
+          "article_label": "第二十一条"
+        },
+        {
+          "source_id": "mark_areas_on_maps",
+          "source_type": "step",
+          "target_id": "explain_unclear_situations",
+          "target_type": "step",
+          "type": "NEXT",
+          "condition": "",
+          "evidence": "情况不清的应当予以说明",
+          "article_label": "第二十一条"
+        },
+        {
+          "source_id": "compile_closure_report",
+          "source_type": "step",
+          "target_id": "coal_mine_enterprise",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "煤矿企业必须编制闭坑报告",
+          "article_label": "第二十一条"
+        }
+      ]
+    },
+    {
+      "index": 22,
+      "article_label": "第二十二条",
+      "text": "第二十二条 煤矿企业应当设立地质测量（简称地测）部门， 配备所需的相关专业技术人员和仪器设备，及时编绘反映煤矿实 际的地质资料和图件，建立健全煤矿地测工作规章制度。",
+      "nodes": [],
+      "relationships": []
+    },
+    {
+      "index": 23,
+      "article_label": "第二十三条",
+      "text": "第二十三条 当煤矿地质资料不能满足设计需要时，不得进 行煤矿设计。矿井建设期间，因矿井地质、水文地质等条件与原 地质资料出入较大时，必须针对所存在的地质问题开展补充地质 勘探工作。",
+      "nodes": [
+        {
+          "type": "regulation",
+          "id": "regulation_23",
+          "label": "第二十三条"
+        },
+        {
+          "type": "condition",
+          "id": "insufficient_geological_data",
+          "label": "地质资料不能满足设计需要"
+        },
+        {
+          "type": "step",
+          "id": "no_design",
+          "label": "不得进行煤矿设计"
+        },
+        {
+          "type": "condition",
+          "id": "geological_discrepancy",
+          "label": "矿井地质、水文地质等条件与原地质资料出入较大"
+        },
+        {
+          "type": "step",
+          "id": "supplementary_survey",
+          "label": "开展补充地质勘探工作"
+        }
+      ],
+      "relationships": [
+        {
+          "source_id": "regulation_23",
+          "source_type": "regulation",
+          "target_id": "insufficient_geological_data",
+          "target_type": "condition",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "当煤矿地质资料不能满足设计需要时，不得进行煤矿设计",
+          "article_label": "第二十三条"
+        },
+        {
+          "source_id": "insufficient_geological_data",
+          "source_type": "condition",
+          "target_id": "no_design",
+          "target_type": "step",
+          "type": "IF",
+          "condition": "",
+          "evidence": "当煤矿地质资料不能满足设计需要时，不得进行煤矿设计",
+          "article_label": "第二十三条"
+        },
+        {
+          "source_id": "regulation_23",
+          "source_type": "regulation",
+          "target_id": "geological_discrepancy",
+          "target_type": "condition",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "矿井建设期间，因矿井地质、水文地质等条件与原地质资料出入较大时，必须针对所存在的地质问题开展补充地质勘探工作",
+          "article_label": "第二十三条"
+        },
+        {
+          "source_id": "geological_discrepancy",
+          "source_type": "condition",
+          "target_id": "supplementary_survey",
+          "target_type": "step",
+          "type": "IF",
+          "condition": "",
+          "evidence": "矿井建设期间，因矿井地质、水文地质等条件与原地质资料出入较大时，必须针对所存在的地质问题开展补充地质勘探工作",
+          "article_label": "第二十三条"
+        }
+      ]
+    },
+    {
+      "index": 24,
+      "article_label": "第二十四条",
+      "text": "第二十四条 当露天煤矿地质资料不能满足建设及生产需 要时，必须针对所存在的地质问题开展补充地质勘探工作。",
+      "nodes": [],
+      "relationships": []
+    },
+    {
+      "index": 25,
+      "article_label": "第二十五条",
+      "text": "第二十五条 井筒设计前，必须按下列要求施工井筒检查孔： （一）立井井筒检查孔距井筒中心不得超过 25m，且不得布 置在井筒范围内，孔深应当不小于井筒设计深度以下 30m。地质 条件复杂时，应当增加检查孔数量。 （二）斜井井筒检查孔距井筒纵向中心线不大于 25m，且不 得布置在井筒范围内，孔深应当不小于该孔所处斜井底板以下 30m。检查孔的数量和布置应当满足设计和施工要求。 （三）井筒检查孔必须全孔取芯，全孔数字测井；必须分含 水层（组）进行抽水试验，分煤层采测煤层瓦斯、煤层自燃、煤 尘爆炸性煤样；采测钻孔水文地质及工程地质参数，查明地质构 造和岩（土）层特征；详细编录钻孔完整地质剖面。",
+      "nodes": [
+        {
+          "type": "regulation",
+          "id": "regulation_25",
+          "label": "第二十五条"
+        },
+        {
+          "type": "step",
+          "id": "drill_inspection_hole",
+          "label": "施工井筒检查孔"
+        },
+        {
+          "type": "condition",
+          "id": "before_shaft_design",
+          "label": "井筒设计前"
+        },
+        {
+          "type": "condition",
+          "id": "complex_geology",
+          "label": "地质条件复杂"
+        },
+        {
+          "type": "step",
+          "id": "increase_hole_count",
+          "label": "增加检查孔数量"
+        },
+        {
+          "type": "step",
+          "id": "full_core_sampling",
+          "label": "全孔取芯"
+        },
+        {
+          "type": "step",
+          "id": "digital_logging",
+          "label": "全孔数字测井"
+        },
+        {
+          "type": "step",
+          "id": "pump_test_by_aquifer",
+          "label": "分含水层进行抽水试验"
+        },
+        {
+          "type": "step",
+          "id": "sample_gas_self_ignition_dust",
+          "label": "采测煤层瓦斯、自燃、煤尘爆炸性煤样"
+        },
+        {
+          "type": "step",
+          "id": "measure_hydrogeo_params",
+          "label": "采测水文地质及工程地质参数"
+        },
+        {
+          "type": "step",
+          "id": "identify_geological_structure",
+          "label": "查明地质构造和岩（土）层特征"
+        },
+        {
+          "type": "step",
+          "id": "log_geological_profile",
+          "label": "详细编录钻孔完整地质剖面"
+        }
+      ],
+      "relationships": [
+        {
+          "source_id": "regulation_25",
+          "source_type": "regulation",
+          "target_id": "drill_inspection_hole",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "before_shaft_design",
+          "evidence": "井筒设计前，必须按下列要求施工井筒检查孔",
+          "article_label": "第二十五条"
+        },
+        {
+          "source_id": "drill_inspection_hole",
+          "source_type": "step",
+          "target_id": "increase_hole_count",
+          "target_type": "step",
+          "type": "NEXT",
+          "condition": "complex_geology",
+          "evidence": "地质条件复杂时，应当增加检查孔数量",
+          "article_label": "第二十五条"
+        },
+        {
+          "source_id": "drill_inspection_hole",
+          "source_type": "step",
+          "target_id": "full_core_sampling",
+          "target_type": "step",
+          "type": "REQUIRES",
+          "condition": "",
+          "evidence": "井筒检查孔必须全孔取芯",
+          "article_label": "第二十五条"
+        },
+        {
+          "source_id": "drill_inspection_hole",
+          "source_type": "step",
+          "target_id": "digital_logging",
+          "target_type": "step",
+          "type": "REQUIRES",
+          "condition": "",
+          "evidence": "全孔数字测井",
+          "article_label": "第二十五条"
+        },
+        {
+          "source_id": "drill_inspection_hole",
+          "source_type": "step",
+          "target_id": "pump_test_by_aquifer",
+          "target_type": "step",
+          "type": "REQUIRES",
+          "condition": "",
+          "evidence": "必须分含水层（组）进行抽水试验",
+          "article_label": "第二十五条"
+        },
+        {
+          "source_id": "drill_inspection_hole",
+          "source_type": "step",
+          "target_id": "sample_gas_self_ignition_dust",
+          "target_type": "step",
+          "type": "REQUIRES",
+          "condition": "",
+          "evidence": "分煤层采测煤层瓦斯、煤层自燃、煤尘爆炸性煤样",
+          "article_label": "第二十五条"
+        },
+        {
+          "source_id": "drill_inspection_hole",
+          "source_type": "step",
+          "target_id": "measure_hydrogeo_params",
+          "target_type": "step",
+          "type": "REQUIRES",
+          "condition": "",
+          "evidence": "采测钻孔水文地质及工程地质参数",
+          "article_label": "第二十五条"
+        },
+        {
+          "source_id": "drill_inspection_hole",
+          "source_type": "step",
+          "target_id": "identify_geological_structure",
+          "target_type": "step",
+          "type": "REQUIRES",
+          "condition": "",
+          "evidence": "查明地质构造和岩（土）层特征",
+          "article_label": "第二十五条"
+        },
+        {
+          "source_id": "drill_inspection_hole",
+          "source_type": "step",
+          "target_id": "log_geological_profile",
+          "target_type": "step",
+          "type": "REQUIRES",
+          "condition": "",
+          "evidence": "详细编录钻孔完整地质剖面",
+          "article_label": "第二十五条"
+        }
+      ]
+    },
+    {
+      "index": 26,
+      "article_label": "第二十六条",
+      "text": "第二十六条 新建矿井开工前必须复查井筒检查孔资料；调 查核实钻孔位置及封孔质量、采空区情况，调查邻近矿井生产情 况和地质资料等，将相关资料标绘在采掘工程平面图上；编制主 要井巷揭煤、过地质构造及含水层技术方案；编制主要井巷工程 的预想地质图及其说明书。",
+      "nodes": [
+        {
+          "type": "regulation",
+          "id": "regulation_26",
+          "label": "新建矿井开工前安全准备"
+        },
+        {
+          "type": "step",
+          "id": "review_borehole_data",
+          "label": "复查井筒检查孔资料"
+        },
+        {
+          "type": "step",
+          "id": "verify_drilling_info",
+          "label": "调查核实钻孔位置及封孔质量"
+        },
+        {
+          "type": "step",
+          "id": "investigate_goaf",
+          "label": "调查采空区情况"
+        },
+        {
+          "type": "step",
+          "id": "investigate_adjacent_mines",
+          "label": "调查邻近矿井生产情况和地质资料"
+        },
+        {
+          "type": "step",
+          "id": "plot_data_on_plan",
+          "label": "将相关资料标绘在采掘工程平面图上"
+        },
+        {
+          "type": "step",
+          "id": "prepare_technical_scheme",
+          "label": "编制主要井巷揭煤、过地质构造及含水层技术方案"
+        },
+        {
+          "type": "step",
+          "id": "prepare_geological_diagram",
+          "label": "编制主要井巷工程的预想地质图及其说明书"
+        },
+        {
+          "type": "condition",
+          "id": "before_construction",
+          "label": "新建矿井开工前"
+        }
+      ],
+      "relationships": [
+        {
+          "source_id": "regulation_26",
+          "source_type": "regulation",
+          "target_id": "review_borehole_data",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "before_construction",
+          "evidence": "新建矿井开工前必须复查井筒检查孔资料",
+          "article_label": "第二十六条"
+        },
+        {
+          "source_id": "regulation_26",
+          "source_type": "regulation",
+          "target_id": "verify_drilling_info",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "before_construction",
+          "evidence": "调查核实钻孔位置及封孔质量",
+          "article_label": "第二十六条"
+        },
+        {
+          "source_id": "regulation_26",
+          "source_type": "regulation",
+          "target_id": "investigate_goaf",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "before_construction",
+          "evidence": "调查采空区情况",
+          "article_label": "第二十六条"
+        },
+        {
+          "source_id": "regulation_26",
+          "source_type": "regulation",
+          "target_id": "investigate_adjacent_mines",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "before_construction",
+          "evidence": "调查邻近矿井生产情况和地质资料",
+          "article_label": "第二十六条"
+        },
+        {
+          "source_id": "regulation_26",
+          "source_type": "regulation",
+          "target_id": "plot_data_on_plan",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "before_construction",
+          "evidence": "将相关资料标绘在采掘工程平面图上",
+          "article_label": "第二十六条"
+        },
+        {
+          "source_id": "regulation_26",
+          "source_type": "regulation",
+          "target_id": "prepare_technical_scheme",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "before_construction",
+          "evidence": "编制主要井巷揭煤、过地质构造及含水层技术方案",
+          "article_label": "第二十六条"
+        },
+        {
+          "source_id": "regulation_26",
+          "source_type": "regulation",
+          "target_id": "prepare_geological_diagram",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "before_construction",
+          "evidence": "编制主要井巷工程的预想地质图及其说明书",
+          "article_label": "第二十六条"
+        }
+      ]
+    },
+    {
+      "index": 27,
+      "article_label": "第二十七条",
+      "text": "第二十七条 井筒施工期间应当验证井筒检查孔取得的各 种地质资料。当发现影响施工的异常地质因素时，应当采取探测 和预防措施。",
+      "nodes": [
+        {
+          "type": "article",
+          "id": "article_27",
+          "label": "第二十七条"
+        },
+        {
+          "type": "step",
+          "id": "verify_geological_data",
+          "label": "验证井筒检查孔地质资料"
+        },
+        {
+          "type": "condition",
+          "id": "abnormal_geological_factors",
+          "label": "发现影响施工的异常地质因素"
+        },
+        {
+          "type": "step",
+          "id": "take_detection_measures",
+          "label": "采取探测措施"
+        },
+        {
+          "type": "step",
+          "id": "take_preventive_measures",
+          "label": "采取预防措施"
+        }
+      ],
+      "relationships": [
+        {
+          "source_id": "article_27",
+          "source_type": "article",
+          "target_id": "verify_geological_data",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "井筒施工期间应当验证井筒检查孔取得的各种地质资料",
+          "article_label": "第二十七条"
+        },
+        {
+          "source_id": "verify_geological_data",
+          "source_type": "step",
+          "target_id": "take_detection_measures",
+          "target_type": "step",
+          "type": "NEXT",
+          "condition": "发现影响施工的异常地质因素",
+          "evidence": "当发现影响施工的异常地质因素时，应当采取探测和预防措施",
+          "article_label": "第二十七条"
+        },
+        {
+          "source_id": "verify_geological_data",
+          "source_type": "step",
+          "target_id": "take_preventive_measures",
+          "target_type": "step",
+          "type": "NEXT",
+          "condition": "发现影响施工的异常地质因素",
+          "evidence": "当发现影响施工的异常地质因素时，应当采取探测和预防措施",
+          "article_label": "第二十七条"
+        },
+        {
+          "source_id": "take_detection_measures",
+          "source_type": "step",
+          "target_id": "abnormal_geological_factors",
+          "target_type": "condition",
+          "type": "IF",
+          "condition": "",
+          "evidence": "当发现影响施工的异常地质因素时，应当采取探测和预防措施",
+          "article_label": "第二十七条"
+        },
+        {
+          "source_id": "take_preventive_measures",
+          "source_type": "step",
+          "target_id": "abnormal_geological_factors",
+          "target_type": "condition",
+          "type": "IF",
+          "condition": "",
+          "evidence": "当发现影响施工的异常地质因素时，应当采取探测和预防措施",
+          "article_label": "第二十七条"
+        }
+      ]
+    },
+    {
+      "index": 28,
+      "article_label": "第二十八条",
+      "text": "第二十八条 煤矿建设、生产阶段，必须对揭露的煤层、断 层、褶皱、岩浆岩体、陷落柱、含水岩层，矿井涌水量及主要出 水点等进行观测及描述，综合分析，实施地质预测、预报。",
+      "nodes": [
+        {
+          "type": "regulation",
+          "id": "regulation_28",
+          "label": "煤矿安全规程第二十八条"
+        },
+        {
+          "type": "step",
+          "id": "observe_describe",
+          "label": "观测及描述地质构造"
+        },
+        {
+          "type": "step",
+          "id": "analyze_predict",
+          "label": "实施地质预测、预报"
+        },
+        {
+          "type": "condition",
+          "id": "coal_seam_exposed",
+          "label": "揭露的煤层"
+        },
+        {
+          "type": "condition",
+          "id": "fault_exposed",
+          "label": "揭露的断层"
+        },
+        {
+          "type": "condition",
+          "id": "fold_exposed",
+          "label": "揭露的褶皱"
+        },
+        {
+          "type": "condition",
+          "id": "intrusive_rock_exposed",
+          "label": "揭露的岩浆岩体"
+        },
+        {
+          "type": "condition",
+          "id": "collapse_column_exposed",
+          "label": "揭露的陷落柱"
+        },
+        {
+          "type": "condition",
+          "id": "water_bearing_layer_exposed",
+          "label": "揭露的含水岩层"
+        },
+        {
+          "type": "condition",
+          "id": "mine_water_inflow",
+          "label": "矿井涌水量"
+        },
+        {
+          "type": "condition",
+          "id": "main_water_outlet",
+          "label": "主要出水点"
+        }
+      ],
+      "relationships": [
+        {
+          "source_id": "regulation_28",
+          "source_type": "regulation",
+          "target_id": "observe_describe",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "煤矿建设、生产阶段，必须对揭露的煤层、断层、褶皱、岩浆岩体、陷落柱、含水岩层，矿井涌水量及主要出水点等进行观测及描述",
+          "article_label": "第二十八条"
+        },
+        {
+          "source_id": "regulation_28",
+          "source_type": "regulation",
+          "target_id": "analyze_predict",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "综合分析，实施地质预测、预报",
+          "article_label": "第二十八条"
+        },
+        {
+          "source_id": "observe_describe",
+          "source_type": "step",
+          "target_id": "coal_seam_exposed",
+          "target_type": "condition",
+          "type": "IF",
+          "condition": "",
+          "evidence": "对揭露的煤层...进行观测及描述",
+          "article_label": "第二十八条"
+        },
+        {
+          "source_id": "observe_describe",
+          "source_type": "step",
+          "target_id": "fault_exposed",
+          "target_type": "condition",
+          "type": "IF",
+          "condition": "",
+          "evidence": "对揭露的断层...进行观测及描述",
+          "article_label": "第二十八条"
+        },
+        {
+          "source_id": "observe_describe",
+          "source_type": "step",
+          "target_id": "fold_exposed",
+          "target_type": "condition",
+          "type": "IF",
+          "condition": "",
+          "evidence": "对揭露的褶皱...进行观测及描述",
+          "article_label": "第二十八条"
+        },
+        {
+          "source_id": "observe_describe",
+          "source_type": "step",
+          "target_id": "intrusive_rock_exposed",
+          "target_type": "condition",
+          "type": "IF",
+          "condition": "",
+          "evidence": "对揭露的岩浆岩体...进行观测及描述",
+          "article_label": "第二十八条"
+        },
+        {
+          "source_id": "observe_describe",
+          "source_type": "step",
+          "target_id": "collapse_column_exposed",
+          "target_type": "condition",
+          "type": "IF",
+          "condition": "",
+          "evidence": "对揭露的陷落柱...进行观测及描述",
+          "article_label": "第二十八条"
+        },
+        {
+          "source_id": "observe_describe",
+          "source_type": "step",
+          "target_id": "water_bearing_layer_exposed",
+          "target_type": "condition",
+          "type": "IF",
+          "condition": "",
+          "evidence": "对揭露的含水岩层...进行观测及描述",
+          "article_label": "第二十八条"
+        },
+        {
+          "source_id": "observe_describe",
+          "source_type": "step",
+          "target_id": "mine_water_inflow",
+          "target_type": "condition",
+          "type": "IF",
+          "condition": "",
+          "evidence": "对矿井涌水量...进行观测及描述",
+          "article_label": "第二十八条"
+        },
+        {
+          "source_id": "observe_describe",
+          "source_type": "step",
+          "target_id": "main_water_outlet",
+          "target_type": "condition",
+          "type": "IF",
+          "condition": "",
+          "evidence": "对主要出水点...进行观测及描述",
+          "article_label": "第二十八条"
+        },
+        {
+          "source_id": "analyze_predict",
+          "source_type": "step",
+          "target_id": "observe_describe",
+          "target_type": "step",
+          "type": "NEXT",
+          "condition": "",
+          "evidence": "综合分析，实施地质预测、预报",
+          "article_label": "第二十八条"
+        }
+      ]
+    },
+    {
+      "index": 29,
+      "article_label": "第二十九条",
+      "text": "第二十九条 井巷揭煤前，应当探明煤层厚度、地质构造、 瓦斯地质、水文地质及顶底板等地质条件，编制揭煤地质说明书。",
+      "nodes": [
+        {
+          "type": "article",
+          "id": "article_29",
+          "label": "第二十九条"
+        },
+        {
+          "type": "step",
+          "id": "explore_geological_conditions",
+          "label": "探明地质条件"
+        },
+        {
+          "type": "step",
+          "id": "compile_geological_report",
+          "label": "编制揭煤地质说明书"
+        },
+        {
+          "type": "condition",
+          "id": "before_exposing_coal_seam",
+          "label": "井巷揭煤前"
+        },
+        {
+          "type": "role",
+          "id": "geological_team",
+          "label": "地质技术团队"
+        }
+      ],
+      "relationships": [
+        {
+          "source_id": "article_29",
+          "source_type": "article",
+          "target_id": "explore_geological_conditions",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "井巷揭煤前，应当探明煤层厚度、地质构造、瓦斯地质、水文地质及顶底板等地质条件",
+          "article_label": "第二十九条"
+        },
+        {
+          "source_id": "article_29",
+          "source_type": "article",
+          "target_id": "compile_geological_report",
+          "target_type": "step",
+          "type": "CONTAINS",
+          "condition": "",
+          "evidence": "编制揭煤地质说明书",
+          "article_label": "第二十九条"
+        },
+        {
+          "source_id": "explore_geological_conditions",
+          "source_type": "step",
+          "target_id": "before_exposing_coal_seam",
+          "target_type": "condition",
+          "type": "IF",
+          "condition": "",
+          "evidence": "井巷揭煤前，应当探明……",
+          "article_label": "第二十九条"
+        },
+        {
+          "source_id": "compile_geological_report",
+          "source_type": "step",
+          "target_id": "before_exposing_coal_seam",
+          "target_type": "condition",
+          "type": "IF",
+          "condition": "",
+          "evidence": "井巷揭煤前，……编制揭煤地质说明书",
+          "article_label": "第二十九条"
+        },
+        {
+          "source_id": "explore_geological_conditions",
+          "source_type": "step",
+          "target_id": "geological_team",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "探明……地质条件",
+          "article_label": "第二十九条"
+        },
+        {
+          "source_id": "compile_geological_report",
+          "source_type": "step",
+          "target_id": "geological_team",
+          "target_type": "role",
+          "type": "PERFORMED_BY",
+          "condition": "",
+          "evidence": "编制揭煤地质说明书",
+          "article_label": "第二十九条"
+        }
+      ]
+    },
+    {
+      "index": 30,
+      "article_label": "第三十条",
+      "text": "第三十条 基建矿井、露天煤矿移交生产前，必须编制建井 （矿）地质报告，并由煤矿企业技术负责人组织审定。",
+      "nodes": [],
+      "relationships": []
+    }
+  ],
+  "errors": [],
+  "validation": {
+    "uploadable": true,
+    "node_count_after_sanitize": 133,
+    "relation_count_after_sanitize": 130
+  }
+}

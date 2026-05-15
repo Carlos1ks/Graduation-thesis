@@ -27,3 +27,11 @@ dist-ssr
 __pycache__/
 *.pyc
 .venv/
+
+# Local graph/extraction runtime artifacts
+.runlogs/
+server/.graph_status/
+docs/*.bad-split-*.json
+docs/*.pre-*.json
+docs/*.restart-*.json
+docs/*-smoke.json
