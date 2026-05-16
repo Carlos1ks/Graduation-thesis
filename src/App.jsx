@@ -3,15 +3,32 @@ import ForceGraph2D from "react-force-graph-2d";
 
 const BACKEND_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const CHAT_API_URL = `${BACKEND_BASE_URL}/api/agent-chat`;
+const DOCUMENT_LIST_API_URL = `${BACKEND_BASE_URL}/api/documents/list`;
 const DOCUMENT_UPLOAD_API_URL = `${BACKEND_BASE_URL}/api/documents/upload`;
 const DOCUMENT_REMOVE_API_URL = `${BACKEND_BASE_URL}/api/documents/remove`;
 const TRIPLES_UPLOAD_API_URL = `${BACKEND_BASE_URL}/api/knowledge-graph/triples/upload`;
 const VIDEO_ANALYZE_API_URL = `${BACKEND_BASE_URL}/api/video-analyze`;
 const SENSOR_PUSH_API_URL = `${BACKEND_BASE_URL}/api/sensors/push`;
+const SENSOR_LATEST_API_URL = `${BACKEND_BASE_URL}/api/sensors/latest`;
+const SENSOR_CLEAR_API_URL = `${BACKEND_BASE_URL}/api/sensors/clear`;
 const KNOWLEDGE_GRAPH_QUERY_API_URL = `${BACKEND_BASE_URL}/api/knowledge-graph/query`;
 const KNOWLEDGE_GRAPH_STATUS_API_URL = `${BACKEND_BASE_URL}/api/knowledge-graph/status`;
 const MAX_HISTORY_MESSAGES = 6;
 const SESSION_STORAGE_KEY = "coal-mine-agent-session-id";
+const APP_VIEW_CHAT = "chat";
+const APP_VIEW_DOCUMENTS = "documents";
+const APP_VIEW_IMAGES = "images";
+const APP_VIEW_VIDEOS = "videos";
+const APP_VIEW_SENSORS = "sensors";
+const APP_VIEW_GRAPH = "graph";
+const LIBRARY_VIEW_SET = new Set([
+  APP_VIEW_CHAT,
+  APP_VIEW_DOCUMENTS,
+  APP_VIEW_IMAGES,
+  APP_VIEW_VIDEOS,
+  APP_VIEW_SENSORS,
+  APP_VIEW_GRAPH,
+]);
 
 function createSessionId() {
   return `session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -42,6 +59,31 @@ const AGENTS = [
   { id: "coordination", name: "协同指挥智能体", icon: "🎯", color: "#f472b6" },
 ];
 
+const LIBRARY_NAV_ITEMS = [
+  { id: APP_VIEW_CHAT, label: "问答窗口", icon: "💬", color: "#4ade80" },
+  { id: APP_VIEW_DOCUMENTS, label: "文档库", icon: "📄", color: "#22d3ee" },
+  { id: APP_VIEW_IMAGES, label: "图片库", icon: "📸", color: "#60a5fa" },
+  { id: APP_VIEW_VIDEOS, label: "视频库", icon: "🎬", color: "#f59e0b" },
+  { id: APP_VIEW_SENSORS, label: "传感器数据库", icon: "📡", color: "#c084fc" },
+  { id: APP_VIEW_GRAPH, label: "知识图谱库", icon: "🧠", color: "#67e8f9" },
+];
+
+function hashForView(view) {
+  if (view === APP_VIEW_CHAT) {
+    return "#/chat";
+  }
+  return `#/library/${view}`;
+}
+
+function parseViewFromHash(hash) {
+  const normalized = String(hash || "").replace(/^#\/?/, "").trim().toLowerCase();
+  if (!normalized || normalized === "chat") {
+    return APP_VIEW_CHAT;
+  }
+  const candidate = normalized.startsWith("library/") ? normalized.slice("library/".length) : normalized;
+  return LIBRARY_VIEW_SET.has(candidate) ? candidate : APP_VIEW_CHAT;
+}
+
 async function uploadDocumentToBackend(file, sessionId) {
   const formData = new FormData();
   formData.append("file", file);
@@ -71,6 +113,16 @@ async function removeDocumentFromBackend(documentId, sessionId) {
   if (!response.ok || !result.success) {
     throw new Error(result.error || `文档移除失败：${response.status}`);
   }
+}
+
+async function fetchDocumentsFromBackend(sessionId) {
+  const params = new URLSearchParams({ session_id: sessionId });
+  const response = await fetch(`${DOCUMENT_LIST_API_URL}?${params.toString()}`);
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `文档列表获取失败：${response.status}`);
+  }
+  return result;
 }
 
 async function uploadTriplesToBackend(file, sessionId) {
@@ -117,6 +169,29 @@ async function pushSensorsToBackend(records, sessionId) {
   const result = await response.json().catch(() => ({}));
   if (!response.ok || !result.success) {
     throw new Error(result.error || `传感器接入失败：${response.status}`);
+  }
+  return result;
+}
+
+async function fetchSensorsFromBackend(sessionId) {
+  const params = new URLSearchParams({ session_id: sessionId });
+  const response = await fetch(`${SENSOR_LATEST_API_URL}?${params.toString()}`);
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `传感器列表获取失败：${response.status}`);
+  }
+  return result;
+}
+
+async function clearSensorsFromBackend(sessionId) {
+  const response = await fetch(SENSOR_CLEAR_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `传感器清空失败：${response.status}`);
   }
   return result;
 }
@@ -384,13 +459,16 @@ function dedupeGraphLinks(links) {
 export default function CoalMineAgent() {
   const [messages, setMessages] = useState([{
     role: "assistant",
-    content: "您好！我是**煤矿应急救援决策知识问答AI智能体**，由中国矿业大学研发。\n\n可为您提供：\n- ⚡ **实时应急决策支持**\n- 🔍 **灾害风险智能识别**\n- 📋 **救援策略精准生成**\n- 🤝 **跨部门协同指挥建议**\n\n💡 点击左侧 📂 上传您矿井的专属规程、应急预案，智能体将优先基于这些文档为您作答。",
+    content: "您好！我是**煤矿应急救援决策知识问答AI智能体**，由中国矿业大学研发。\n\n可为您提供：\n- ⚡ **实时应急决策支持**\n- 🔍 **灾害风险智能识别**\n- 📋 **救援策略精准生成**\n- 🤝 **跨部门协同指挥建议**\n\n💡 左侧已切换为知识库导航。您可以进入文档库、图片库、视频库、传感器数据库和知识图谱库管理当前会话的知识资源，然后回到问答页继续提问。",
     timestamp: new Date(),
   }]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [activeAgents, setActiveAgents] = useState([]);
   const [alertLevel, setAlertLevel] = useState(null);
+  const [currentView, setCurrentView] = useState(() => (
+    typeof window === "undefined" ? APP_VIEW_CHAT : parseViewFromHash(window.location.hash)
+  ));
   const [docs, setDocs] = useState([]);
   const [images, setImages] = useState([]);
   const [videos, setVideos] = useState([]);
@@ -419,12 +497,71 @@ export default function CoalMineAgent() {
   const triplesInputRef = useRef(null);
   const imageInputRef = useRef(null);
   const videoInputRef = useRef(null);
+  const sensorFileInputRef = useRef(null);
   const sessionIdRef = useRef(getInitialSessionId());
   const [graphViewportSize, setGraphViewportSize] = useState({ width: 880, height: 620 });
+  const graphViewActive = currentView === APP_VIEW_GRAPH;
+
+  const navigateToView = (nextView) => {
+    const normalized = LIBRARY_VIEW_SET.has(nextView) ? nextView : APP_VIEW_CHAT;
+    const nextHash = hashForView(normalized);
+    if (typeof window !== "undefined" && window.location.hash !== nextHash) {
+      window.location.hash = nextHash;
+    }
+    setCurrentView(normalized);
+  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const syncViewFromHash = () => {
+      setCurrentView(parseViewFromHash(window.location.hash));
+    };
+    syncViewFromHash();
+    window.addEventListener("hashchange", syncViewFromHash);
+    return () => window.removeEventListener("hashchange", syncViewFromHash);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetchDocumentsFromBackend(sessionIdRef.current)
+      .then((result) => {
+        if (!active) return;
+        setDocs((result.documents || []).map((item) => ({
+          document_id: item.document_id,
+          name: item.file_name,
+          charCount: item.char_count || 0,
+          chunkCount: item.chunk_count || 0,
+          sizeMB: "--",
+          graphNodeCount: 0,
+          graphRelationCount: 0,
+        })));
+      })
+      .catch(() => {});
+    fetchSensorsFromBackend(sessionIdRef.current)
+      .then((result) => {
+        if (!active) return;
+        setSensors(Array.isArray(result.records) ? result.records : []);
+      })
+      .catch(() => {});
+    fetchKnowledgeGraphStatus(sessionIdRef.current)
+      .then((result) => {
+        if (!active || !result.build_status) return;
+        setGraphBuildStatus(result.build_status);
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    setGraphOpen(graphViewActive);
+    if (!graphViewActive) {
+      setSelectedGraphNode(null);
+    }
+  }, [graphViewActive]);
 
   useEffect(() => {
     if (!graphOpen || !graphViewportRef.current) return undefined;
@@ -473,7 +610,46 @@ export default function CoalMineAgent() {
   }, [graphBuildStatus.state]);
 
   useEffect(() => {
-    if (!graphOpen) return;
+    if (currentView !== APP_VIEW_DOCUMENTS) return;
+    let active = true;
+    fetchDocumentsFromBackend(sessionIdRef.current)
+      .then((result) => {
+        if (!active) return;
+        setDocs((prev) => {
+          const byId = new Map(prev.map((item) => [item.document_id, item]));
+          return (result.documents || []).map((item) => {
+            const existing = byId.get(item.document_id) || {};
+            return {
+              ...existing,
+              document_id: item.document_id,
+              name: item.file_name,
+              charCount: item.char_count || 0,
+              chunkCount: item.chunk_count || 0,
+              sizeMB: existing.sizeMB || "--",
+              graphNodeCount: existing.graphNodeCount || 0,
+              graphRelationCount: existing.graphRelationCount || 0,
+            };
+          });
+        });
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [currentView]);
+
+  useEffect(() => {
+    if (currentView !== APP_VIEW_SENSORS) return;
+    let active = true;
+    fetchSensorsFromBackend(sessionIdRef.current)
+      .then((result) => {
+        if (!active) return;
+        setSensors(Array.isArray(result.records) ? result.records : []);
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [currentView]);
+
+  useEffect(() => {
+    if (!graphViewActive) return;
     if (graphBuildStatus.state !== "completed") return;
     if (graphLoading) return;
     if (graphData.nodes.length > 0 || graphData.links.length > 0) return;
@@ -481,7 +657,7 @@ export default function CoalMineAgent() {
       await loadKnowledgeGraph(graphKeyword);
     };
     load();
-  }, [graphOpen, graphBuildStatus.state, graphKeyword, graphLoading, graphData.nodes.length, graphData.links.length]);
+  }, [graphViewActive, graphBuildStatus.state, graphKeyword, graphLoading, graphData.nodes.length, graphData.links.length]);
 
   const detectAlertLevel = (text) => {
     if (["爆炸", "火灾", "突水", "被困", "伤亡", "紧急", "危急"].some(w => text.includes(w))) return "red";
@@ -677,25 +853,70 @@ export default function CoalMineAgent() {
     e.target.value = "";
   };
 
+  const applySensorRecords = async (records) => {
+    const result = await pushSensorsToBackend(records, sessionIdRef.current);
+    const latestRecords = Array.isArray(result.latest_records) ? result.latest_records : [];
+    setSensors(latestRecords);
+    setMessages(prev => [...prev, {
+      role: "assistant",
+      content: `📡 已接入 ${latestRecords.length} 条传感器数据。\n\n${latestRecords.slice(0, 4).map(item => `- ${item.name || item.sensor_id}：${item.value_text || item.value || "未知"}${item.unit || ""}（${item.status || "状态未知"}）`).join("\n")}`,
+      timestamp: new Date(),
+    }]);
+    return latestRecords;
+  };
+
   const handleSensorSubmit = async () => {
     try {
       const records = JSON.parse(sensorInput);
       if (!Array.isArray(records) || records.length === 0) {
         throw new Error("请提供非空的传感器数组");
       }
-      const result = await pushSensorsToBackend(records, sessionIdRef.current);
-      const latestRecords = Array.isArray(result.latest_records) ? result.latest_records : [];
-      setSensors(latestRecords);
+      await applySensorRecords(records);
       setSensorDialogOpen(false);
+    } catch (err) {
       setMessages(prev => [...prev, {
         role: "assistant",
-        content: `📡 已接入 ${latestRecords.length} 条传感器数据。\n\n${latestRecords.slice(0, 4).map(item => `- ${item.name || item.sensor_id}：${item.value_text || item.value || "未知"}${item.unit || ""}（${item.status || "状态未知"}）`).join("\n")}`,
+        content: `⚠️ 传感器数据接入失败：${err.message}`,
+        timestamp: new Date(),
+      }]);
+    }
+  };
+
+  const handleSensorFileUpload = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    for (const file of files) {
+      try {
+        const text = await file.text();
+        const records = JSON.parse(text);
+        if (!Array.isArray(records) || records.length === 0) {
+          throw new Error("传感器 JSON 文件必须是非空数组");
+        }
+        await applySensorRecords(records);
+      } catch (err) {
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          content: `⚠️ 传感器文件《${file.name}》导入失败：${err.message}`,
+          timestamp: new Date(),
+        }]);
+      }
+    }
+    e.target.value = "";
+  };
+
+  const handleSensorClear = async () => {
+    try {
+      await clearSensorsFromBackend(sessionIdRef.current);
+      setSensors([]);
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: "📡 当前会话的传感器数据已清空。",
         timestamp: new Date(),
       }]);
     } catch (err) {
       setMessages(prev => [...prev, {
         role: "assistant",
-        content: `⚠️ 传感器数据接入失败：${err.message}`,
+        content: `⚠️ 传感器数据清空失败：${err.message}`,
         timestamp: new Date(),
       }]);
     }
@@ -1007,7 +1228,7 @@ export default function CoalMineAgent() {
   };
 
   const openKnowledgeGraph = async () => {
-    setGraphOpen(true);
+    navigateToView(APP_VIEW_GRAPH);
     if (graphData.nodes.length > 0 || graphData.links.length > 0 || graphError) {
       return;
     }
@@ -1026,11 +1247,18 @@ export default function CoalMineAgent() {
   };
 
   const closeKnowledgeGraph = () => {
-    setGraphOpen(false);
+    navigateToView(APP_VIEW_CHAT);
     setGraphLoading(false);
     setSelectedGraphNode(null);
     setGraphError("");
   };
+
+  useEffect(() => {
+    if (!graphViewActive) return;
+    if (graphLoading) return;
+    if (graphData.nodes.length > 0 || graphData.links.length > 0 || graphError) return;
+    openKnowledgeGraph().catch(() => {});
+  }, [graphViewActive]);
 
   const handleGraphNodeClick = (node) => {
     setSelectedGraphNode(node);
@@ -1142,8 +1370,8 @@ export default function CoalMineAgent() {
     return () => clearTimeout(timer);
   }, [graphOpen, graphFocusedKey, graphData.centerUid, graphData.matchedUids]);
 
-  const renderGraphDialog = () => {
-    if (!graphOpen) return null;
+  const renderGraphDialog = (embedded = false) => {
+    if (!embedded && !graphOpen) return null;
     const graph = renderedGraph;
     const stats = graphData.stats || {};
     const centerNode = graph.nodes.find(node => node.uid === graphData.centerUid);
@@ -1157,8 +1385,8 @@ export default function CoalMineAgent() {
       : [];
 
     return (
-      <div style={{ position: "fixed", inset: 0, background: "rgba(2,6,23,0.78)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 320 }}>
-        <div style={{ width: "min(1180px, 94vw)", height: "min(760px, 92vh)", background: "#08111f", border: "1px solid rgba(34,211,238,0.25)", borderRadius: "12px", boxShadow: "0 22px 70px rgba(0,0,0,0.5)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={embedded ? { flex: 1, minHeight: 0, display: "flex" } : { position: "fixed", inset: 0, background: "rgba(2,6,23,0.78)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 320 }}>
+        <div style={embedded ? { flex: 1, minHeight: 0, background: "#08111f", border: "1px solid rgba(34,211,238,0.25)", borderRadius: "16px", boxShadow: "0 22px 70px rgba(0,0,0,0.35)", display: "flex", flexDirection: "column", overflow: "hidden" } : { width: "min(1180px, 94vw)", height: "min(760px, 92vh)", background: "#08111f", border: "1px solid rgba(34,211,238,0.25)", borderRadius: "12px", boxShadow: "0 22px 70px rgba(0,0,0,0.5)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ padding: "0.8rem 1rem", borderBottom: "1px solid rgba(34,211,238,0.16)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.8rem", flexWrap: "wrap" }}>
             <div>
               <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "#67e8f9" }}>
@@ -1179,7 +1407,9 @@ export default function CoalMineAgent() {
                 style={{ flex: 1, minWidth: 180, background: "rgba(15,23,42,0.9)", border: "1px solid rgba(34,211,238,0.22)", borderRadius: "8px", color: "#e2e8f0", padding: "0.48rem 0.65rem", outline: "none", fontSize: "0.75rem" }}
               />
               <button onClick={() => loadKnowledgeGraph(graphKeyword)} disabled={graphLoading} style={{ padding: "0.48rem 0.78rem", borderRadius: "8px", border: "1px solid rgba(34,211,238,0.28)", background: "rgba(34,211,238,0.12)", color: "#67e8f9", cursor: graphLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{graphLoading ? "加载中" : "检索"}</button>
-              <button onClick={closeKnowledgeGraph} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: "1.2rem", lineHeight: 1 }}>×</button>
+              {!embedded ? (
+                <button onClick={closeKnowledgeGraph} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: "1.2rem", lineHeight: 1 }}>×</button>
+              ) : null}
             </div>
           </div>
 
@@ -1480,6 +1710,281 @@ export default function CoalMineAgent() {
     );
   };
 
+  const renderLibraryEmpty = (title, hint, actionLabel, onAction, disabled = false) => (
+    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem" }}>
+      <div style={{ width: "min(560px, 100%)", borderRadius: "18px", border: "1px solid rgba(74,222,128,0.14)", background: "rgba(255,255,255,0.03)", padding: "2rem", textAlign: "center", boxShadow: "0 18px 50px rgba(2,6,23,0.18)" }}>
+        <div style={{ fontSize: "1rem", fontWeight: 800, color: "#e2e8f0" }}>{title}</div>
+        <div style={{ marginTop: "0.55rem", fontSize: "0.78rem", lineHeight: 1.9, color: "#94a3b8" }}>{hint}</div>
+        {onAction ? (
+          <button
+            onClick={onAction}
+            disabled={disabled}
+            style={{ marginTop: "1rem", padding: "0.65rem 1rem", borderRadius: "10px", border: "1px dashed rgba(74,222,128,0.45)", background: "linear-gradient(135deg,rgba(74,222,128,0.15),rgba(34,211,238,0.08))", color: disabled ? "#4ade8060" : "#4ade80", cursor: disabled ? "not-allowed" : "pointer", fontWeight: 700 }}
+          >
+            {actionLabel}
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+
+  const renderChatPage = () => (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: "1.1rem 1.25rem", display: "flex", flexDirection: "column", gap: "0.9rem" }}>
+        {messages.map((msg, i) => (
+          <div key={i} style={{ display: "flex", justifyContent: msg.role === "user" ? "flex-end" : "flex-start", animation: "fadeUp 0.3s ease" }}>
+            {msg.role === "assistant" && (
+              <div style={{ width: 32, height: 32, borderRadius: "8px", flexShrink: 0, background: "linear-gradient(135deg,#4ade80,#22d3ee)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.9rem", marginRight: "0.6rem", marginTop: "0.2rem", boxShadow: "0 0 10px rgba(74,222,128,0.3)" }}>⛏</div>
+            )}
+            <div style={{ maxWidth: "76%", background: msg.role === "user" ? "linear-gradient(135deg,#1d4ed8,#1e40af)" : "rgba(255,255,255,0.05)", border: msg.role === "user" ? "1px solid rgba(59,130,246,0.4)" : "1px solid rgba(74,222,128,0.15)", borderRadius: msg.role === "user" ? "14px 4px 14px 14px" : "4px 14px 14px 14px", padding: "0.75rem 0.95rem", fontSize: "0.85rem", lineHeight: "1.7", backdropFilter: "blur(10px)", textAlign: "left" }}>
+              {fmt(msg.content)}
+              {msg.role === "assistant" && renderMetaPanel(msg.meta)}
+              <div style={{ fontSize: "0.6rem", color: "#475569", marginTop: "0.3rem", textAlign: "right" }}>
+                {msg.timestamp.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {loading && (
+          <div style={{ display: "flex", alignItems: "flex-start", gap: "0.6rem", animation: "fadeUp 0.3s ease" }}>
+            <div style={{ width: 32, height: 32, borderRadius: "8px", background: "linear-gradient(135deg,#4ade80,#22d3ee)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.9rem", boxShadow: "0 0 10px rgba(74,222,128,0.3)" }}>⛏</div>
+            <div style={{ padding: "0.75rem 0.95rem", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(74,222,128,0.15)", borderRadius: "4px 14px 14px 14px", fontSize: "0.82rem", color: "#94a3b8" }}>
+              <span>多智能体协同推理中</span><span className="dots">...</span>
+              {docs.length > 0 && <div style={{ fontSize: "0.63rem", color: "#4ade80", marginTop: "0.2rem" }}>📄 正在检索 {docs.length} 份规程文档</div>}
+              <div style={{ marginTop: "0.35rem", display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
+                {AGENTS.filter(a => activeAgents.includes(a.id)).map(a => (
+                  <span key={a.id} style={{ fontSize: "0.6rem", padding: "0.1rem 0.4rem", background: `${a.color}20`, border: `1px solid ${a.color}`, borderRadius: "4px", color: a.color }}>{a.icon} {a.name}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      <div style={{ padding: "0 1.25rem 0.55rem" }}>
+        <div style={{ display: "flex", gap: "0.38rem", flexWrap: "wrap" }}>
+          {QUICK_QUESTIONS.map((q, i) => (
+            <button key={i} onClick={() => sendMessage(q.text)} disabled={loading}
+              style={{ padding: "0.32rem 0.75rem", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(74,222,128,0.2)", borderRadius: "20px", color: "#94a3b8", fontSize: "0.7rem", cursor: "pointer", transition: "all 0.2s" }}
+              onMouseEnter={e => { e.currentTarget.style.background = "rgba(74,222,128,0.1)"; e.currentTarget.style.borderColor = "rgba(74,222,128,0.5)"; e.currentTarget.style.color = "#4ade80"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor = "rgba(74,222,128,0.2)"; e.currentTarget.style.color = "#94a3b8"; }}
+            >{q.icon} {q.text}</button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ padding: "0 1.25rem 1.1rem" }}>
+        {(docs.length > 0 || images.length > 0 || videos.length > 0) && (
+          <div style={{ marginBottom: "0.45rem" }}>
+            {docs.length > 0 && (
+              <div style={{ marginBottom: "0.35rem", padding: "0.3rem 0.7rem", background: "rgba(74,222,128,0.07)", border: "1px solid rgba(74,222,128,0.2)", borderRadius: "7px", fontSize: "0.65rem", color: "#4ade80", display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                📄 已加载 {docs.length} 份规程
+              </div>
+            )}
+            {images.length > 0 && (
+              <div style={{ padding: "0.3rem 0.7rem", background: "rgba(59,130,246,0.07)", border: "1px solid rgba(59,130,246,0.2)", borderRadius: "7px", fontSize: "0.65rem", color: "#60a5fa", display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                📸 已上传 {images.length} 张图片（将进行百度识别分析）
+              </div>
+            )}
+            {videos.length > 0 && (
+              <div style={{ marginTop: "0.35rem", padding: "0.3rem 0.7rem", background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: "7px", fontSize: "0.65rem", color: "#f59e0b", display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                🎬 已上传 {videos.length} 段视频（将进行抽帧分析）
+              </div>
+            )}
+            {sensors.length > 0 && (
+              <div style={{ marginTop: "0.35rem", padding: "0.3rem 0.7rem", background: "rgba(168,85,247,0.07)", border: "1px solid rgba(168,85,247,0.2)", borderRadius: "7px", fontSize: "0.65rem", color: "#c084fc", display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                📡 已接入 {sensors.length} 条传感器数据
+              </div>
+            )}
+          </div>
+        )}
+        <div style={{ display: "flex", gap: "0.6rem", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(74,222,128,0.25)", borderRadius: "13px", padding: "0.4rem 0.4rem 0.4rem 0.85rem", backdropFilter: "blur(20px)", boxShadow: "0 0 25px rgba(74,222,128,0.05)" }}>
+          <button onClick={() => navigateToView(APP_VIEW_DOCUMENTS)} title="打开文档库" style={{ width: 34, height: 34, borderRadius: "7px", flexShrink: 0, alignSelf: "flex-end", background: "rgba(74,222,128,0.1)", border: "1px solid rgba(74,222,128,0.3)", color: "#4ade80", cursor: "pointer", fontSize: "0.95rem", display: "flex", alignItems: "center", justifyContent: "center" }}>📎</button>
+          <button onClick={() => navigateToView(APP_VIEW_IMAGES)} title="打开图片库" style={{ width: 34, height: 34, borderRadius: "7px", flexShrink: 0, alignSelf: "flex-end", background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.3)", color: "#60a5fa", cursor: "pointer", fontSize: "0.95rem", display: "flex", alignItems: "center", justifyContent: "center" }}>📸</button>
+          <button onClick={() => navigateToView(APP_VIEW_VIDEOS)} title="打开视频库" style={{ width: 34, height: 34, borderRadius: "7px", flexShrink: 0, alignSelf: "flex-end", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", color: "#f59e0b", cursor: "pointer", fontSize: "0.95rem", display: "flex", alignItems: "center", justifyContent: "center" }}>🎬</button>
+          <button onClick={() => navigateToView(APP_VIEW_SENSORS)} title="打开传感器库" style={{ width: 34, height: 34, borderRadius: "7px", flexShrink: 0, alignSelf: "flex-end", background: "rgba(168,85,247,0.1)", border: "1px solid rgba(168,85,247,0.3)", color: "#c084fc", cursor: "pointer", fontSize: "0.95rem", display: "flex", alignItems: "center", justifyContent: "center" }}>📡</button>
+          <textarea value={input} onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+            placeholder="描述灾害情况或输入应急问题（Shift+Enter换行）..." rows={2}
+            style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#e2e8f0", fontSize: "0.85rem", lineHeight: "1.6", resize: "none", fontFamily: "inherit" }} />
+          <button onClick={() => sendMessage()} disabled={loading || !input.trim()}
+            style={{ padding: "0.5rem 1.1rem", background: loading || !input.trim() ? "rgba(74,222,128,0.12)" : "linear-gradient(135deg,#4ade80,#22d3ee)", border: "none", borderRadius: "9px", color: loading || !input.trim() ? "#4ade8044" : "#0a0f1e", fontWeight: 700, fontSize: "0.8rem", cursor: loading || !input.trim() ? "not-allowed" : "pointer", transition: "all 0.2s", flexShrink: 0, alignSelf: "flex-end", boxShadow: !loading && input.trim() ? "0 0 16px rgba(74,222,128,0.4)" : "none" }}>
+            {loading ? "推理中" : "发送 ↑"}
+          </button>
+        </div>
+        <div style={{ textAlign: "center", marginTop: "0.35rem", fontSize: "0.6rem", color: "#374151" }}>
+          本系统为辅助决策工具，紧急情况请同时启动线下应急预案 · 课题编号：方向20
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderPageShell = (title, subtitle, actions, content) => (
+    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", padding: "1.1rem 1.25rem", gap: "0.9rem" }}>
+      <div style={{ textAlign: "center" }}>
+        <div>
+          <div style={{ fontSize: "1rem", fontWeight: 800, color: "#e2e8f0" }}>{title}</div>
+          <div style={{ marginTop: "0.18rem", fontSize: "0.72rem", lineHeight: 1.7, color: "#94a3b8" }}>{subtitle}</div>
+        </div>
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center", justifyContent: "center", marginTop: "0.75rem" }}>
+          {actions}
+        </div>
+      </div>
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+        {content}
+      </div>
+    </div>
+  );
+
+  const renderDocumentsPage = () => renderPageShell(
+    "文档库",
+    "这里存放当前会话已入库的规程文档。上传后会进入向量检索，并参与知识图谱构建。",
+    <button onClick={() => fileInputRef.current?.click()} disabled={uploading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: "1px dashed rgba(74,222,128,0.45)", background: "linear-gradient(135deg,rgba(74,222,128,0.15),rgba(34,211,238,0.08))", color: uploading ? "#4ade8060" : "#4ade80", cursor: uploading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{uploading ? "解析中..." : "上传规程文档"}</button>,
+    docs.length === 0
+      ? renderLibraryEmpty("当前文档库为空", "上传 PDF、DOCX 或 TXT 后，问答智能体会优先参考这些规程内容。", uploading ? "文档解析中..." : "上传规程文档", () => fileInputRef.current?.click(), uploading)
+      : (
+        <div style={{ display: "grid", gap: "0.65rem", overflowY: "auto", paddingRight: "0.2rem" }}>
+          {docs.map((doc) => (
+            <div key={doc.document_id || doc.name} style={{ padding: "0.9rem 1rem", background: "rgba(74,222,128,0.06)", border: "1px solid rgba(74,222,128,0.16)", borderRadius: "14px", display: "flex", alignItems: "flex-start", gap: "0.7rem" }}>
+              <div style={{ width: 44, height: 44, borderRadius: "12px", background: "rgba(74,222,128,0.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.1rem", flexShrink: 0 }}>{fileIcon(doc.name || "")}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: "0.88rem", fontWeight: 800, color: "#bbf7d0", wordBreak: "break-all" }}>{doc.name}</div>
+                <div style={{ marginTop: "0.28rem", fontSize: "0.7rem", color: "#94a3b8" }}>{doc.sizeMB} MB · {(doc.charCount || 0).toLocaleString()} 字符 · {doc.chunkCount || 0} 个检索块</div>
+                {(doc.graphNodeCount || doc.graphRelationCount) ? (
+                  <div style={{ marginTop: "0.25rem", fontSize: "0.68rem", color: "#67e8f9" }}>图谱节点 {doc.graphNodeCount || 0} · 关系 {doc.graphRelationCount || 0}</div>
+                ) : null}
+              </div>
+              <button onClick={() => removeUploadedDocument(doc)} style={{ padding: "0.45rem 0.7rem", borderRadius: "8px", border: "1px solid rgba(248,113,113,0.16)", background: "rgba(239,68,68,0.08)", color: "#fca5a5", cursor: "pointer", fontSize: "0.72rem" }}>移除</button>
+            </div>
+          ))}
+        </div>
+      )
+  );
+
+  const renderImagesPage = () => renderPageShell(
+    "图片库",
+    "这里保存当前会话上传的现场图片。发送问题时，系统会调用识别接口把图片转为可参与问答的证据摘要。",
+    <button onClick={() => imageInputRef.current?.click()} disabled={imageUploading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: "1px dashed rgba(59,130,246,0.45)", background: "linear-gradient(135deg,rgba(59,130,246,0.15),rgba(14,165,233,0.08))", color: imageUploading ? "#60a5fa60" : "#60a5fa", cursor: imageUploading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{imageUploading ? "上传中..." : "上传现场图片"}</button>,
+    images.length === 0
+      ? renderLibraryEmpty("当前图片库为空", "上传 JPG、PNG 或 WEBP 后，问答链路会在发送前自动补充图片识别结果。", imageUploading ? "上传中..." : "上传现场图片", () => imageInputRef.current?.click(), imageUploading)
+      : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: "0.75rem", overflowY: "auto", paddingRight: "0.2rem" }}>
+          {images.map((img) => (
+            <div key={img.name} style={{ padding: "0.75rem", background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.18)", borderRadius: "16px" }}>
+              <div style={{ height: 150, borderRadius: "12px", background: "rgba(15,23,42,0.72)", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <img src={img.dataUrl} alt={img.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              </div>
+              <div style={{ marginTop: "0.6rem", fontSize: "0.8rem", fontWeight: 700, color: "#bfdbfe", wordBreak: "break-all" }}>{img.name}</div>
+              <div style={{ marginTop: "0.2rem", fontSize: "0.68rem", color: "#94a3b8" }}>{img.sizeMB} MB</div>
+              <button onClick={() => setImages(prev => prev.filter((item) => item.name !== img.name))} style={{ marginTop: "0.55rem", width: "100%", padding: "0.45rem 0.7rem", borderRadius: "8px", border: "1px solid rgba(148,163,184,0.16)", background: "rgba(255,255,255,0.04)", color: "#cbd5e1", cursor: "pointer", fontSize: "0.72rem" }}>移出图片库</button>
+            </div>
+          ))}
+        </div>
+      )
+  );
+
+  const renderVideosPage = () => renderPageShell(
+    "视频库",
+    "这里展示当前会话上传的视频及抽帧分析结果。上传后会自动完成抽帧、识别与摘要生成。",
+    <button onClick={() => videoInputRef.current?.click()} disabled={videoUploading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: "1px dashed rgba(245,158,11,0.45)", background: "linear-gradient(135deg,rgba(245,158,11,0.15),rgba(249,115,22,0.08))", color: videoUploading ? "#f59e0b60" : "#f59e0b", cursor: videoUploading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{videoUploading ? "分析中..." : "上传现场视频"}</button>,
+    videos.length === 0
+      ? renderLibraryEmpty("当前视频库为空", "上传 MP4、MOV 或 WEBM 后，系统会自动抽帧分析，并把命中帧作为图像证据参与问答。", videoUploading ? "分析中..." : "上传现场视频", () => videoInputRef.current?.click(), videoUploading)
+      : (
+        <div style={{ display: "grid", gap: "0.75rem", overflowY: "auto", paddingRight: "0.2rem" }}>
+          {videos.map((video) => (
+            <div key={video.name} style={{ padding: "0.9rem 1rem", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.18)", borderRadius: "16px", display: "flex", gap: "0.8rem" }}>
+              <div style={{ width: 52, height: 52, borderRadius: "14px", background: "rgba(15,23,42,0.72)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fbbf24", fontSize: "1.2rem", flexShrink: 0 }}>🎞</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: "0.86rem", fontWeight: 800, color: "#fde68a", wordBreak: "break-all" }}>{video.name}</div>
+                <div style={{ marginTop: "0.24rem", fontSize: "0.7rem", color: "#94a3b8" }}>{video.sizeMB} MB · {video.frames_extracted || 0} 帧抽取 · {video.frames_matched || 0} 帧命中</div>
+                {video.issue_keywords?.length ? (
+                  <div style={{ marginTop: "0.35rem", display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
+                    {video.issue_keywords.slice(0, 6).map((kw, idx) => (
+                      <span key={`${kw}-${idx}`} style={{ padding: "0.08rem 0.38rem", borderRadius: "999px", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.22)", color: "#fde68a", fontSize: "0.62rem" }}>{kw}</span>
+                    ))}
+                  </div>
+                ) : null}
+                {video.summary_text ? (
+                  <div style={{ marginTop: "0.38rem", fontSize: "0.68rem", lineHeight: 1.7, color: "#cbd5e1", whiteSpace: "pre-wrap" }}>{video.summary_text.split("\n").slice(0, 4).join("\n")}</div>
+                ) : null}
+              </div>
+              <button onClick={() => setVideos(prev => prev.filter((item) => item.name !== video.name))} style={{ padding: "0.45rem 0.7rem", borderRadius: "8px", border: "1px solid rgba(148,163,184,0.16)", background: "rgba(255,255,255,0.04)", color: "#cbd5e1", cursor: "pointer", fontSize: "0.72rem", alignSelf: "flex-start" }}>移出视频库</button>
+            </div>
+          ))}
+        </div>
+      )
+  );
+
+  const renderSensorsPage = () => renderPageShell(
+    "传感器数据库",
+    "这里管理当前会话的实时传感器数据。支持导入 JSON 文件，也支持继续粘贴数组进行手动接入。",
+    <>
+      <button onClick={() => sensorFileInputRef.current?.click()} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: "1px dashed rgba(168,85,247,0.45)", background: "linear-gradient(135deg,rgba(168,85,247,0.15),rgba(99,102,241,0.08))", color: "#d8b4fe", cursor: "pointer", fontWeight: 700, fontSize: "0.72rem" }}>导入传感器 JSON</button>
+      <button onClick={() => setSensorDialogOpen(true)} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: "1px solid rgba(168,85,247,0.26)", background: "rgba(168,85,247,0.08)", color: "#c084fc", cursor: "pointer", fontWeight: 700, fontSize: "0.72rem" }}>手动录入数据</button>
+      <button onClick={handleSensorClear} disabled={sensors.length === 0} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: "1px solid rgba(248,113,113,0.18)", background: sensors.length === 0 ? "rgba(239,68,68,0.04)" : "rgba(239,68,68,0.08)", color: sensors.length === 0 ? "#fca5a560" : "#fca5a5", cursor: sensors.length === 0 ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>清空数据</button>
+    </>,
+    sensors.length === 0
+      ? renderLibraryEmpty("当前传感器数据库为空", "导入监测 JSON 后，传感器数据会自动参与风险识别、角色路由和问答推理。", "导入传感器 JSON", () => sensorFileInputRef.current?.click())
+      : (
+        <div style={{ display: "grid", gap: "0.65rem", overflowY: "auto", paddingRight: "0.2rem" }}>
+          {sensors.map((sensor, idx) => (
+            <div key={`${sensor.sensor_id || sensor.name}-${idx}`} style={{ padding: "0.85rem 0.95rem", background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.18)", borderRadius: "15px", display: "grid", gap: "0.18rem" }}>
+              <div style={{ fontSize: "0.84rem", fontWeight: 800, color: "#e9d5ff" }}>{sensor.name || sensor.sensor_id}</div>
+              <div style={{ fontSize: "0.7rem", color: "#cbd5e1" }}>{(sensor.value_text || sensor.value || "未知")}{sensor.unit || ""} · 阈值 {sensor.threshold ?? "未知"} · {sensor.status || "状态未知"}</div>
+              <div style={{ fontSize: "0.66rem", color: "#94a3b8" }}>{sensor.location || "未知位置"} · {sensor.timestamp || "无时间戳"} · 编号 {sensor.sensor_id || "未知"}</div>
+            </div>
+          ))}
+        </div>
+      )
+  );
+
+  const renderGraphPage = () => renderPageShell(
+    "知识图谱库",
+    "当前知识图谱按 session 合并构建。这里可以查看图谱状态、上传三元组测试文件，并直接检索当前会话的图谱结果。",
+    <>
+      <button onClick={() => triplesInputRef.current?.click()} disabled={uploading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: "1px dashed rgba(34,211,238,0.45)", background: "linear-gradient(135deg,rgba(34,211,238,0.15),rgba(20,184,166,0.08))", color: uploading ? "#22d3ee60" : "#67e8f9", cursor: uploading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{uploading ? "导入中..." : "上传三元组 JSON"}</button>
+      <button onClick={() => loadKnowledgeGraph(graphKeyword)} disabled={graphLoading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: "1px solid rgba(34,211,238,0.26)", background: "rgba(34,211,238,0.08)", color: graphLoading ? "#67e8f960" : "#67e8f9", cursor: graphLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{graphLoading ? "加载中..." : "刷新图谱"}</button>
+    </>,
+    <div style={{ flex: 1, minHeight: 0, display: "grid", gap: "0.8rem" }}>
+      <div style={{ display: "flex", gap: "0.55rem", flexWrap: "wrap" }}>
+        <span style={{ padding: "0.18rem 0.5rem", borderRadius: "999px", background: "rgba(34,211,238,0.12)", border: "1px solid rgba(34,211,238,0.24)", color: "#67e8f9", fontSize: "0.66rem" }}>状态：{graphBuildStatus.state || "idle"}</span>
+        <span style={{ padding: "0.18rem 0.5rem", borderRadius: "999px", background: "rgba(74,222,128,0.12)", border: "1px solid rgba(74,222,128,0.24)", color: "#86efac", fontSize: "0.66rem" }}>节点：{graphBuildStatus.node_count || graphData.stats?.node_count || 0}</span>
+        <span style={{ padding: "0.18rem 0.5rem", borderRadius: "999px", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.24)", color: "#fbbf24", fontSize: "0.66rem" }}>关系：{graphBuildStatus.relation_count || graphData.stats?.relation_count || 0}</span>
+        <span style={{ padding: "0.18rem 0.5rem", borderRadius: "999px", background: "rgba(148,163,184,0.10)", border: "1px solid rgba(148,163,184,0.18)", color: "#cbd5e1", fontSize: "0.66rem" }}>来源文档：{docs.length}</span>
+      </div>
+      {docs.length > 0 ? (
+        <div style={{ display: "flex", gap: "0.32rem", flexWrap: "wrap" }}>
+          {docs.map((doc) => (
+            <span key={doc.document_id || doc.name} style={{ padding: "0.18rem 0.45rem", borderRadius: "999px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#cbd5e1", fontSize: "0.64rem" }}>{doc.name}</span>
+          ))}
+        </div>
+      ) : null}
+      <div style={{ flex: 1, minHeight: 0 }}>
+        {renderGraphDialog(true)}
+      </div>
+    </div>
+  );
+
+  const renderCurrentPage = () => {
+    switch (currentView) {
+      case APP_VIEW_DOCUMENTS:
+        return renderDocumentsPage();
+      case APP_VIEW_IMAGES:
+        return renderImagesPage();
+      case APP_VIEW_VIDEOS:
+        return renderVideosPage();
+      case APP_VIEW_SENSORS:
+        return renderSensorsPage();
+      case APP_VIEW_GRAPH:
+        return renderGraphPage();
+      case APP_VIEW_CHAT:
+      default:
+        return renderChatPage();
+    }
+  };
+
   return (
     <div style={{ height: "100vh", background: "linear-gradient(135deg,#0a0f1e,#0d1b2a,#0a1628)", fontFamily: "'Noto Sans SC','PingFang SC',sans-serif", color: "#e2e8f0", display: "flex", flexDirection: "column" }}>
 
@@ -1511,244 +2016,59 @@ export default function CoalMineAgent() {
 
       {/* Body */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        <input ref={fileInputRef} type="file" accept=".txt,.docx,.pdf" multiple onChange={handleUpload} style={{ display: "none" }} />
+        <input ref={triplesInputRef} type="file" accept=".json,application/json" onChange={handleTriplesUpload} style={{ display: "none" }} />
+        <input ref={imageInputRef} type="file" accept="image/*" multiple onChange={handleImageUpload} style={{ display: "none" }} />
+        <input ref={videoInputRef} type="file" accept="video/*" multiple onChange={handleVideoUpload} style={{ display: "none" }} />
+        <input ref={sensorFileInputRef} type="file" accept=".json,application/json" multiple onChange={handleSensorFileUpload} style={{ display: "none" }} />
 
-        {/* Sidebar */}
-        <div style={{ width: sidebarOpen ? 240 : 48, flexShrink: 0, background: "rgba(255,255,255,0.02)", borderRight: "1px solid rgba(74,222,128,0.1)", display: "flex", flexDirection: "column", transition: "width 0.3s ease", overflow: "hidden" }}>
-          {/* Sidebar header */}
-          <div style={{ padding: "0.65rem 0.55rem", borderBottom: "1px solid rgba(74,222,128,0.1)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <button onClick={() => setSidebarOpen(v => !v)} title="规程知识库" style={{ width: 34, height: 34, borderRadius: "7px", flexShrink: 0, background: sidebarOpen ? "rgba(74,222,128,0.15)" : "rgba(255,255,255,0.05)", border: "1px solid rgba(74,222,128,0.3)", color: "#4ade80", cursor: "pointer", fontSize: "0.95rem", display: "flex", alignItems: "center", justifyContent: "center" }}>📂</button>
-            {sidebarOpen && <span style={{ fontSize: "0.76rem", fontWeight: 700, color: "#94a3b8", whiteSpace: "nowrap" }}>规程知识库{docs.length > 0 && <span style={{ color: "#4ade80" }}> ({docs.length})</span>}</span>}
+        <div style={{ width: sidebarOpen ? 248 : 62, flexShrink: 0, background: "rgba(255,255,255,0.02)", borderRight: "1px solid rgba(74,222,128,0.1)", display: "flex", flexDirection: "column", transition: "width 0.3s ease", overflow: "hidden" }}>
+          <div style={{ padding: "0.75rem 0.7rem", borderBottom: "1px solid rgba(74,222,128,0.1)", display: "flex", alignItems: "center", gap: "0.55rem" }}>
+            <button onClick={() => setSidebarOpen(v => !v)} title="知识库导航" style={{ width: 38, height: 38, borderRadius: "10px", flexShrink: 0, background: sidebarOpen ? "rgba(74,222,128,0.15)" : "rgba(255,255,255,0.05)", border: "1px solid rgba(74,222,128,0.3)", color: "#4ade80", cursor: "pointer", fontSize: "1rem", display: "flex", alignItems: "center", justifyContent: "center" }}>📚</button>
+            {sidebarOpen && (
+              <div>
+                <div style={{ fontSize: "0.78rem", fontWeight: 800, color: "#cbd5e1" }}>知识库导航</div>
+                <div style={{ fontSize: "0.64rem", color: "#64748b", marginTop: "0.12rem" }}>问答页为主页面，库页负责查看与上传</div>
+              </div>
+            )}
           </div>
 
-          {sidebarOpen && (
-            <>
-              {/* Upload */}
-              <div style={{ padding: "0.55rem" }}>
-                <input ref={fileInputRef} type="file" accept=".txt,.docx,.pdf" multiple onChange={handleUpload} style={{ display: "none" }} />
-                <input ref={triplesInputRef} type="file" accept=".json,application/json" onChange={handleTriplesUpload} style={{ display: "none" }} />
-                <input ref={imageInputRef} type="file" accept="image/*" multiple onChange={handleImageUpload} style={{ display: "none" }} />
-                <input ref={videoInputRef} type="file" accept="video/*" multiple onChange={handleVideoUpload} style={{ display: "none" }} />
-                <button onClick={() => fileInputRef.current?.click()} disabled={uploading} style={{ width: "100%", padding: "0.5rem", background: "linear-gradient(135deg,rgba(74,222,128,0.15),rgba(34,211,238,0.1))", border: "1px dashed rgba(74,222,128,0.45)", borderRadius: "7px", color: uploading ? "#4ade8055" : "#4ade80", cursor: uploading ? "not-allowed" : "pointer", fontSize: "0.73rem", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem" }}>
-                  {uploading ? "⏳ 解析中..." : "＋ 上传规程文档"}
+          <div style={{ flex: 1, overflowY: "auto", padding: "0.6rem" }}>
+            {LIBRARY_NAV_ITEMS.map((item) => {
+              const count = item.id === APP_VIEW_DOCUMENTS
+                ? docs.length
+                : item.id === APP_VIEW_IMAGES
+                  ? images.length
+                  : item.id === APP_VIEW_VIDEOS
+                    ? videos.length
+                    : item.id === APP_VIEW_SENSORS
+                      ? sensors.length
+                      : item.id === APP_VIEW_GRAPH
+                        ? (graphBuildStatus.node_count || graphData.stats?.node_count || 0)
+                        : 0;
+              const active = currentView === item.id;
+              const clickHandler = item.id === APP_VIEW_GRAPH ? openKnowledgeGraph : () => navigateToView(item.id);
+              return (
+                <button
+                  key={item.id}
+                  onClick={clickHandler}
+                  style={{ width: "100%", marginBottom: "0.45rem", padding: sidebarOpen ? "0.72rem 0.78rem" : "0.72rem 0.4rem", borderRadius: "12px", background: active ? `${item.color}18` : "rgba(255,255,255,0.03)", border: `1px solid ${active ? item.color : "rgba(255,255,255,0.07)"}`, color: active ? item.color : "#94a3b8", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: sidebarOpen ? "space-between" : "center", gap: "0.55rem", textAlign: "left" }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: "0.55rem", minWidth: 0 }}>
+                    <span style={{ fontSize: "1rem", flexShrink: 0 }}>{item.icon}</span>
+                    {sidebarOpen && <span style={{ fontSize: "0.74rem", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.label}</span>}
+                  </span>
+                  {sidebarOpen && item.id !== APP_VIEW_CHAT && count > 0 ? (
+                    <span style={{ padding: "0.08rem 0.38rem", borderRadius: "999px", background: "rgba(15,23,42,0.55)", border: `1px solid ${item.color}55`, fontSize: "0.62rem", color: item.color, flexShrink: 0 }}>{count}</span>
+                  ) : null}
                 </button>
-                <div style={{ fontSize: "0.6rem", color: "#475569", textAlign: "center", marginTop: "0.3rem" }}>TXT · DOCX · PDF</div>
-                
-                <button onClick={() => triplesInputRef.current?.click()} disabled={uploading} style={{ width: "100%", padding: "0.5rem", marginTop: "0.45rem", background: "linear-gradient(135deg,rgba(34,211,238,0.15),rgba(20,184,166,0.1))", border: "1px dashed rgba(34,211,238,0.45)", borderRadius: "7px", color: uploading ? "#22d3ee55" : "#67e8f9", cursor: uploading ? "not-allowed" : "pointer", fontSize: "0.73rem", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem" }}>
-                  上传三元组
-                </button>
-                <div style={{ fontSize: "0.6rem", color: "#475569", textAlign: "center", marginTop: "0.3rem" }}>JSON · 直接写入 Neo4j</div>
-
-                <button onClick={() => imageInputRef.current?.click()} disabled={imageUploading} style={{ width: "100%", padding: "0.5rem", marginTop: "0.45rem", background: "linear-gradient(135deg,rgba(59,130,246,0.15),rgba(14,165,233,0.1))", border: "1px dashed rgba(59,130,246,0.45)", borderRadius: "7px", color: imageUploading ? "#60a5fa55" : "#60a5fa", cursor: imageUploading ? "not-allowed" : "pointer", fontSize: "0.73rem", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem" }}>
-                  {imageUploading ? "📸 上传中..." : "📸 上传现场图片"}
-                </button>
-                <div style={{ fontSize: "0.6rem", color: "#475569", textAlign: "center", marginTop: "0.3rem" }}>JPG · PNG · WEBP</div>
-
-                <button onClick={() => videoInputRef.current?.click()} disabled={videoUploading} style={{ width: "100%", padding: "0.5rem", marginTop: "0.45rem", background: "linear-gradient(135deg,rgba(245,158,11,0.15),rgba(249,115,22,0.1))", border: "1px dashed rgba(245,158,11,0.45)", borderRadius: "7px", color: videoUploading ? "#f59e0b55" : "#f59e0b", cursor: videoUploading ? "not-allowed" : "pointer", fontSize: "0.73rem", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem" }}>
-                  {videoUploading ? "🎬 分析中..." : "🎬 上传现场视频"}
-                </button>
-                <div style={{ fontSize: "0.6rem", color: "#475569", textAlign: "center", marginTop: "0.3rem" }}>MP4 · WEBM · MOV</div>
-
-                <button onClick={() => setSensorDialogOpen(true)} style={{ width: "100%", padding: "0.5rem", marginTop: "0.45rem", background: "linear-gradient(135deg,rgba(168,85,247,0.15),rgba(99,102,241,0.1))", border: "1px dashed rgba(168,85,247,0.45)", borderRadius: "7px", color: "#c084fc", cursor: "pointer", fontSize: "0.73rem", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem" }}>
-                  📡 接入传感器数据
-                </button>
-                <div style={{ fontSize: "0.6rem", color: "#475569", textAlign: "center", marginTop: "0.3rem" }}>JSON · HTTP 推送</div>
-
-                <button onClick={openKnowledgeGraph} disabled={graphLoading && graphBuildStatus.state !== "running"} style={{ width: "100%", padding: "0.5rem", marginTop: "0.45rem", background: "linear-gradient(135deg,rgba(34,211,238,0.14),rgba(20,184,166,0.1))", border: "1px dashed rgba(34,211,238,0.45)", borderRadius: "7px", color: graphLoading && graphBuildStatus.state !== "running" ? "#22d3ee55" : "#67e8f9", cursor: graphLoading && graphBuildStatus.state !== "running" ? "not-allowed" : "pointer", fontSize: "0.73rem", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem" }}>
-                  {graphBuildStatus.state === "queued"
-                    ? "🧠 图谱排队中..."
-                    : graphBuildStatus.state === "running"
-                    ? `🧠 图谱构建中 ${graphBuildStatus.progress_percent || 0}%`
-                    : graphLoading
-                      ? "🧠 加载图谱..."
-                      : "🧠 查看知识图谱"}
-                </button>
-                <div style={{ fontSize: "0.6rem", color: "#475569", textAlign: "center", marginTop: "0.3rem" }}>实体 · 关系 · 条款来源</div>
-              </div>
-
-              {/* Doc list */}
-              <div style={{ flex: 1, overflowY: "auto", padding: "0 0.55rem 0.55rem" }}>
-                {docs.length === 0 ? (
-                  <div style={{ padding: "1.2rem 0.4rem", textAlign: "center", color: "#374151", fontSize: "0.7rem", lineHeight: 1.7 }}>
-                    暂无文档<br />上传后智能体将<br />优先参考规程内容
-                  </div>
-                ) : docs.map((doc, i) => (
-                  <div key={i} style={{ padding: "0.5rem", background: "rgba(74,222,128,0.06)", border: "1px solid rgba(74,222,128,0.15)", borderRadius: "7px", marginBottom: "0.35rem", display: "flex", alignItems: "flex-start", gap: "0.35rem" }}>
-                    <span style={{ fontSize: "0.9rem", flexShrink: 0 }}>{fileIcon(doc.name)}</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: "0.7rem", fontWeight: 600, color: "#a3e635", wordBreak: "break-all", lineHeight: 1.3 }}>{doc.name}</div>
-                      <div style={{ fontSize: "0.6rem", color: "#475569", marginTop: "0.12rem" }}>{doc.sizeMB} MB · {(doc.charCount || 0).toLocaleString()} 字符 · {doc.chunkCount || 0} 块</div>
-                      {(doc.graphNodeCount || doc.graphRelationCount) ? (
-                        <div style={{ fontSize: "0.58rem", color: "#22d3ee", marginTop: "0.12rem" }}>
-                          图谱 {doc.graphNodeCount || 0} 节点 · {doc.graphRelationCount || 0} 关系
-                        </div>
-                      ) : null}
-                    </div>
-                    <button onClick={() => removeUploadedDocument(doc)} style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: "0.85rem", flexShrink: 0, padding: 0, lineHeight: 1 }}>×</button>
-                  </div>
-                ))}
-                
-                {images.length > 0 && (
-                  <div style={{ marginTop: "0.65rem" }}>
-                    <div style={{ fontSize: "0.7rem", color: "#60a5fa", marginBottom: "0.35rem", fontWeight: 700 }}>📸 上传的图片</div>
-                    {images.map((img, i) => (
-                      <div key={i} style={{ padding: "0.5rem", background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.18)", borderRadius: "7px", marginBottom: "0.35rem", display: "flex", alignItems: "center", gap: "0.45rem" }}>
-                        <div style={{ width: 36, height: 36, borderRadius: "6px", background: "rgba(15,23,42,0.6)", overflow: "hidden", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                          <img src={img.dataUrl} alt={img.name} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "cover" }} />
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: "0.7rem", fontWeight: 600, color: "#93c5fd", wordBreak: "break-all", lineHeight: 1.3 }}>{img.name}</div>
-                          <div style={{ fontSize: "0.6rem", color: "#475569", marginTop: "0.12rem" }}>{img.sizeMB} MB</div>
-                        </div>
-                        <button onClick={() => setImages(prev => prev.filter(i2 => i2.name !== img.name))} style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: "0.85rem", flexShrink: 0, padding: 0, lineHeight: 1 }}>×</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {videos.length > 0 && (
-                  <div style={{ marginTop: "0.65rem" }}>
-                    <div style={{ fontSize: "0.7rem", color: "#f59e0b", marginBottom: "0.35rem", fontWeight: 700 }}>🎬 上传的视频</div>
-                    {videos.map((video, i) => (
-                      <div key={i} style={{ padding: "0.5rem", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.18)", borderRadius: "7px", marginBottom: "0.35rem", display: "flex", alignItems: "flex-start", gap: "0.45rem" }}>
-                        <div style={{ width: 36, height: 36, borderRadius: "6px", background: "rgba(15,23,42,0.6)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#fbbf24", fontSize: "0.9rem" }}>🎞</div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: "0.7rem", fontWeight: 600, color: "#fbbf24", wordBreak: "break-all", lineHeight: 1.3 }}>{video.name}</div>
-                          <div style={{ fontSize: "0.6rem", color: "#64748b", marginTop: "0.12rem" }}>
-                            {video.sizeMB} MB · {video.frames_extracted || 0} 帧 · {video.frames_matched || 0} 帧命中
-                          </div>
-                          {video.issue_keywords && video.issue_keywords.length > 0 && (
-                            <div style={{ marginTop: "0.28rem", display: "flex", gap: "0.2rem", flexWrap: "wrap" }}>
-                              {video.issue_keywords.slice(0, 4).map((kw, idx) => (
-                                <span key={`${kw}-${idx}`} style={{ padding: "0.05rem 0.35rem", borderRadius: "999px", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.22)", color: "#fde68a", fontSize: "0.6rem" }}>{kw}</span>
-                              ))}
-                            </div>
-                          )}
-                          {video.summary_text && (
-                            <div style={{ fontSize: "0.58rem", color: "#94a3b8", marginTop: "0.25rem", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
-                              {video.summary_text.split("\n").slice(0, 3).join("\n")}
-                            </div>
-                          )}
-                        </div>
-                        <button onClick={() => setVideos(prev => prev.filter(v => v.name !== video.name))} style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: "0.85rem", flexShrink: 0, padding: 0, lineHeight: 1 }}>×</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {sensors.length > 0 && (
-                  <div style={{ marginTop: "0.65rem" }}>
-                    <div style={{ fontSize: "0.7rem", color: "#c084fc", marginBottom: "0.35rem", fontWeight: 700 }}>📡 传感器数据</div>
-                    {sensors.map((sensor, i) => (
-                      <div key={i} style={{ padding: "0.5rem", background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.18)", borderRadius: "7px", marginBottom: "0.35rem", display: "flex", alignItems: "flex-start", gap: "0.45rem" }}>
-                        <div style={{ width: 36, height: 36, borderRadius: "6px", background: "rgba(15,23,42,0.6)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#c084fc", fontSize: "0.9rem" }}>📟</div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: "0.7rem", fontWeight: 600, color: "#d8b4fe", wordBreak: "break-all", lineHeight: 1.3 }}>{sensor.name || sensor.sensor_id}</div>
-                          <div style={{ fontSize: "0.6rem", color: "#64748b", marginTop: "0.12rem" }}>
-                            {(sensor.value_text || sensor.value || "未知")}{sensor.unit || ""} · {sensor.location || "未知位置"} · {sensor.status || "状态未知"}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
+              );
+            })}
+          </div>
         </div>
 
-        {/* Chat */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          {/* Messages */}
-          <div style={{ flex: 1, overflowY: "auto", padding: "1.1rem 1.25rem", display: "flex", flexDirection: "column", gap: "0.9rem" }}>
-            {messages.map((msg, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: msg.role === "user" ? "flex-end" : "flex-start", animation: "fadeUp 0.3s ease" }}>
-                {msg.role === "assistant" && (
-                  <div style={{ width: 32, height: 32, borderRadius: "8px", flexShrink: 0, background: "linear-gradient(135deg,#4ade80,#22d3ee)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.9rem", marginRight: "0.6rem", marginTop: "0.2rem", boxShadow: "0 0 10px rgba(74,222,128,0.3)" }}>⛏</div>
-                )}
-                <div style={{ maxWidth: "76%", background: msg.role === "user" ? "linear-gradient(135deg,#1d4ed8,#1e40af)" : "rgba(255,255,255,0.05)", border: msg.role === "user" ? "1px solid rgba(59,130,246,0.4)" : "1px solid rgba(74,222,128,0.15)", borderRadius: msg.role === "user" ? "14px 4px 14px 14px" : "4px 14px 14px 14px", padding: "0.75rem 0.95rem", fontSize: "0.85rem", lineHeight: "1.7", backdropFilter: "blur(10px)", textAlign: "left" }}>
-                  {fmt(msg.content)}
-                  {msg.role === "assistant" && renderMetaPanel(msg.meta)}
-                  <div style={{ fontSize: "0.6rem", color: "#475569", marginTop: "0.3rem", textAlign: "right" }}>
-                    {msg.timestamp.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {loading && (
-              <div style={{ display: "flex", alignItems: "flex-start", gap: "0.6rem", animation: "fadeUp 0.3s ease" }}>
-                <div style={{ width: 32, height: 32, borderRadius: "8px", background: "linear-gradient(135deg,#4ade80,#22d3ee)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.9rem", boxShadow: "0 0 10px rgba(74,222,128,0.3)" }}>⛏</div>
-                <div style={{ padding: "0.75rem 0.95rem", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(74,222,128,0.15)", borderRadius: "4px 14px 14px 14px", fontSize: "0.82rem", color: "#94a3b8" }}>
-                  <span>多智能体协同推理中</span><span className="dots">...</span>
-                  {docs.length > 0 && <div style={{ fontSize: "0.63rem", color: "#4ade80", marginTop: "0.2rem" }}>📄 正在检索 {docs.length} 份规程文档</div>}
-                  <div style={{ marginTop: "0.35rem", display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
-                    {AGENTS.filter(a => activeAgents.includes(a.id)).map(a => (
-                      <span key={a.id} style={{ fontSize: "0.6rem", padding: "0.1rem 0.4rem", background: `${a.color}20`, border: `1px solid ${a.color}`, borderRadius: "4px", color: a.color }}>{a.icon} {a.name}</span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Quick questions */}
-          <div style={{ padding: "0 1.25rem 0.55rem" }}>
-            <div style={{ display: "flex", gap: "0.38rem", flexWrap: "wrap" }}>
-              {QUICK_QUESTIONS.map((q, i) => (
-                <button key={i} onClick={() => sendMessage(q.text)} disabled={loading}
-                  style={{ padding: "0.32rem 0.75rem", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(74,222,128,0.2)", borderRadius: "20px", color: "#94a3b8", fontSize: "0.7rem", cursor: "pointer", transition: "all 0.2s" }}
-                  onMouseEnter={e => { e.currentTarget.style.background = "rgba(74,222,128,0.1)"; e.currentTarget.style.borderColor = "rgba(74,222,128,0.5)"; e.currentTarget.style.color = "#4ade80"; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor = "rgba(74,222,128,0.2)"; e.currentTarget.style.color = "#94a3b8"; }}
-                >{q.icon} {q.text}</button>
-              ))}
-            </div>
-          </div>
-
-          {/* Input */}
-          <div style={{ padding: "0 1.25rem 1.1rem" }}>
-            {(docs.length > 0 || images.length > 0 || videos.length > 0) && (
-              <div style={{ marginBottom: "0.45rem" }}>
-                {docs.length > 0 && (
-                  <div style={{ marginBottom: "0.35rem", padding: "0.3rem 0.7rem", background: "rgba(74,222,128,0.07)", border: "1px solid rgba(74,222,128,0.2)", borderRadius: "7px", fontSize: "0.65rem", color: "#4ade80", display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                    📄 已加载 {docs.length} 份规程
-                  </div>
-                )}
-                {images.length > 0 && (
-                  <div style={{ padding: "0.3rem 0.7rem", background: "rgba(59,130,246,0.07)", border: "1px solid rgba(59,130,246,0.2)", borderRadius: "7px", fontSize: "0.65rem", color: "#60a5fa", display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                    📸 已上传 {images.length} 张图片（将进行百度识别分析）
-                  </div>
-                )}
-                {videos.length > 0 && (
-                  <div style={{ marginTop: "0.35rem", padding: "0.3rem 0.7rem", background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: "7px", fontSize: "0.65rem", color: "#f59e0b", display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                    🎬 已上传 {videos.length} 段视频（将进行抽帧分析）
-                  </div>
-                )}
-                {sensors.length > 0 && (
-                  <div style={{ marginTop: "0.35rem", padding: "0.3rem 0.7rem", background: "rgba(168,85,247,0.07)", border: "1px solid rgba(168,85,247,0.2)", borderRadius: "7px", fontSize: "0.65rem", color: "#c084fc", display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                    📡 已接入 {sensors.length} 条传感器数据
-                  </div>
-                )}
-              </div>
-            )}
-            <div style={{ display: "flex", gap: "0.6rem", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(74,222,128,0.25)", borderRadius: "13px", padding: "0.4rem 0.4rem 0.4rem 0.85rem", backdropFilter: "blur(20px)", boxShadow: "0 0 25px rgba(74,222,128,0.05)" }}>
-              <button onClick={() => fileInputRef.current?.click()} title="上传规程文档" style={{ width: 34, height: 34, borderRadius: "7px", flexShrink: 0, alignSelf: "flex-end", background: "rgba(74,222,128,0.1)", border: "1px solid rgba(74,222,128,0.3)", color: "#4ade80", cursor: "pointer", fontSize: "0.95rem", display: "flex", alignItems: "center", justifyContent: "center" }}>📎</button>
-              <button onClick={() => imageInputRef.current?.click()} title="上传现场图片" style={{ width: 34, height: 34, borderRadius: "7px", flexShrink: 0, alignSelf: "flex-end", background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.3)", color: "#60a5fa", cursor: "pointer", fontSize: "0.95rem", display: "flex", alignItems: "center", justifyContent: "center" }}>📸</button>
-              <button onClick={() => videoInputRef.current?.click()} title="上传现场视频" style={{ width: 34, height: 34, borderRadius: "7px", flexShrink: 0, alignSelf: "flex-end", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", color: "#f59e0b", cursor: "pointer", fontSize: "0.95rem", display: "flex", alignItems: "center", justifyContent: "center" }}>🎬</button>
-              <button onClick={() => setSensorDialogOpen(true)} title="接入传感器数据" style={{ width: 34, height: 34, borderRadius: "7px", flexShrink: 0, alignSelf: "flex-end", background: "rgba(168,85,247,0.1)", border: "1px solid rgba(168,85,247,0.3)", color: "#c084fc", cursor: "pointer", fontSize: "0.95rem", display: "flex", alignItems: "center", justifyContent: "center" }}>📡</button>
-              <textarea value={input} onChange={e => setInput(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-                placeholder="描述灾害情况或输入应急问题（Shift+Enter换行）..." rows={2}
-                style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#e2e8f0", fontSize: "0.85rem", lineHeight: "1.6", resize: "none", fontFamily: "inherit" }} />
-              <button onClick={() => sendMessage()} disabled={loading || !input.trim()}
-                style={{ padding: "0.5rem 1.1rem", background: loading || !input.trim() ? "rgba(74,222,128,0.12)" : "linear-gradient(135deg,#4ade80,#22d3ee)", border: "none", borderRadius: "9px", color: loading || !input.trim() ? "#4ade8044" : "#0a0f1e", fontWeight: 700, fontSize: "0.8rem", cursor: loading || !input.trim() ? "not-allowed" : "pointer", transition: "all 0.2s", flexShrink: 0, alignSelf: "flex-end", boxShadow: !loading && input.trim() ? "0 0 16px rgba(74,222,128,0.4)" : "none" }}>
-                {loading ? "推理中" : "发送 ↑"}
-              </button>
-            </div>
-            <div style={{ textAlign: "center", marginTop: "0.35rem", fontSize: "0.6rem", color: "#374151" }}>
-              本系统为辅助决策工具，紧急情况请同时启动线下应急预案 · 课题编号：方向20
-            </div>
-          </div>
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          {renderCurrentPage()}
         </div>
       </div>
 
@@ -1775,8 +2095,6 @@ export default function CoalMineAgent() {
           </div>
         </div>
       )}
-
-      {renderGraphDialog()}
 
       <style>{`
         @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.6;transform:scale(1.4)} }

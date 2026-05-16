@@ -15,6 +15,7 @@ from retrieval import (
     retrieve_relevant_chunks,
     has_session_documents,
     remove_document,
+    list_session_documents,
     list_session_chunks,
 )
 from sensor_store import push_session_sensors, list_session_sensors, has_session_sensors, clear_session_sensors
@@ -594,6 +595,19 @@ def remove_uploaded_document():
         "knowledge_graph": {
             "build_status": get_graph_build_status(session_id),
         },
+    })
+
+
+@app.route('/api/documents/list', methods=['GET'])
+def list_uploaded_documents():
+    """获取当前会话已入库文档列表。"""
+    session_id = str(request.args.get('session_id', '')).strip() or None
+    documents = list_session_documents(session_id)
+    return jsonify({
+        "success": True,
+        "session_id": str(session_id or "default"),
+        "documents": documents,
+        "document_count": len(documents),
     })
 
 
