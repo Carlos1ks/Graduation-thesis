@@ -1,0 +1,36 @@
+{
+  "pdf_file": "C:\\self\\Draft_py\\煤矿安全规程2025.pdf",
+  "triples_file": "C:\\self\\Draft_py\\coal-mine-agent\\docs\\coal-mine-safety-2025-triples.json",
+  "top_k": 4,
+  "case_count": 8,
+  "metrics_note": "EM is the exact hit rate of annotated key information units for open-domain emergency answers; F1 is keypoint precision/recall F1.",
+  "summary": {
+    "pure_llm": {
+      "method": "纯LLM",
+      "case_count": 8,
+      "em": 0.6307,
+      "f1": 0.5523,
+      "rouge_l": 0.2183,
+      "semantic_similarity": 0.7494,
+      "latency_s": 2.0034
+    },
+    "vector_rag": {
+      "method": "纯向量RAG",
+      "case_count": 8,
+      "em": 0.6503,
+      "f1": 0.5787,
+      "rouge_l": 0.203,
+      "semantic_similarity": 0.7327,
+      "latency_s": 2.8592
+    },
+    "hybrid_graph": {
+      "method": "混合图检索策略",
+      "case_count": 8,
+      "em": 0.6999,
+      "f1": 0.6054,
+      "rouge_l": 0.1971,
+      "semantic_similarity": 0.7411,
+      "latency_s": 4.6502
+    }
+  }
+}

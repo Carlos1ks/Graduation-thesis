@@ -111,6 +111,11 @@ class Config:
     RAG_CHUNK_SIZE = int(os.environ.get("RAG_CHUNK_SIZE", "700"))
     RAG_CHUNK_OVERLAP = int(os.environ.get("RAG_CHUNK_OVERLAP", "80"))
     RAG_MAX_CHUNKS_PER_DOC = int(os.environ.get("RAG_MAX_CHUNKS_PER_DOC", "0"))
+    RAG_SENTENCE_MERGE_THRESHOLD = float(os.environ.get("RAG_SENTENCE_MERGE_THRESHOLD", "0.42"))
+    RAG_WEIGHT_VECTOR = float(os.environ.get("RAG_WEIGHT_VECTOR", "0.40"))
+    RAG_WEIGHT_GRAPH = float(os.environ.get("RAG_WEIGHT_GRAPH", "0.25"))
+    RAG_WEIGHT_KEYWORD = float(os.environ.get("RAG_WEIGHT_KEYWORD", "0.20"))
+    RAG_WEIGHT_RISK = float(os.environ.get("RAG_WEIGHT_RISK", "0.15"))
     RAG_EMBEDDING_MODEL = os.environ.get(
         "RAG_EMBEDDING_MODEL",
         "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",

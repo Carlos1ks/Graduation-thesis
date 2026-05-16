@@ -1,10 +1,12 @@
 import hashlib
+import math
 import re
 from threading import RLock
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 from uuid import uuid4
 
 from config import config
+from knowledge_graph import get_session_graph, score_graph_relevance
 
 _DEFAULT_SESSION_ID = "default"
 _ARTICLE_SPLIT_PATTERN = re.compile(r"(?=第[一二三四五六七八九十百千万零两\d]+条(?:\s|$))")
@@ -195,6 +197,95 @@ def _keyword_overlap_score(query: str, record_text: str) -> float:
     return score
 
 
+def _risk_alignment_score(
+    query: str,
+    record_text: str,
+    *,
+    risk_types: Optional[List[str]] = None,
+    risk_signals: Optional[List[Dict[str, str]]] = None,
+) -> float:
+    text = str(record_text or "")
+    if not text:
+        return 0.0
+
+    score = 0.0
+    lowered_query = _normalize_text(query)
+    normalized_risk_types: Set[str] = {str(item or "").strip() for item in (risk_types or []) if str(item or "").strip()}
+    signal_tokens: List[str] = []
+    for signal in risk_signals or []:
+        if not isinstance(signal, dict):
+            continue
+        signal_label = str(signal.get("signal_label") or signal.get("signal_id") or "").strip()
+        signal_keywords = str(signal.get("keywords") or "").strip()
+        if signal_label:
+            signal_tokens.append(signal_label)
+        if signal_keywords:
+            signal_tokens.extend([part for part in signal_keywords.split("、") if part])
+
+    for risk_type in normalized_risk_types:
+        if not risk_type:
+            continue
+        if risk_type in text:
+            score += 1.2
+
+    for token in signal_tokens:
+        if token and token in text:
+            score += 0.45
+
+    if any(term in lowered_query for term in ["火灾", "瓦斯", "突水", "被困", "失联", "撤离", "断电", "通风"]):
+        for action_term in ["停止作业", "切断电源", "撤离", "撤出人员", "加强通风", "设置警戒", "上报", "救援"]:
+            if action_term in text:
+                score += 0.22
+    return score
+
+
+def _sentence_similarity(text_a: str, text_b: str) -> float:
+    left = _normalize_text(text_a)
+    right = _normalize_text(text_b)
+    if not left or not right:
+        return 0.0
+    left_tokens = set(_HashingEmbedder()._tokenize(left))
+    right_tokens = set(_HashingEmbedder()._tokenize(right))
+    if not left_tokens or not right_tokens:
+        return 0.0
+    overlap = len(left_tokens & right_tokens)
+    scale = math.sqrt(len(left_tokens) * len(right_tokens))
+    return overlap / scale if scale else 0.0
+
+
+def _merge_sentences_by_semantics(sentences: List[str], max_chunk_size: int, overlap: int) -> List[str]:
+    if not sentences:
+        return []
+
+    threshold = float(getattr(config, "RAG_SENTENCE_MERGE_THRESHOLD", 0.42))
+    chunks: List[str] = []
+    current = ""
+    prev_sentence = ""
+
+    for sentence in sentences:
+        piece = str(sentence or "").strip()
+        if not piece:
+            continue
+        sim = _sentence_similarity(prev_sentence, piece) if prev_sentence else 1.0
+        can_concat = len(current) + len(piece) <= max_chunk_size
+
+        if current and (not can_concat or sim < threshold):
+            trimmed = current.strip()
+            if trimmed:
+                chunks.append(trimmed)
+            if overlap > 0 and trimmed:
+                current = trimmed[-overlap:] + piece
+            else:
+                current = piece
+        else:
+            current += piece
+        prev_sentence = piece
+
+    if current.strip():
+        chunks.append(current.strip())
+    return chunks
+
+
 def chunk_text(text: str, chunk_size: Optional[int] = None, chunk_overlap: Optional[int] = None) -> List[Dict[str, str]]:
     normalized = _normalize_text(text)
     if not normalized:
@@ -218,26 +309,10 @@ def chunk_text(text: str, chunk_size: Optional[int] = None, chunk_overlap: Optio
             continue
 
         sentences = [item for item in _SENTENCE_SPLIT_PATTERN.split(block) if item]
-        current = ""
-        for sentence in sentences:
-            if len(current) + len(sentence) <= max_chunk_size:
-                current += sentence
-                continue
-
-            trimmed = current.strip()
-            if trimmed:
-                chunks.append({
-                    "text": trimmed,
-                    "article_label": article_label or "",
-                })
-            if overlap > 0 and trimmed:
-                current = trimmed[-overlap:] + sentence
-            else:
-                current = sentence
-
-        if current.strip():
+        merged_chunks = _merge_sentences_by_semantics(sentences, max_chunk_size=max_chunk_size, overlap=overlap)
+        for merged_text in merged_chunks:
             chunks.append({
-                "text": current.strip(),
+                "text": merged_text,
                 "article_label": article_label or "",
             })
 
@@ -396,7 +471,14 @@ def remove_document(session_id: Optional[str], document_id: str) -> bool:
         return True
 
 
-def retrieve_relevant_chunks(session_id: Optional[str], query: str, top_k: Optional[int] = None) -> List[Dict[str, Any]]:
+def retrieve_relevant_chunks(
+    session_id: Optional[str],
+    query: str,
+    top_k: Optional[int] = None,
+    *,
+    risk_types: Optional[List[str]] = None,
+    risk_signals: Optional[List[Dict[str, str]]] = None,
+) -> List[Dict[str, Any]]:
     if not config.RAG_ENABLED:
         return []
 
@@ -417,7 +499,24 @@ def retrieve_relevant_chunks(session_id: Optional[str], query: str, top_k: Optio
     query_vector = _embed_texts([search_query])
     scores, indices = index.search(query_vector, candidate_k)
 
+    weight_vector = float(config.RAG_WEIGHT_VECTOR)
+    weight_graph = float(config.RAG_WEIGHT_GRAPH)
+    weight_keyword = float(config.RAG_WEIGHT_KEYWORD)
+    weight_risk = float(config.RAG_WEIGHT_RISK)
+    total_weight = weight_vector + weight_graph + weight_keyword + weight_risk
+    if total_weight <= 0:
+        weight_vector, weight_graph, weight_keyword, weight_risk = 0.40, 0.25, 0.20, 0.15
+        total_weight = 1.0
+    weight_vector /= total_weight
+    weight_graph /= total_weight
+    weight_keyword /= total_weight
+    weight_risk /= total_weight
+
     article_label = _extract_article_label(search_query) or ""
+    try:
+        graph_cache = get_session_graph(sid)
+    except Exception:
+        graph_cache = {"nodes": [], "relations": [], "links": []}
     ranked: List[Tuple[float, Dict[str, Any]]] = []
     seen = set()
     for raw_score, raw_index in zip(scores[0], indices[0]):
@@ -431,14 +530,51 @@ def retrieve_relevant_chunks(session_id: Optional[str], query: str, top_k: Optio
         seen.add(key)
         vector_score = float(raw_score)
         keyword_score = _keyword_overlap_score(search_query, record.get("text", ""))
-        score = vector_score + keyword_score
+        risk_score = _risk_alignment_score(
+            search_query,
+            record.get("text", ""),
+            risk_types=risk_types,
+            risk_signals=risk_signals,
+        )
+        graph_signal = score_graph_relevance(
+            search_query,
+            session_id=sid,
+            graph=graph_cache,
+            article_label=str(record.get("article_label") or ""),
+            text=str(record.get("text") or ""),
+            doc_name=str(record.get("doc_name") or ""),
+            risk_types=risk_types,
+        )
+        graph_score = float(graph_signal.get("score") or 0.0)
+        score = (
+            weight_vector * vector_score
+            + weight_graph * graph_score
+            + weight_keyword * keyword_score
+            + weight_risk * risk_score
+        )
         if article_label and record.get("article_label") == article_label:
             score += 0.8
         if record.get("article_label") and record.get("article_label") in record.get("chunk_id", ""):
             score += 0.15
-        ranked.append((score, {**record, "_vector_score": vector_score, "_keyword_score": keyword_score}))
+        ranked.append((score, {
+            **record,
+            "_vector_score": vector_score,
+            "_keyword_score": keyword_score,
+            "_graph_score": graph_score,
+            "_risk_score": risk_score,
+            "_graph_signal": graph_signal,
+        }))
 
-    ranked.sort(key=lambda item: (item[0], item[1].get("_keyword_score", 0.0), item[1].get("_vector_score", 0.0)), reverse=True)
+    ranked.sort(
+        key=lambda item: (
+            item[0],
+            item[1].get("_graph_score", 0.0),
+            item[1].get("_risk_score", 0.0),
+            item[1].get("_keyword_score", 0.0),
+            item[1].get("_vector_score", 0.0),
+        ),
+        reverse=True,
+    )
     results: List[Dict[str, Any]] = []
     for score, record in ranked[:search_k]:
         results.append({
@@ -446,6 +582,16 @@ def retrieve_relevant_chunks(session_id: Optional[str], query: str, top_k: Optio
             "chunk_id": record.get("chunk_id", "未知片段"),
             "text": record.get("text", ""),
             "score": round(float(score), 4),
+            "vector_score": round(float(record.get("_vector_score", 0.0)), 4),
+            "keyword_score": round(float(record.get("_keyword_score", 0.0)), 4),
+            "graph_score": round(float(record.get("_graph_score", 0.0)), 4),
+            "risk_score": round(float(record.get("_risk_score", 0.0)), 4),
+            "weights": {
+                "vector": round(weight_vector, 4),
+                "graph": round(weight_graph, 4),
+                "keyword": round(weight_keyword, 4),
+                "risk": round(weight_risk, 4),
+            },
             "source_type": record.get("source_type", "uploaded_doc_vector"),
         })
     return results

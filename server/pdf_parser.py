@@ -29,6 +29,7 @@ from knowledge_graph import (
     get_graph_build_status,
     import_triples_graph,
 )
+from risk_fusion import build_risk_profile
 
 # LangChain Agent
 from agent import multi_agent_ask
@@ -957,10 +958,19 @@ def agent_chat():
         session_id = normalized["session_id"]
 
         if config.RAG_ENABLED and use_retrieval and has_session_documents(session_id):
+            provisional_risk_profile = build_risk_profile(
+                normalized["query"],
+                normalized["history"],
+                retrieval_documents,
+                normalized["evidence_images"],
+                sensor_records,
+            )
             retrieval_documents = retrieve_relevant_chunks(
                 session_id=session_id,
                 query=normalized["query"],
                 top_k=config.RAG_TOP_K,
+                risk_types=list(provisional_risk_profile.get("risk_types", [])),
+                risk_signals=list(provisional_risk_profile.get("signals_detected", [])),
             )
 
         if use_sensor_evidence and not sensor_records and has_session_sensors(session_id):

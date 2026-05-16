@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import ForceGraph2D from "react-force-graph-2d";
 
 const BACKEND_BASE_URL = import.meta.env.VITE_API_BASE_URL;
@@ -186,6 +186,149 @@ function graphNodeDisplayLabel(node) {
   return readable || String(node?.label || node?.name || node?.id || "").trim();
 }
 
+function graphLinkEndpointUid(endpoint) {
+  return typeof endpoint === "string" ? endpoint : endpoint?.uid || endpoint?.id || "";
+}
+
+function normalizeGraphSearchText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function stripGraphFocusNode(node) {
+  const rest = { ...(node || {}) };
+  delete rest.isCenter;
+  delete rest.isMatched;
+  delete rest.fx;
+  delete rest.fy;
+  return rest;
+}
+
+function graphNodeMatchScore(node, keyword) {
+  const text = normalizeGraphSearchText(keyword);
+  if (!text) return 99;
+  const fields = [
+    graphNodeDisplayLabel(node),
+    node?.label,
+    node?.id,
+    ...(Array.isArray(node?.aliases) ? node.aliases : []),
+  ].map(value => normalizeGraphSearchText(value)).filter(Boolean);
+  if (fields.some(field => field === text)) return 0;
+  if (fields.some(field => field.startsWith(text))) return 1;
+  if (fields.some(field => field.includes(text))) return 2;
+  return 99;
+}
+
+function clearGraphFocus(data) {
+  const nodes = (Array.isArray(data?.nodes) ? data.nodes : []).map(node => ({
+    ...stripGraphFocusNode(node),
+    isCenter: false,
+    isMatched: false,
+  }));
+  const links = Array.isArray(data?.links) ? data.links : [];
+  return {
+    ...data,
+    nodes,
+    links,
+    centerUid: "",
+    matchedUids: [],
+    query: "",
+    localFocus: false,
+    stats: {
+      ...(data?.stats || {}),
+      view_node_count: nodes.length,
+      view_relation_count: links.length,
+    },
+  };
+}
+
+function focusGraphLocally(data, keyword, layoutByUid = new Map()) {
+  const text = normalizeGraphSearchText(keyword);
+  if (!text) {
+    return data?.nodes?.length ? clearGraphFocus(data) : null;
+  }
+  const nodes = Array.isArray(data?.nodes) ? data.nodes : [];
+  const links = Array.isArray(data?.links) ? data.links : [];
+  if (!nodes.length) return null;
+
+  const nodeScores = nodes
+    .map(node => ({ uid: String(node.uid || ""), score: graphNodeMatchScore(node, text) }))
+    .filter(item => item.uid && item.score < 99)
+    .sort((a, b) => a.score - b.score || a.uid.localeCompare(b.uid));
+  const matchedUids = new Set(nodeScores.map(item => item.uid));
+  if (!matchedUids.size) return null;
+
+  const relatedUids = new Set(matchedUids);
+  for (const link of links) {
+    const source = graphLinkEndpointUid(link.source);
+    const target = graphLinkEndpointUid(link.target);
+    if (matchedUids.has(source) || matchedUids.has(target)) {
+      if (source) relatedUids.add(source);
+      if (target) relatedUids.add(target);
+    }
+  }
+  const focusedLinks = links.filter(link => {
+    const source = graphLinkEndpointUid(link.source);
+    const target = graphLinkEndpointUid(link.target);
+    return matchedUids.has(source) || matchedUids.has(target);
+  });
+
+  const centerUid = nodeScores[0]?.uid || Array.from(matchedUids)[0] || "";
+  return {
+    ...data,
+    nodes: nodes
+      .filter(node => relatedUids.has(String(node.uid || "")))
+      .map(node => {
+        const clean = stripGraphFocusNode(node);
+        const uid = String(node.uid || "");
+        const layout = layoutByUid.get(uid) || {};
+        return {
+          ...clean,
+          ...(Number.isFinite(layout.x) ? { x: layout.x } : {}),
+          ...(Number.isFinite(layout.y) ? { y: layout.y } : {}),
+          ...(Number.isFinite(layout.vx) ? { vx: layout.vx } : {}),
+          ...(Number.isFinite(layout.vy) ? { vy: layout.vy } : {}),
+          isCenter: uid === centerUid,
+          isMatched: matchedUids.has(uid),
+        };
+      }),
+    links: focusedLinks,
+    centerUid,
+    matchedUids: Array.from(matchedUids),
+    query: keyword,
+    localFocus: true,
+    stats: {
+      ...(data?.stats || {}),
+      view_node_count: relatedUids.size,
+      view_relation_count: focusedLinks.length,
+    },
+  };
+}
+
+function graphFocusPoint(graphData) {
+  const nodes = Array.isArray(graphData?.nodes) ? graphData.nodes : [];
+  if (!nodes.length) return null;
+  const matched = new Set([
+    ...(Array.isArray(graphData?.matchedUids) ? graphData.matchedUids : []),
+    graphData?.centerUid,
+  ].filter(Boolean));
+  if (!matched.size) return null;
+  const matchedNodes = nodes.filter(node => matched.has(node.uid) && Number.isFinite(node.x) && Number.isFinite(node.y));
+  if (!matchedNodes.length) return null;
+  const centerNode = matchedNodes.find(node => node.uid === graphData.centerUid) || matchedNodes[0];
+  if (matchedNodes.length === 1) {
+    return { x: centerNode.x, y: centerNode.y };
+  }
+  const sum = matchedNodes.reduce((acc, node) => {
+    acc.x += node.x;
+    acc.y += node.y;
+    return acc;
+  }, { x: 0, y: 0 });
+  return {
+    x: sum.x / matchedNodes.length,
+    y: sum.y / matchedNodes.length,
+  };
+}
+
 function graphPayloadForView(data, extra = {}) {
   const compactGraph = compactKnowledgeGraphForView(data?.nodes, data?.links || data?.relations);
   const centerUid = data?.center_uid || extra.centerUid || "";
@@ -217,6 +360,9 @@ function graphPayloadForView(data, extra = {}) {
     centerUid,
     matchedUids: Array.from(matchedUids),
     fromCache: Boolean(data?.from_cache),
+    scope: extra.scope || (data?.query ? "query" : "full"),
+    query: data?.query || "",
+    localFocus: false,
   };
 }
 
@@ -267,6 +413,8 @@ export default function CoalMineAgent() {
   const graphViewportRef = useRef(null);
   const forceGraphRef = useRef(null);
   const graphQueryCacheRef = useRef(new Map());
+  const graphLayoutReadyRef = useRef(false);
+  const graphLoadedSessionRef = useRef("");
   const fileInputRef = useRef(null);
   const triplesInputRef = useRef(null);
   const imageInputRef = useRef(null);
@@ -309,6 +457,8 @@ export default function CoalMineAgent() {
         if (result.build_status.state === "completed") {
           clearInterval(timer);
           graphQueryCacheRef.current.clear();
+          graphLayoutReadyRef.current = false;
+          graphLoadedSessionRef.current = "";
           setGraphData(emptyGraphData());
           setGraphLoading(false);
           setGraphFocusedKey(v => v + 1);
@@ -365,6 +515,8 @@ export default function CoalMineAgent() {
         }]);
         if (result.knowledge_graph?.build_status) {
           graphQueryCacheRef.current.clear();
+          graphLayoutReadyRef.current = false;
+          graphLoadedSessionRef.current = "";
           setGraphData(emptyGraphData());
           setSelectedGraphNode(null);
           setGraphError("");
@@ -400,6 +552,8 @@ export default function CoalMineAgent() {
       try {
         const result = await uploadTriplesToBackend(file, sessionIdRef.current);
         graphQueryCacheRef.current.clear();
+        graphLayoutReadyRef.current = false;
+        graphLoadedSessionRef.current = "";
         setGraphData(emptyGraphData());
         setSelectedGraphNode(null);
         setGraphError("");
@@ -411,9 +565,10 @@ export default function CoalMineAgent() {
         });
         setGraphOpen(true);
         const data = await fetchKnowledgeGraph(sessionIdRef.current, "");
-        const nextGraphData = graphPayloadForView(data);
+        const nextGraphData = graphPayloadForView(data, { scope: "full" });
         setGraphData(nextGraphData);
         graphQueryCacheRef.current.set(`${sessionIdRef.current}::`, nextGraphData);
+        graphLoadedSessionRef.current = sessionIdRef.current;
         setGraphFocusedKey(v => v + 1);
         setMessages(prev => [...prev, {
           role: "assistant",
@@ -703,6 +858,10 @@ export default function CoalMineAgent() {
   const removeUploadedDocument = async (doc) => {
     try {
       await removeDocumentFromBackend(doc.document_id, sessionIdRef.current);
+      graphQueryCacheRef.current.clear();
+      graphLayoutReadyRef.current = false;
+      graphLoadedSessionRef.current = "";
+      setGraphData(emptyGraphData());
       setDocs(prev => prev.filter(item => item.document_id !== doc.document_id));
       setMessages(prev => [...prev, {
         role: "assistant",
@@ -718,9 +877,91 @@ export default function CoalMineAgent() {
     }
   };
 
+  const mergeGraphData = (base, incoming) => {
+    const nodeMap = new Map();
+    for (const node of Array.isArray(base?.nodes) ? base.nodes : []) {
+      if (node?.uid) nodeMap.set(node.uid, node);
+    }
+    for (const node of Array.isArray(incoming?.nodes) ? incoming.nodes : []) {
+      if (!node?.uid) continue;
+      const previous = nodeMap.get(node.uid) || {};
+      nodeMap.set(node.uid, {
+        ...previous,
+        ...stripGraphFocusNode(node),
+        x: previous.x,
+        y: previous.y,
+        vx: previous.vx,
+        vy: previous.vy,
+      });
+    }
+
+    const linkMap = new Map();
+    for (const link of Array.isArray(base?.links) ? base.links : []) {
+      const source = graphLinkEndpointUid(link.source);
+      const target = graphLinkEndpointUid(link.target);
+      const key = link.id || `${source}|${target}|${link.relation || ""}|${link.condition || ""}`;
+      if (key) linkMap.set(key, { ...link, source, target });
+    }
+    for (const link of Array.isArray(incoming?.links) ? incoming.links : []) {
+      const source = graphLinkEndpointUid(link.source);
+      const target = graphLinkEndpointUid(link.target);
+      const key = link.id || `${source}|${target}|${link.relation || ""}|${link.condition || ""}`;
+      if (key) linkMap.set(key, { ...link, source, target });
+    }
+
+    return {
+      ...base,
+      ...incoming,
+      nodes: Array.from(nodeMap.values()),
+      links: Array.from(linkMap.values()),
+      stats: {
+        ...(base?.stats || {}),
+        ...(incoming?.stats || {}),
+      },
+    };
+  };
+
+  const currentGraphLayout = () => {
+    const layout = new Map();
+    const graph = forceGraphRef.current?.graphData?.();
+    for (const node of Array.isArray(graph?.nodes) ? graph.nodes : []) {
+      if (!node?.uid) continue;
+      layout.set(node.uid, {
+        x: node.x,
+        y: node.y,
+        vx: node.vx,
+        vy: node.vy,
+      });
+    }
+    return layout;
+  };
+
   const loadKnowledgeGraph = async (keyword = graphKeyword) => {
     const normalizedKeyword = keyword.trim();
     const cacheKey = `${sessionIdRef.current}::${normalizedKeyword}`;
+    const fullCacheKey = `${sessionIdRef.current}::`;
+    const layoutByUid = currentGraphLayout();
+    if (graphData.nodes.length > 0 && graphLoadedSessionRef.current === sessionIdRef.current) {
+      const localView = focusGraphLocally(graphData, normalizedKeyword, layoutByUid);
+      if (localView) {
+        const nextGraphData = {
+          ...localView,
+          stats: {
+            ...(localView.stats || {}),
+            view_node_count: localView.nodes.length,
+            view_relation_count: localView.links.length,
+          },
+        };
+        setGraphData(nextGraphData);
+        graphQueryCacheRef.current.set(cacheKey, nextGraphData);
+        setSelectedGraphNode(null);
+        setGraphLoading(false);
+        setGraphError("");
+        setGraphFocusedKey(v => v + 1);
+        return;
+      }
+    }
+
     const cached = graphQueryCacheRef.current.get(cacheKey);
     const cachedIsEmpty = cached && (cached.nodes?.length || 0) === 0 && (cached.links?.length || 0) === 0;
     const completedWithResults = graphBuildStatus.state === "completed" && (
@@ -738,7 +979,15 @@ export default function CoalMineAgent() {
     setGraphError("");
     try {
       const data = await fetchKnowledgeGraph(sessionIdRef.current, normalizedKeyword);
-      const nextGraphData = graphPayloadForView(data);
+      const fetchedGraphData = graphPayloadForView(data, { scope: normalizedKeyword ? "query" : "full" });
+      let nextGraphData = fetchedGraphData;
+      if (normalizedKeyword && graphData.nodes.length > 0 && graphLoadedSessionRef.current === sessionIdRef.current) {
+        const merged = mergeGraphData(graphData, fetchedGraphData);
+        nextGraphData = focusGraphLocally(merged, normalizedKeyword, layoutByUid) || fetchedGraphData;
+      } else if (!normalizedKeyword) {
+        graphLoadedSessionRef.current = sessionIdRef.current;
+        graphQueryCacheRef.current.set(fullCacheKey, fetchedGraphData);
+      }
       setGraphData(nextGraphData);
       graphQueryCacheRef.current.set(cacheKey, nextGraphData);
       setSelectedGraphNode(null);
@@ -770,7 +1019,7 @@ export default function CoalMineAgent() {
         return;
       }
       if (statusResult.build_status.state === "completed") {
-        graphQueryCacheRef.current.clear();
+        graphLoadedSessionRef.current = graphLoadedSessionRef.current || sessionIdRef.current;
       }
     }
     await loadKnowledgeGraph(graphKeyword);
@@ -854,37 +1103,51 @@ export default function CoalMineAgent() {
     return { nodes: graphNodes, links: graphLinks };
   };
 
+  const renderedGraph = useMemo(
+    () => buildGraphData(graphData.nodes, graphData.links),
+    [graphData.nodes, graphData.links, selectedGraphNode?.uid]
+  );
+
   useEffect(() => {
     if (!graphOpen) return;
     if (!forceGraphRef.current) return;
     if (!graphData.nodes.length) return;
+    if (graphData.localFocus && graphLayoutReadyRef.current) return;
     try {
       forceGraphRef.current.d3Force("charge")?.strength?.(-360);
       forceGraphRef.current.d3Force("link")?.distance?.(graphData.nodes.length > 90 ? 190 : 150);
       forceGraphRef.current.d3Force("center")?.strength?.(0.05);
-      forceGraphRef.current.d3Alpha(0.55).d3ReheatSimulation();
-    } catch {}
-  }, [graphOpen, graphData.nodes.length, graphData.links.length]);
+      forceGraphRef.current.d3Alpha(graphLayoutReadyRef.current ? 0.22 : 0.55).d3ReheatSimulation();
+      graphLayoutReadyRef.current = true;
+    } catch (err) {
+      console.warn("知识图谱布局初始化失败:", err);
+    }
+  }, [graphOpen, graphData.nodes.length, graphData.links.length, graphData.localFocus]);
 
   useEffect(() => {
     if (!graphOpen || !forceGraphRef.current || !graphData.nodes.length) return undefined;
     const timer = setTimeout(() => {
       try {
-        if (graphData.matchedUids?.length || graphData.centerUid) {
-          forceGraphRef.current.centerAt(0, 0, 420);
+        const focusPoint = graphFocusPoint(graphData);
+        if (focusPoint) {
+          forceGraphRef.current.centerAt(focusPoint.x || 0, focusPoint.y || 0, 420);
           forceGraphRef.current.zoom(1.55, 420);
         } else {
           forceGraphRef.current.zoomToFit(520, 70);
         }
-      } catch {}
+      } catch (err) {
+        console.warn("知识图谱视角定位失败:", err);
+      }
     }, 220);
     return () => clearTimeout(timer);
   }, [graphOpen, graphFocusedKey, graphData.centerUid, graphData.matchedUids]);
 
   const renderGraphDialog = () => {
     if (!graphOpen) return null;
-    const graph = buildGraphData(graphData.nodes, graphData.links);
+    const graph = renderedGraph;
     const stats = graphData.stats || {};
+    const centerNode = graph.nodes.find(node => node.uid === graphData.centerUid);
+    const centerLabel = centerNode ? graphNodeDisplayLabel(centerNode) : "";
     const selectedRelations = selectedGraphNode
       ? graph.links.filter(link => {
           const sourceId = typeof link.source === "string" ? link.source : link.source?.id;
@@ -903,7 +1166,7 @@ export default function CoalMineAgent() {
               </div>
               <div style={{ fontSize: "0.65rem", color: "#64748b", marginTop: "0.15rem" }}>
                 展示节点 {stats.view_node_count ?? graphData.nodes.length ?? 0} 个 · 展示关系 {stats.view_relation_count ?? graphData.links.length ?? 0} 条
-                {graphData.centerUid ? ` · 中心节点 ${graphData.centerUid}` : ""}
+                {centerLabel ? ` · 中心节点 ${centerLabel}` : ""}
                 {(stats.node_count || stats.relation_count) ? `（后端保留溯源节点 ${stats.node_count || 0} 个、关系 ${stats.relation_count || 0} 条）` : ""}
               </div>
             </div>

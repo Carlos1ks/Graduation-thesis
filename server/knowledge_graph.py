@@ -10,7 +10,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from neo4j import GraphDatabase
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -32,7 +32,7 @@ _ARTICLE_SPLIT_PATTERN = re.compile(r"(?=第[一二三四五六七八九十百�
 _ARTICLE_LABEL_PATTERN = re.compile(r"第[一二三四五六七八九十百千万零两\d]+条")
 _GRAPH_QUERY_CACHE: Dict[str, Tuple[float, Dict[str, object]]] = {}
 _GRAPH_QUERY_CACHE_LOCK = RLock()
-_GRAPH_QUERY_CACHE_TTL_SECONDS = 60
+_GRAPH_QUERY_CACHE_TTL_SECONDS = 600
 _GRAPH_QUERY_CACHE_MAX_ITEMS = 256
 _NO_ARTICLE_LIMIT = 0
 
@@ -722,6 +722,11 @@ def _execute_read(query: str, **params):
 
 def _ensure_schema() -> None:
     _execute_write("CREATE CONSTRAINT session_uid IF NOT EXISTS FOR (n:KGNode) REQUIRE (n.session_id, n.uid) IS UNIQUE")
+    _execute_write("CREATE INDEX kg_node_session_label IF NOT EXISTS FOR (n:KGNode) ON (n.session_id, n.label)")
+    _execute_write("CREATE INDEX kg_node_session_id IF NOT EXISTS FOR (n:KGNode) ON (n.session_id, n.id)")
+    _execute_write("CREATE INDEX kg_node_session_type IF NOT EXISTS FOR (n:KGNode) ON (n.session_id, n.type)")
+    _execute_write("CREATE INDEX kg_rel_session_id IF NOT EXISTS FOR ()-[r:KG_REL]-() ON (r.session_id, r.id)")
+    _execute_write("CREATE INDEX kg_rel_session_relation IF NOT EXISTS FOR ()-[r:KG_REL]-() ON (r.session_id, r.relation)")
 
 
 def _clear_session_graph_neo4j(session_id: str) -> None:
@@ -837,6 +842,10 @@ def _merge_graph_chunks(base: Dict[str, object], incoming: Dict[str, object]) ->
 
 
 def _stats_for_session(session_id: str) -> Dict[str, object]:
+    cache_key = f"stats::{session_id}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return {key: value for key, value in cached.items() if key != "from_cache"}
     stats = _execute_read(
         """
         MATCH (n:KGNode {session_id: $session_id})
@@ -845,7 +854,9 @@ def _stats_for_session(session_id: str) -> Dict[str, object]:
         """,
         session_id=session_id,
     )
-    return stats[0] if stats else {"node_count": 0, "relation_count": 0}
+    result = stats[0] if stats else {"node_count": 0, "relation_count": 0}
+    _cache_set(cache_key, result)
+    return result
 
 
 def _status_file(session_id: str) -> Path:
@@ -916,7 +927,11 @@ def get_graph_build_status(session_id: str | None) -> Dict[str, object]:
             "progress_percent": 0,
             "error": "",
         })
-    if status["state"] == "completed" and config.NEO4J_ENABLED:
+    if (
+        status["state"] == "completed"
+        and config.NEO4J_ENABLED
+        and (not int(status.get("node_count") or 0) or not int(status.get("relation_count") or 0))
+    ):
         stats = _stats_for_session(sid)
         status["node_count"] = int(stats.get("node_count") or 0)
         status["relation_count"] = int(stats.get("relation_count") or 0)
@@ -1360,6 +1375,132 @@ def _relation_matches_keyword(rel: Dict[str, object], keyword: str) -> bool:
     return any(text in field for field in fields)
 
 
+def score_graph_relevance(
+    query: str,
+    *,
+    session_id: Optional[str] = None,
+    graph: Optional[Dict[str, object]] = None,
+    risk_types: Optional[List[str]] = None,
+    article_label: str = "",
+    text: str = "",
+    doc_name: str = "",
+) -> Dict[str, object]:
+    """为检索重排提供图谱相关度分数。"""
+    query_text = str(query or "").strip()
+    if not query_text:
+        return {
+            "score": 0.0,
+            "matched_nodes": [],
+            "matched_relations": [],
+            "matched_article_labels": [],
+            "matched_doc_names": [],
+        }
+
+    source_graph = graph
+    if source_graph is None:
+        sid = _get_session_id(session_id)
+        if config.NEO4J_ENABLED:
+            try:
+                source_graph = get_session_graph(sid)
+            except Exception:
+                source_graph = {"nodes": [], "relations": [], "links": []}
+        else:
+            source_graph = {"nodes": [], "relations": [], "links": []}
+
+    normalized = _normalize_graph_shape(
+        list((source_graph or {}).get("nodes", [])),
+        list((source_graph or {}).get("relations", (source_graph or {}).get("links", []))),
+    )
+    nodes = list(normalized.get("nodes", []))
+    relations = list(normalized.get("relations", []))
+
+    matched_nodes = [node for node in nodes if _node_matches_keyword(node, query_text)]
+    matched_relations = [rel for rel in relations if _relation_matches_keyword(rel, query_text)]
+
+    score = 0.0
+    seen_node_uids = set()
+    for node in matched_nodes:
+        uid = str(node.get("uid") or "")
+        if uid in seen_node_uids:
+            continue
+        seen_node_uids.add(uid)
+        label = str(node.get("label") or "")
+        node_score = 1.0
+        if label == query_text:
+            node_score += 2.0
+        elif query_text in label:
+            node_score += 0.8
+        score += node_score
+
+    seen_rel_ids = set()
+    for rel in matched_relations:
+        rel_id = str(rel.get("id") or "")
+        if rel_id in seen_rel_ids:
+            continue
+        seen_rel_ids.add(rel_id)
+        rel_score = 1.2
+        if query_text in str(rel.get("relation_label") or ""):
+            rel_score += 0.8
+        if query_text in str(rel.get("condition") or ""):
+            rel_score += 0.6
+        if query_text in str(rel.get("evidence") or ""):
+            rel_score += 0.6
+        rel_score += max(0.1, 1.2 / max(1, _relation_priority(str(rel.get("relation")))))
+        score += rel_score
+
+    article_hits = {
+        str(rel.get("source_ref") or "").split("·", 1)[-1].strip()
+        for rel in matched_relations
+        if str(rel.get("source_ref") or "").strip()
+    }
+    article_hits |= {
+        str(node.get("article_label") or "").strip()
+        for node in matched_nodes
+        if str(node.get("article_label") or "").strip()
+    }
+
+    doc_hits = {
+        str(rel.get("source_ref") or "").split("·", 1)[0].strip()
+        for rel in matched_relations
+        if str(rel.get("source_ref") or "").strip()
+    }
+    doc_hits |= {
+        str(node.get("doc_name") or "").strip()
+        for node in matched_nodes
+        if str(node.get("doc_name") or "").strip()
+    }
+
+    article_label_text = str(article_label or "").strip()
+    if article_label_text and article_label_text in article_hits:
+        score += 2.0
+
+    doc_name_text = str(doc_name or "").strip()
+    if doc_name_text and doc_name_text in doc_hits:
+        score += 1.0
+
+    text_content = str(text or "")
+    if article_label_text and article_label_text in text_content:
+        score += 0.5
+    if query_text and query_text in text_content:
+        score += 0.5
+
+    normalized_risk_types = {str(item or "").strip() for item in (risk_types or []) if str(item or "").strip()}
+    if normalized_risk_types:
+        for node in matched_nodes:
+            if str(node.get("type") or "").strip() in {"hazard", "risk"}:
+                node_id = str(node.get("id") or "").strip()
+                if node_id in normalized_risk_types:
+                    score += 1.5
+
+    return {
+        "score": round(float(score), 4),
+        "matched_nodes": matched_nodes,
+        "matched_relations": matched_relations,
+        "matched_article_labels": sorted(item for item in article_hits if item),
+        "matched_doc_names": sorted(item for item in doc_hits if item),
+    }
+
+
 def query_graph(graph: Dict[str, object], keyword: str = "", limit: int = 80) -> Dict[str, object]:
     normalized = _normalize_graph_shape(list(graph.get("nodes", [])), list(graph.get("relations", graph.get("links", []))))
     nodes = list(normalized.get("nodes", []))
@@ -1422,17 +1563,17 @@ def query_centered_graph(session_id: str | None, keyword: str = "", limit: int =
         center_rows = _execute_read(
             """
             MATCH (n:KGNode {session_id: $session_id})
+            WHERE n.label = $keyword OR n.id = $keyword
+               OR n.label CONTAINS $keyword OR n.id CONTAINS $keyword
+               OR n.type_label CONTAINS $keyword
             WITH n,
                  CASE
-                   WHEN toLower(coalesce(n.label, '')) = toLower($keyword) THEN 0
-                   WHEN toLower(coalesce(n.id, '')) = toLower($keyword) THEN 1
-                   WHEN toLower(coalesce(n.label, '')) CONTAINS toLower($keyword) THEN 2
-                   WHEN toLower(coalesce(n.id, '')) CONTAINS toLower($keyword) THEN 3
-                   WHEN toLower(coalesce(n.type_label, '')) CONTAINS toLower($keyword) THEN 4
-                   WHEN any(source IN coalesce(n.sources, []) WHERE toLower(toString(source)) CONTAINS toLower($keyword)) THEN 5
-                   ELSE 99
+                   WHEN n.label = $keyword THEN 0
+                   WHEN n.id = $keyword THEN 1
+                   WHEN n.label CONTAINS $keyword THEN 2
+                   WHEN n.id CONTAINS $keyword THEN 3
+                   ELSE 4
                  END AS score
-            WHERE score < 99
             RETURN n.uid AS uid, score
             ORDER BY score ASC, size(coalesce(n.label, '')) ASC
             LIMIT 6
@@ -1445,11 +1586,11 @@ def query_centered_graph(session_id: str | None, keyword: str = "", limit: int =
             center_rows = _execute_read(
                 """
                 MATCH (a:KGNode {session_id: $session_id})-[r:KG_REL {session_id: $session_id}]->(b:KGNode {session_id: $session_id})
-                WHERE toLower(coalesce(r.head_label, '')) CONTAINS toLower($keyword)
-                   OR toLower(coalesce(r.tail_label, '')) CONTAINS toLower($keyword)
-                   OR toLower(coalesce(r.relation_label, '')) CONTAINS toLower($keyword)
-                   OR toLower(coalesce(r.condition, '')) CONTAINS toLower($keyword)
-                   OR toLower(coalesce(r.evidence, '')) CONTAINS toLower($keyword)
+                WHERE r.head_label CONTAINS $keyword
+                   OR r.tail_label CONTAINS $keyword
+                   OR r.relation_label CONTAINS $keyword
+                   OR r.condition CONTAINS $keyword
+                   OR r.evidence CONTAINS $keyword
                 RETURN a.uid AS source_uid, b.uid AS target_uid
                 LIMIT 6
                 """,
