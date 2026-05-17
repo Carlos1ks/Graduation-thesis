@@ -1504,8 +1504,8 @@ export default function CoalMineAgent() {
       : [];
 
     return (
-      <div style={embedded ? { flex: 1, minHeight: 0, display: "flex" } : { position: "fixed", inset: 0, background: "rgba(2,6,23,0.78)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 320 }}>
-        <div style={embedded ? { flex: 1, minHeight: 0, background: "#08111f", border: "1px solid rgba(34,211,238,0.25)", borderRadius: "16px", boxShadow: "0 22px 70px rgba(0,0,0,0.35)", display: "flex", flexDirection: "column", overflow: "hidden" } : { width: "min(1180px, 94vw)", height: "min(760px, 92vh)", background: "#08111f", border: "1px solid rgba(34,211,238,0.25)", borderRadius: "12px", boxShadow: "0 22px 70px rgba(0,0,0,0.5)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={embedded ? { flex: 1, minHeight: 0, display: "flex", width: "100%" } : { position: "fixed", inset: 0, background: "rgba(2,6,23,0.78)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 320 }}>
+        <div style={embedded ? { flex: 1, minHeight: 0, height: "100%", background: "#08111f", border: "1px solid rgba(34,211,238,0.25)", borderRadius: "16px", boxShadow: "0 22px 70px rgba(0,0,0,0.35)", display: "flex", flexDirection: "column", overflow: "hidden" } : { width: "min(1180px, 94vw)", height: "min(760px, 92vh)", background: "#08111f", border: "1px solid rgba(34,211,238,0.25)", borderRadius: "12px", boxShadow: "0 22px 70px rgba(0,0,0,0.5)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ padding: "0.8rem 1rem", borderBottom: "1px solid rgba(34,211,238,0.16)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.8rem", flexWrap: "wrap" }}>
             <div>
               <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "#67e8f9" }}>
@@ -2072,21 +2072,21 @@ export default function CoalMineAgent() {
       <button onClick={() => triplesInputRef.current?.click()} disabled={uploading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: "1px dashed rgba(34,211,238,0.45)", background: "linear-gradient(135deg,rgba(34,211,238,0.15),rgba(20,184,166,0.08))", color: uploading ? "#22d3ee60" : "#67e8f9", cursor: uploading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{uploading ? "导入中..." : "上传三元组 JSON"}</button>
       <button onClick={() => loadKnowledgeGraph(graphKeyword)} disabled={graphLoading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: "1px solid rgba(34,211,238,0.26)", background: "rgba(34,211,238,0.08)", color: graphLoading ? "#67e8f960" : "#67e8f9", cursor: graphLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{graphLoading ? "加载中..." : "刷新图谱"}</button>
     </>,
-    <div style={{ flex: 1, minHeight: 0, display: "grid", gap: "0.8rem" }}>
-      <div style={{ display: "flex", gap: "0.55rem", flexWrap: "wrap" }}>
-        <span style={{ padding: "0.18rem 0.5rem", borderRadius: "999px", background: "rgba(34,211,238,0.12)", border: "1px solid rgba(34,211,238,0.24)", color: "#67e8f9", fontSize: "0.66rem" }}>状态：{graphBuildStatus.state || "idle"}</span>
-        <span style={{ padding: "0.18rem 0.5rem", borderRadius: "999px", background: "rgba(74,222,128,0.12)", border: "1px solid rgba(74,222,128,0.24)", color: "#86efac", fontSize: "0.66rem" }}>节点：{graphBuildStatus.node_count || graphData.stats?.node_count || 0}</span>
-        <span style={{ padding: "0.18rem 0.5rem", borderRadius: "999px", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.24)", color: "#fbbf24", fontSize: "0.66rem" }}>关系：{graphBuildStatus.relation_count || graphData.stats?.relation_count || 0}</span>
-        <span style={{ padding: "0.18rem 0.5rem", borderRadius: "999px", background: "rgba(148,163,184,0.10)", border: "1px solid rgba(148,163,184,0.18)", color: "#cbd5e1", fontSize: "0.66rem" }}>来源文档：{docs.length}</span>
+    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: "0.8rem" }}>
+      <div style={{ display: "flex", gap: "0.55rem", flexWrap: "wrap", alignItems: "flex-start", alignContent: "flex-start" }}>
+        <span style={{ display: "inline-flex", alignItems: "center", whiteSpace: "nowrap", lineHeight: 1.2, padding: "0.18rem 0.5rem", borderRadius: "999px", background: "rgba(34,211,238,0.12)", border: "1px solid rgba(34,211,238,0.24)", color: "#67e8f9", fontSize: "0.66rem" }}>状态：{graphBuildStatus.state || "idle"}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", whiteSpace: "nowrap", lineHeight: 1.2, padding: "0.18rem 0.5rem", borderRadius: "999px", background: "rgba(74,222,128,0.12)", border: "1px solid rgba(74,222,128,0.24)", color: "#86efac", fontSize: "0.66rem" }}>节点：{graphBuildStatus.node_count || graphData.stats?.node_count || 0}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", whiteSpace: "nowrap", lineHeight: 1.2, padding: "0.18rem 0.5rem", borderRadius: "999px", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.24)", color: "#fbbf24", fontSize: "0.66rem" }}>关系：{graphBuildStatus.relation_count || graphData.stats?.relation_count || 0}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", whiteSpace: "nowrap", lineHeight: 1.2, padding: "0.18rem 0.5rem", borderRadius: "999px", background: "rgba(148,163,184,0.10)", border: "1px solid rgba(148,163,184,0.18)", color: "#cbd5e1", fontSize: "0.66rem" }}>来源文档：{docs.length}</span>
       </div>
       {docs.length > 0 ? (
-        <div style={{ display: "flex", gap: "0.32rem", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: "0.32rem", flexWrap: "wrap", alignItems: "flex-start", alignContent: "flex-start" }}>
           {docs.map((doc) => (
-            <span key={doc.document_id || doc.name} style={{ padding: "0.18rem 0.45rem", borderRadius: "999px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#cbd5e1", fontSize: "0.64rem" }}>{doc.name}</span>
+            <span key={doc.document_id || doc.name} style={{ display: "inline-flex", alignItems: "center", whiteSpace: "nowrap", lineHeight: 1.2, padding: "0.18rem 0.45rem", borderRadius: "999px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#cbd5e1", fontSize: "0.64rem" }}>{doc.name}</span>
           ))}
         </div>
       ) : null}
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
         {renderGraphDialog(true)}
       </div>
     </div>
