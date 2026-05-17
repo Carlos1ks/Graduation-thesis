@@ -939,6 +939,24 @@ def get_graph_build_status(session_id: str | None) -> Dict[str, object]:
     return status
 
 
+def mark_graph_build_pending(session_id: str | None, has_documents: bool = True) -> Dict[str, object]:
+    sid = _get_session_id(session_id)
+    _cache_clear()
+    return _set_build_status(
+        sid,
+        state="idle",
+        message="文档已更新，请在知识图谱库点击“生成知识图谱”" if has_documents else "当前会话暂无文档，可先上传规程文档后再生成知识图谱",
+        started_at=None,
+        finished_at=None,
+        node_count=0,
+        relation_count=0,
+        current=0,
+        total=0,
+        progress_percent=0,
+        error="",
+    )
+
+
 def build_knowledge_graph(documents: List[Dict[str, object]]) -> Dict[str, object]:
     return _build_graph_documents(documents) if config.KG_ENABLED else {
         "nodes": [], "relations": [], "links": [], "document_summaries": [], "stats": {}

@@ -49,6 +49,14 @@ class Config:
     BAIDU_SECRET_KEY = os.environ.get("BAIDU_SECRET_KEY")
     BAIDU_TOKEN_URL = "https://aip.baidubce.com/oauth/2.0/token"
     BAIDU_IMAGE_ANALYZE_URL = "https://aip.baidubce.com/rest/2.0/image-classify/v2/advanced_general"
+
+    # Vision API configuration
+    VISION_PROVIDER = os.environ.get("VISION_PROVIDER", "baidu")
+    VISION_API_KEY = os.environ.get("VISION_API_KEY") or os.environ.get("ONEAIS_API_KEY")
+    VISION_BASE_URL = os.environ.get("VISION_BASE_URL", "https://api.openai.com/v1")
+    VISION_MODEL = os.environ.get("VISION_MODEL", "gpt-5.4")
+    VISION_READ_TIMEOUT = int(os.environ.get("VISION_READ_TIMEOUT", "120"))
+    VISION_MAX_TOKENS = int(os.environ.get("VISION_MAX_TOKENS", "300"))
     
     # LongCat LLM 配置
     LONGCAT_API_KEY = os.environ.get("LONGCAT_API_KEY")
@@ -142,6 +150,12 @@ class Config:
         if cls.BAIDU_API_KEY and cls.BAIDU_SECRET_KEY:
             return cls.BAIDU_API_KEY, cls.BAIDU_SECRET_KEY
         raise RuntimeError("未配置 BAIDU_API_KEY / BAIDU_SECRET_KEY 环境变量。")
+
+    @classmethod
+    def require_vision_api_key(cls) -> str:
+        if cls.VISION_API_KEY:
+            return cls.VISION_API_KEY
+        raise RuntimeError("未配置 VISION_API_KEY / ONEAIS_API_KEY 环境变量。")
 
     @classmethod
     def require_neo4j_credentials(cls) -> tuple[str, str, str, str]:

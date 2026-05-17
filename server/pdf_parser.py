@@ -28,6 +28,7 @@ from knowledge_graph import (
     expand_graph_neighbors,
     start_graph_build,
     get_graph_build_status,
+    mark_graph_build_pending,
     import_triples_graph,
 )
 from risk_fusion import build_risk_profile
@@ -62,6 +63,17 @@ def _rebuild_session_knowledge_graph(session_id):
 
 # Token缓存
 _token_cache = {"token": None, "expires_at": 0}
+VISION_ALLOWED_RISK_LEVELS = {"低", "中", "高", "极高", "未识别"}
+VISION_PROMPT_TEMPLATE = (
+    "你是煤矿安全应急图像识别助手。"
+    "请严格围绕煤矿场景识别画面中的风险线索、作业场景和关键对象，"
+    "不要回答与图像无关的内容。"
+    "请只返回 JSON，对象格式为："
+    '{"keywords":["关键词1","关键词2","关键词3"],'
+    '"summary":"一句不超过30字的中文摘要",'
+    '"risk_level":"低/中/高/极高/未识别"}。'
+    "若无法判断，请返回 keywords 为空数组，summary 为“未识别”，risk_level 为“未识别”。"
+)
 
 def clean_text(text):
     """清洗PDF提取的文本"""
@@ -254,12 +266,7 @@ def _extract_text_from_upload(file_storage):
 
 
 def _analyze_baidu_image_base64(img_base64, image_name="image"):
-    image_data = str(img_base64 or "").strip()
-    if not image_data:
-        raise ValueError("Empty image data")
-
-    if "," in image_data:
-        image_data = image_data.split(",", 1)[1]
+    image_data = _normalize_image_base64(img_base64)
 
     access_token = get_baidu_access_token()
     api_url = f"{config.BAIDU_IMAGE_ANALYZE_URL}?access_token={access_token}"
@@ -296,6 +303,177 @@ def _extract_image_keywords(result, limit=3):
         if len(keywords) >= limit:
             break
     return keywords
+
+
+def _normalize_image_base64(img_base64):
+    image_data = str(img_base64 or "").strip()
+    if not image_data:
+        raise ValueError("Empty image data")
+    if "," in image_data:
+        image_data = image_data.split(",", 1)[1]
+    return image_data
+
+
+def _extract_openai_message_content(payload):
+    if not isinstance(payload, dict):
+        return ""
+    choices = payload.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return ""
+    message = choices[0].get("message") if isinstance(choices[0], dict) else {}
+    content = message.get("content") if isinstance(message, dict) else ""
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict):
+                text = item.get("text")
+                if text:
+                    parts.append(str(text))
+            elif item:
+                parts.append(str(item))
+        return "".join(parts).strip()
+    return str(content or "").strip()
+
+
+def _extract_json_block(raw_text):
+    text = str(raw_text or "").strip()
+    if not text:
+        raise ValueError("视觉模型未返回内容。")
+
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s*```$", "", text)
+
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        raise ValueError(f"视觉模型返回内容不是 JSON：{text[:120]}")
+    return text[start:end + 1]
+
+
+def _normalize_vision_payload(payload):
+    if not isinstance(payload, dict):
+        raise ValueError("视觉模型返回的 JSON 不是对象。")
+
+    keywords = payload.get("keywords")
+    if not isinstance(keywords, list):
+        keywords = []
+    normalized_keywords = []
+    for item in keywords:
+        text = str(item or "").strip()
+        if text and text not in normalized_keywords:
+            normalized_keywords.append(text)
+        if len(normalized_keywords) >= 5:
+            break
+
+    summary = str(payload.get("summary") or "").strip()
+    risk_level = str(payload.get("risk_level") or "未识别").strip() or "未识别"
+    if risk_level not in VISION_ALLOWED_RISK_LEVELS:
+        risk_level = "未识别"
+
+    if not summary:
+        summary = "、".join(normalized_keywords[:3]) or "未识别"
+
+    return {
+        "keywords": normalized_keywords,
+        "summary": summary,
+        "risk_level": risk_level,
+    }
+
+
+def _build_vision_prompt(image_name="image"):
+    hint = str(image_name or "").strip()
+    if not hint:
+        return VISION_PROMPT_TEMPLATE
+    return (
+        f"{VISION_PROMPT_TEMPLATE}"
+        f" 图片文件名为《{hint}》，文件名仅作辅助参考，优先依据画面内容判断。"
+    )
+
+
+def _guess_image_mime_type(image_name="image"):
+    suffix = Path(str(image_name or "image")).suffix.lower()
+    if suffix in {".jpg", ".jpeg"}:
+        return "image/jpeg"
+    if suffix == ".webp":
+        return "image/webp"
+    if suffix == ".gif":
+        return "image/gif"
+    return "image/png"
+
+
+def _analyze_openai_vision_base64(img_base64, image_name="image"):
+    image_data = _normalize_image_base64(img_base64)
+    prompt = _build_vision_prompt(image_name)
+    mime_type = _guess_image_mime_type(image_name)
+    api_payload = {
+        "model": config.VISION_MODEL,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{mime_type};base64,{image_data}"},
+                    },
+                ],
+            }
+        ],
+        "temperature": 0.1,
+        "max_tokens": config.VISION_MAX_TOKENS,
+    }
+
+    url = config.VISION_BASE_URL.rstrip("/") + "/chat/completions"
+    resp = requests.post(
+        url,
+        headers={
+            "Authorization": f"Bearer {config.require_vision_api_key()}",
+            "Content-Type": "application/json",
+        },
+        json=api_payload,
+        timeout=(12, config.VISION_READ_TIMEOUT),
+    )
+    payload = resp.json() if resp.content else {}
+    if not resp.ok:
+        err_msg = payload.get("error") if isinstance(payload, dict) else payload
+        raise RuntimeError(f"视觉模型接口错误 {resp.status_code}: {err_msg or resp.text}")
+
+    raw_content = _extract_openai_message_content(payload)
+    json_block = _extract_json_block(raw_content)
+    structured = _normalize_vision_payload(json.loads(json_block))
+
+    return {
+        "provider": config.VISION_PROVIDER,
+        "model": config.VISION_MODEL,
+        "risk_level": structured["risk_level"],
+        "keywords": structured["keywords"],
+        "summary_text": (
+            f"{structured['summary']}\n风险等级：{structured['risk_level']}"
+            if structured["risk_level"] and structured["risk_level"] != "未识别"
+            else structured["summary"]
+        ),
+        "result": [{"keyword": keyword} for keyword in structured["keywords"]],
+        "raw_content": raw_content,
+        "raw_result": payload,
+    }
+
+
+def _analyze_image_base64(img_base64, image_name="image"):
+    provider = str(config.VISION_PROVIDER or "baidu").strip().lower()
+    if provider == "baidu":
+        baidu_result = _analyze_baidu_image_base64(img_base64, image_name)
+        keywords = _extract_image_keywords(baidu_result, limit=5)
+        return {
+            "provider": "baidu",
+            "model": "baidu-advanced-general",
+            "risk_level": "未识别",
+            "keywords": keywords,
+            "summary_text": "、".join(keywords[:3]),
+            "result": baidu_result.get("result", []),
+            "raw_result": baidu_result,
+        }
+    return _analyze_openai_vision_base64(img_base64, image_name)
 
 
 def _load_cv2():
@@ -509,7 +687,7 @@ def parse_text():
 
 @app.route('/api/documents/upload', methods=['POST'])
 def upload_document():
-    """统一文档入库接口：解析文本后建立后端向量索引，并异步构建图谱。"""
+    """统一文档入库接口：解析文本后建立后端向量索引，图谱改为手动生成。"""
     if 'file' not in request.files:
         return jsonify({'error': '未找到文件'}), 400
 
@@ -523,7 +701,8 @@ def upload_document():
             file_name=str(getattr(file, 'filename', '') or '未命名文档'),
             text=parsed['text'],
         )
-        build_status = start_graph_build(session_id, list_session_chunks(session_id))
+        clear_session_graph(session_id)
+        build_status = mark_graph_build_pending(session_id, has_documents=True)
         return jsonify({
             'success': True,
             **result,
@@ -587,13 +766,14 @@ def remove_uploaded_document():
     removed = remove_document(session_id=session_id, document_id=document_id)
     if not removed:
         return jsonify({'error': '未找到对应文档'}), 404
-    if not list_session_chunks(session_id):
-        clear_session_graph(session_id)
+    remaining_chunks = list_session_chunks(session_id)
+    clear_session_graph(session_id)
+    build_status = mark_graph_build_pending(session_id, has_documents=bool(remaining_chunks))
     return jsonify({
         'success': True,
         'document_id': document_id,
         "knowledge_graph": {
-            "build_status": get_graph_build_status(session_id),
+            "build_status": build_status,
         },
     })
 
@@ -842,7 +1022,7 @@ def image_analyze():
         
         if not img_base64:
             return jsonify({"error": "Empty image data", "result": []}), 400
-        result = _analyze_baidu_image_base64(img_base64, img_name)
+        result = _analyze_image_base64(img_base64, img_name)
         return jsonify(result)
     except Exception as e:
         print(f"图片分析错误: {e}")
@@ -869,8 +1049,8 @@ def video_analyze():
         frame_reports = []
         for frame in extracted["frames"]:
             frame_name = f"{video_name} @ {_format_video_timestamp(frame['timestamp_s'])}"
-            result = _analyze_baidu_image_base64(frame["image_base64"], frame_name)
-            keywords = _extract_image_keywords(result, limit=5)
+            result = _analyze_image_base64(frame["image_base64"], frame_name)
+            keywords = list(result.get("keywords") or [])[:5]
             if not keywords:
                 continue
             frame_reports.append({

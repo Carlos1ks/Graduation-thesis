@@ -13,6 +13,7 @@ const SENSOR_LATEST_API_URL = `${BACKEND_BASE_URL}/api/sensors/latest`;
 const SENSOR_CLEAR_API_URL = `${BACKEND_BASE_URL}/api/sensors/clear`;
 const KNOWLEDGE_GRAPH_QUERY_API_URL = `${BACKEND_BASE_URL}/api/knowledge-graph/query`;
 const KNOWLEDGE_GRAPH_STATUS_API_URL = `${BACKEND_BASE_URL}/api/knowledge-graph/status`;
+const KNOWLEDGE_GRAPH_REBUILD_API_URL = `${BACKEND_BASE_URL}/api/knowledge-graph/rebuild`;
 const MAX_HISTORY_MESSAGES = 6;
 const SESSION_STORAGE_KEY = "coal-mine-agent-session-id";
 const APP_VIEW_CHAT = "chat";
@@ -35,11 +36,12 @@ function createSessionId() {
 }
 
 function getInitialSessionId() {
-  if (typeof window === "undefined") return createSessionId();
-  const existing = window.localStorage.getItem(SESSION_STORAGE_KEY);
-  if (existing) return existing;
   const next = createSessionId();
-  window.localStorage.setItem(SESSION_STORAGE_KEY, next);
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.removeItem(SESSION_STORAGE_KEY);
+    } catch {}
+  }
   return next;
 }
 
@@ -231,6 +233,19 @@ async function fetchKnowledgeGraphStatus(sessionId) {
   const result = await response.json().catch(() => ({}));
   if (!response.ok || !result.success) {
     throw new Error(result.error || `图谱状态获取失败：${response.status}`);
+  }
+  return result;
+}
+
+async function rebuildKnowledgeGraph(sessionId) {
+  const response = await fetch(KNOWLEDGE_GRAPH_REBUILD_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `图谱生成失败：${response.status}`);
   }
   return result;
 }
@@ -476,6 +491,7 @@ export default function CoalMineAgent() {
   const [uploading, setUploading] = useState(false);
   const [imageUploading, setImageUploading] = useState(false);
   const [videoUploading, setVideoUploading] = useState(false);
+  const [graphGenerating, setGraphGenerating] = useState(false);
   const [sensorDialogOpen, setSensorDialogOpen] = useState(false);
   const [sensorInput, setSensorInput] = useState('[\n  {\n    "sensor_id": "gas-01",\n    "name": "瓦斯浓度传感器",\n    "value": 1.7,\n    "unit": "%",\n    "threshold": 1.5,\n    "location": "掘进工作面",\n    "status": "报警"\n  }\n]');
   const [graphOpen, setGraphOpen] = useState(false);
@@ -588,11 +604,13 @@ export default function CoalMineAgent() {
         setGraphBuildStatus(result.build_status);
         if (result.build_status.state === "failed") {
           clearInterval(timer);
+          setGraphGenerating(false);
           setGraphLoading(false);
           setGraphError(result.build_status.error || "知识图谱构建失败");
         }
         if (result.build_status.state === "completed") {
           clearInterval(timer);
+          setGraphGenerating(false);
           graphQueryCacheRef.current.clear();
           graphLayoutReadyRef.current = false;
           graphLoadedSessionRef.current = "";
@@ -602,6 +620,7 @@ export default function CoalMineAgent() {
         }
       } catch (err) {
         clearInterval(timer);
+        setGraphGenerating(false);
         setGraphLoading(false);
         setGraphError(err.message);
       }
@@ -704,7 +723,7 @@ export default function CoalMineAgent() {
         }
         setMessages(prev => [...prev, {
           role: "assistant",
-          content: `📄 已上传《**${result.file_name || file.name}**》（${sizeMB} MB · ${(result.char_count || 0).toLocaleString()} 字符 · ${result.chunk_count || 0} 个向量检索块）\n\n文档已入库，知识图谱正在后台构建。`,
+          content: `📄 已上传《**${result.file_name || file.name}**》（${sizeMB} MB · ${(result.char_count || 0).toLocaleString()} 字符 · ${result.chunk_count || 0} 个向量检索块）\n\n文档已入库。若需要图谱，请前往知识图谱库点击“生成知识图谱”。`,
           timestamp: new Date(),
         }]);
       } catch (err) {
@@ -763,6 +782,77 @@ export default function CoalMineAgent() {
     e.target.value = "";
   };
 
+  const handleGenerateKnowledgeGraph = async () => {
+    if (docs.length === 0 || graphGenerating || ["running", "queued"].includes(graphBuildStatus.state)) {
+      return;
+    }
+    setGraphGenerating(true);
+    setGraphOpen(true);
+    setGraphError("");
+    setGraphLoading(true);
+    graphQueryCacheRef.current.clear();
+    graphLayoutReadyRef.current = false;
+    graphLoadedSessionRef.current = "";
+    setGraphData(emptyGraphData());
+    setSelectedGraphNode(null);
+    try {
+      const result = await rebuildKnowledgeGraph(sessionIdRef.current);
+      if (result.build_status) {
+        setGraphBuildStatus(result.build_status);
+      }
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: "🧠 已提交知识图谱生成任务，可在知识图谱库查看构建进度。",
+        timestamp: new Date(),
+      }]);
+    } catch (err) {
+      setGraphLoading(false);
+      setGraphError(err.message);
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: `⚠️ 知识图谱生成失败：${err.message}`,
+        timestamp: new Date(),
+      }]);
+    } finally {
+      setGraphGenerating(false);
+    }
+  };
+
+  const analyzeSingleUploadedImage = async (base64, imageName) => {
+    const resp = await fetch(`${BACKEND_BASE_URL}/api/image-analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        image_base64: base64,
+        image_name: imageName,
+      }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error || `图片识别失败：${resp.status}`);
+    }
+    const data = await resp.json().catch(() => ({}));
+    const keywords = Array.isArray(data.keywords)
+      ? data.keywords.filter(Boolean)
+      : Array.isArray(data.result)
+        ? data.result.slice(0, 5).map((item) => item.keyword || item.class_name).filter(Boolean)
+        : [];
+    const uniqueKeywords = Array.from(new Set(keywords)).slice(0, 5);
+    const summaryCore = String(data.summary_text || "").trim() || uniqueKeywords.join("、");
+    const summaryText = summaryCore ? `【${imageName}】识别结果：${summaryCore}` : "";
+    return {
+      summary_text: summaryText,
+      evidence: uniqueKeywords.length > 0
+        ? [{
+            image_name: imageName,
+            summary: summaryCore || uniqueKeywords.join("、"),
+            source_type: "image_analysis",
+          }]
+        : [],
+      raw: data,
+    };
+  };
+
   const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files);
     if (!files.length) return;
@@ -782,14 +872,24 @@ export default function CoalMineAgent() {
         });
         
         const [, base64] = String(dataUrl).split(",");
+        const analysis = await analyzeSingleUploadedImage(base64, file.name);
         setImages(prev => [
           ...prev.filter(img => img.name !== file.name),
-          { name: file.name, dataUrl, base64, sizeMB }
+          {
+            name: file.name,
+            dataUrl,
+            base64,
+            sizeMB,
+            summary_text: analysis.summary_text || "",
+            evidence: Array.isArray(analysis.evidence) ? analysis.evidence : [],
+          }
         ]);
         
         setMessages(prev => [...prev, {
           role: "assistant",
-          content: `📸 已上传图片《**${file.name}**》（${sizeMB} MB）\n\n该图片将用于现场态势识别，发送问题时会自动调用百度API进行识别。`,
+          content: analysis.summary_text
+            ? `📸 已上传并分析图片《**${file.name}**》（${sizeMB} MB）\n\n${analysis.summary_text}`
+            : `📸 已上传图片《**${file.name}**》（${sizeMB} MB）\n\n未识别到明确目标，将在问答中作为补充图像证据保留。`,
           timestamp: new Date(),
         }]);
       } catch (err) {
@@ -922,11 +1022,23 @@ export default function CoalMineAgent() {
     }
   };
 
-  // 调用百度API识别图片
-  const analyzeImagesWithBaidu = async () => {
-    if (images.length === 0) return { summaryText: "", evidence: [] };
+  // 汇总图片识别结果，优先复用上传阶段已缓存的摘要
+  const analyzeImageEvidence = async () => {
+    if (images.length === 0) return { summaryText: "", evidence: [], usedCached: false };
 
     try {
+      const cachedSummaries = images
+        .map((img) => String(img.summary_text || "").trim())
+        .filter(Boolean);
+      const cachedEvidence = images.flatMap((img) => Array.isArray(img.evidence) ? img.evidence : []);
+      if (cachedSummaries.length > 0 || cachedEvidence.length > 0) {
+        return {
+          summaryText: cachedSummaries.length > 0 ? `📸 现场图片识别：\n${cachedSummaries.join("\n")}` : "",
+          evidence: cachedEvidence,
+          usedCached: true,
+        };
+      }
+
       let lines = [];
       let evidence = [];
       for (const img of images.slice(0, 2)) {
@@ -943,11 +1055,15 @@ export default function CoalMineAgent() {
           if (resp.ok) {
             const data = await resp.json();
             if (data.result && data.result.length > 0) {
-              const keywords = data.result.slice(0, 3).map(r => r.keyword || r.class_name).join("、");
-              lines.push(`【${img.name}】识别结果：${keywords}`);
+              const summary = String(data.summary_text || "").trim();
+              const keywords = Array.isArray(data.keywords)
+                ? data.keywords.filter(Boolean)
+                : data.result.slice(0, 3).map(r => r.keyword || r.class_name).filter(Boolean);
+              const line = summary || `【${img.name}】识别结果：${keywords.join("、")}`;
+              lines.push(line);
               evidence.push({
                 image_name: img.name,
-                summary: keywords,
+                summary: summary || keywords.join("、"),
                 source_type: "image_analysis"
               });
             }
@@ -959,10 +1075,11 @@ export default function CoalMineAgent() {
       return {
         summaryText: lines.length > 0 ? `📸 现场图片识别：\n${lines.join("\n")}` : "",
         evidence,
+        usedCached: false,
       };
     } catch (err) {
-      console.warn("百度API调用失败:", err);
-      return { summaryText: "", evidence: [] };
+      console.warn("图片识别调用失败:", err);
+      return { summaryText: "", evidence: [], usedCached: false };
     }
   };
 
@@ -990,19 +1107,21 @@ export default function CoalMineAgent() {
     setLoading(true);
     simulateAgents();
 
-    // 如果有图片，先调用百度API进行识别
+    // 如果有图片，先汇总已缓存的识别结果
     let imageSummaryText = "";
     let imageEvidence = [];
     if (images.length > 0) {
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: "📸 正在分析上传的图片...",
-        timestamp: new Date(),
-      }]);
-      const imageAnalysis = await analyzeImagesWithBaidu();
+      const imageAnalysis = await analyzeImageEvidence();
       imageSummaryText = imageAnalysis.summaryText || "";
       imageEvidence = imageAnalysis.evidence || [];
-      if (imageSummaryText) {
+      if (!imageAnalysis.usedCached) {
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          content: "📸 正在分析上传的图片...",
+          timestamp: new Date(),
+        }]);
+      }
+      if (imageSummaryText && !imageAnalysis.usedCached) {
         setMessages(prev => [...prev, {
           role: "assistant",
           content: imageSummaryText,
@@ -1785,7 +1904,7 @@ export default function CoalMineAgent() {
             )}
             {images.length > 0 && (
               <div style={{ padding: "0.3rem 0.7rem", background: "rgba(59,130,246,0.07)", border: "1px solid rgba(59,130,246,0.2)", borderRadius: "7px", fontSize: "0.65rem", color: "#60a5fa", display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                📸 已上传 {images.length} 张图片（将进行百度识别分析）
+                📸 已上传 {images.length} 张图片（已生成图像摘要）
               </div>
             )}
             {videos.length > 0 && (
@@ -1865,7 +1984,7 @@ export default function CoalMineAgent() {
 
   const renderImagesPage = () => renderPageShell(
     "图片库",
-    "这里保存当前会话上传的现场图片。发送问题时，系统会调用识别接口把图片转为可参与问答的证据摘要。",
+    "这里保存当前会话上传的现场图片。上传后会立即完成识别，并把摘要结果作为可参与问答的图像证据。",
     <button onClick={() => imageInputRef.current?.click()} disabled={imageUploading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: "1px dashed rgba(59,130,246,0.45)", background: "linear-gradient(135deg,rgba(59,130,246,0.15),rgba(14,165,233,0.08))", color: imageUploading ? "#60a5fa60" : "#60a5fa", cursor: imageUploading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{imageUploading ? "上传中..." : "上传现场图片"}</button>,
     images.length === 0
       ? renderLibraryEmpty("当前图片库为空", "上传 JPG、PNG 或 WEBP 后，问答链路会在发送前自动补充图片识别结果。", imageUploading ? "上传中..." : "上传现场图片", () => imageInputRef.current?.click(), imageUploading)
@@ -1878,6 +1997,11 @@ export default function CoalMineAgent() {
               </div>
               <div style={{ marginTop: "0.6rem", fontSize: "0.8rem", fontWeight: 700, color: "#bfdbfe", wordBreak: "break-all" }}>{img.name}</div>
               <div style={{ marginTop: "0.2rem", fontSize: "0.68rem", color: "#94a3b8" }}>{img.sizeMB} MB</div>
+              {img.summary_text ? (
+                <div style={{ marginTop: "0.35rem", fontSize: "0.68rem", lineHeight: 1.7, color: "#cbd5e1", whiteSpace: "pre-wrap" }}>
+                  {img.summary_text.split("\n").slice(0, 4).join("\n")}
+                </div>
+              ) : null}
               <button onClick={() => setImages(prev => prev.filter((item) => item.name !== img.name))} style={{ marginTop: "0.55rem", width: "100%", padding: "0.45rem 0.7rem", borderRadius: "8px", border: "1px solid rgba(148,163,184,0.16)", background: "rgba(255,255,255,0.04)", color: "#cbd5e1", cursor: "pointer", fontSize: "0.72rem" }}>移出图片库</button>
             </div>
           ))}
@@ -1942,8 +2066,9 @@ export default function CoalMineAgent() {
 
   const renderGraphPage = () => renderPageShell(
     "知识图谱库",
-    "当前知识图谱按 session 合并构建。这里可以查看图谱状态、上传三元组测试文件，并直接检索当前会话的图谱结果。",
+    "当前知识图谱按 session 合并构建。这里可以手动生成文档库对应图谱、上传三元组测试文件，并直接检索当前会话的图谱结果。",
     <>
+      <button onClick={handleGenerateKnowledgeGraph} disabled={docs.length === 0 || graphGenerating || graphBuildStatus.state === "running" || graphBuildStatus.state === "queued"} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: "1px dashed rgba(74,222,128,0.45)", background: "linear-gradient(135deg,rgba(74,222,128,0.15),rgba(34,211,238,0.08))", color: (docs.length === 0 || graphGenerating || graphBuildStatus.state === "running" || graphBuildStatus.state === "queued") ? "#4ade8060" : "#4ade80", cursor: (docs.length === 0 || graphGenerating || graphBuildStatus.state === "running" || graphBuildStatus.state === "queued") ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{graphGenerating ? "提交中..." : "生成知识图谱"}</button>
       <button onClick={() => triplesInputRef.current?.click()} disabled={uploading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: "1px dashed rgba(34,211,238,0.45)", background: "linear-gradient(135deg,rgba(34,211,238,0.15),rgba(20,184,166,0.08))", color: uploading ? "#22d3ee60" : "#67e8f9", cursor: uploading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{uploading ? "导入中..." : "上传三元组 JSON"}</button>
       <button onClick={() => loadKnowledgeGraph(graphKeyword)} disabled={graphLoading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: "1px solid rgba(34,211,238,0.26)", background: "rgba(34,211,238,0.08)", color: graphLoading ? "#67e8f960" : "#67e8f9", cursor: graphLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{graphLoading ? "加载中..." : "刷新图谱"}</button>
     </>,

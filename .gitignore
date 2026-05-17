@@ -30,6 +30,7 @@ __pycache__/
 
 # Local graph/extraction runtime artifacts
 .runlogs/
+tools/reports/
 server/.graph_status/
 docs/*.bad-split-*.json
 docs/*.pre-*.json
