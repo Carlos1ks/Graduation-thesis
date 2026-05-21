@@ -72,6 +72,23 @@ body {
   box-sizing: border-box;
 }
 
+.light-theme-app,
+.light-theme-app * {
+  color: #111827 !important;
+}
+
+.light-theme-app button,
+.light-theme-app input,
+.light-theme-app textarea,
+.light-theme-app summary,
+.light-theme-app select {
+  color: #111827 !important;
+}
+
+.light-theme-app ::placeholder {
+  color: #64748b !important;
+}
+
 h1,
 h2 {
   font-family: var(--heading);

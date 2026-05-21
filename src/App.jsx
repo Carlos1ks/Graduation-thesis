@@ -70,6 +70,23 @@ const LIBRARY_NAV_ITEMS = [
   { id: APP_VIEW_GRAPH, label: "知识图谱库", icon: "🧠", color: "#67e8f9" },
 ];
 
+const UI = {
+  appBg: "linear-gradient(180deg,#f9fbff 0%,#f1f5f9 52%,#e2e8f0 100%)",
+  headerBg: "rgba(255,255,255,0.96)",
+  sidebarBg: "rgba(248,250,252,0.98)",
+  cardBg: "rgba(255,255,255,0.98)",
+  softBg: "rgba(248,250,252,0.98)",
+  mutedBg: "rgba(241,245,249,0.96)",
+  border: "rgba(15,23,42,0.14)",
+  borderStrong: "rgba(14,165,233,0.34)",
+  text: "#111827",
+  muted: "#334155",
+  subtle: "#475569",
+  shadow: "0 14px 36px rgba(15,23,42,0.09)",
+  overlay: "rgba(15,23,42,0.12)",
+  graphBg: "radial-gradient(circle at center, rgba(125,211,252,0.20), rgba(255,255,255,0.99) 54%, rgba(241,245,249,0.98))",
+};
+
 function hashForView(view) {
   if (view === APP_VIEW_CHAT) {
     return "#/chat";
@@ -1504,14 +1521,14 @@ export default function CoalMineAgent() {
       : [];
 
     return (
-      <div style={embedded ? { flex: 1, minHeight: 0, display: "flex", width: "100%" } : { position: "fixed", inset: 0, background: "rgba(2,6,23,0.78)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 320 }}>
-        <div style={embedded ? { flex: 1, minHeight: 0, height: "100%", background: "#08111f", border: "1px solid rgba(34,211,238,0.25)", borderRadius: "16px", boxShadow: "0 22px 70px rgba(0,0,0,0.35)", display: "flex", flexDirection: "column", overflow: "hidden" } : { width: "min(1180px, 94vw)", height: "min(760px, 92vh)", background: "#08111f", border: "1px solid rgba(34,211,238,0.25)", borderRadius: "12px", boxShadow: "0 22px 70px rgba(0,0,0,0.5)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <div style={{ padding: "0.8rem 1rem", borderBottom: "1px solid rgba(34,211,238,0.16)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.8rem", flexWrap: "wrap" }}>
+      <div style={embedded ? { flex: 1, minHeight: 0, height: "100%", display: "flex", width: "100%" } : { position: "fixed", inset: 0, background: UI.overlay, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 320 }}>
+        <div style={embedded ? { flex: 1, minHeight: 0, height: "100%", background: UI.cardBg, border: `1px solid ${UI.borderStrong}`, borderRadius: "16px", boxShadow: UI.shadow, display: "flex", flexDirection: "column", overflow: "hidden" } : { width: "min(1180px, 94vw)", height: "min(760px, 92vh)", background: UI.cardBg, border: `1px solid ${UI.borderStrong}`, borderRadius: "12px", boxShadow: UI.shadow, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ padding: "0.8rem 1rem", borderBottom: `1px solid ${UI.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.8rem", flexWrap: "wrap" }}>
             <div>
-              <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "#67e8f9" }}>
+              <div style={{ fontSize: "0.95rem", fontWeight: 800, color: UI.text }}>
                 {graphKeyword.trim() ? `知识图谱检索：${graphKeyword.trim()}` : "完整知识图谱"}
               </div>
-              <div style={{ fontSize: "0.65rem", color: "#64748b", marginTop: "0.15rem" }}>
+              <div style={{ fontSize: "0.65rem", color: UI.muted, marginTop: "0.15rem" }}>
                 展示节点 {stats.view_node_count ?? graphData.nodes.length ?? 0} 个 · 展示关系 {stats.view_relation_count ?? graphData.links.length ?? 0} 条
                 {centerLabel ? ` · 中心节点 ${centerLabel}` : ""}
                 {(stats.node_count || stats.relation_count) ? `（后端保留溯源节点 ${stats.node_count || 0} 个、关系 ${stats.relation_count || 0} 条）` : ""}
@@ -1523,55 +1540,55 @@ export default function CoalMineAgent() {
                 onChange={e => setGraphKeyword(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter") loadKnowledgeGraph(graphKeyword); }}
                 placeholder="搜索节点或关键词，例如 瓦斯 / 透水 / 救护队"
-                style={{ flex: 1, minWidth: 180, background: "rgba(15,23,42,0.9)", border: "1px solid rgba(34,211,238,0.22)", borderRadius: "8px", color: "#e2e8f0", padding: "0.48rem 0.65rem", outline: "none", fontSize: "0.75rem" }}
+                style={{ flex: 1, minWidth: 180, background: "#ffffff", border: `1px solid ${UI.border}`, borderRadius: "8px", color: UI.text, padding: "0.48rem 0.65rem", outline: "none", fontSize: "0.75rem" }}
               />
-              <button onClick={() => loadKnowledgeGraph(graphKeyword)} disabled={graphLoading} style={{ padding: "0.48rem 0.78rem", borderRadius: "8px", border: "1px solid rgba(34,211,238,0.28)", background: "rgba(34,211,238,0.12)", color: "#67e8f9", cursor: graphLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{graphLoading ? "加载中" : "检索"}</button>
+              <button onClick={() => loadKnowledgeGraph(graphKeyword)} disabled={graphLoading} style={{ padding: "0.48rem 0.78rem", borderRadius: "8px", border: `1px solid ${UI.borderStrong}`, background: "rgba(14,165,233,0.12)", color: UI.text, cursor: graphLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{graphLoading ? "加载中" : "检索"}</button>
               {!embedded ? (
-                <button onClick={closeKnowledgeGraph} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: "1.2rem", lineHeight: 1 }}>×</button>
+                <button onClick={closeKnowledgeGraph} style={{ background: "none", border: "none", color: UI.subtle, cursor: "pointer", fontSize: "1.2rem", lineHeight: 1 }}>×</button>
               ) : null}
             </div>
           </div>
 
-          <div style={{ padding: "0.55rem 1rem", borderBottom: "1px solid rgba(34,211,238,0.10)", display: "flex", gap: "0.6rem", alignItems: "center", flexWrap: "wrap" }}>
-            <div style={{ fontSize: "0.68rem", color: "#64748b" }}>
+          <div style={{ padding: "0.55rem 1rem", borderBottom: `1px solid ${UI.border}`, display: "flex", gap: "0.6rem", alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ fontSize: "0.68rem", color: UI.muted }}>
               搜索框为空时展示完整图谱；输入关键词后聚焦相关子图，点击节点只查看详情。
             </div>
           </div>
 
           <div style={{ flex: 1, display: "grid", gridTemplateColumns: "minmax(0, 1fr) 300px", minHeight: 0 }}>
-            <div ref={graphViewportRef} style={{ position: "relative", overflow: "hidden", background: "radial-gradient(circle at center, rgba(34,211,238,0.08), rgba(8,17,31,0.2) 45%, rgba(8,17,31,0.95))" }}>
+            <div ref={graphViewportRef} style={{ position: "relative", overflow: "hidden", background: UI.graphBg }}>
               {graphLoading ? (
-                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: "0.82rem", textAlign: "center", lineHeight: 1.8 }}>
+                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: UI.subtle, fontSize: "0.82rem", textAlign: "center", lineHeight: 1.8 }}>
                   {graphBuildStatus.state === "queued" ? (
                     <div style={{ width: "min(420px, 82%)" }}>
-                      <div style={{ marginBottom: "0.7rem" }}>图谱构建任务排队中…</div>
-                      <div style={{ height: 10, background: "rgba(255,255,255,0.08)", borderRadius: 999, overflow: "hidden" }}>
+                      <div style={{ marginBottom: "0.7rem", color: UI.text }}>图谱构建任务排队中…</div>
+                      <div style={{ height: 10, background: "rgba(15,23,42,0.08)", borderRadius: 999, overflow: "hidden" }}>
                         <div style={{ width: "8%", height: "100%", background: "linear-gradient(90deg,#64748b,#22d3ee)", transition: "width 260ms ease" }} />
                       </div>
-                      <div style={{ marginTop: "0.55rem", fontSize: "0.72rem", color: "#94a3b8" }}>
+                      <div style={{ marginTop: "0.55rem", fontSize: "0.72rem", color: UI.subtle }}>
                         当前队列繁忙，稍后自动开始
                       </div>
                     </div>
                   ) : graphBuildStatus.state === "running" ? (
                     <div style={{ width: "min(420px, 82%)" }}>
-                      <div style={{ marginBottom: "0.7rem" }}>正在用大模型抽取三元组并写入 Neo4j…</div>
-                      <div style={{ height: 10, background: "rgba(255,255,255,0.08)", borderRadius: 999, overflow: "hidden" }}>
+                      <div style={{ marginBottom: "0.7rem", color: UI.text }}>正在用大模型抽取三元组并写入 Neo4j…</div>
+                      <div style={{ height: 10, background: "rgba(15,23,42,0.08)", borderRadius: 999, overflow: "hidden" }}>
                         <div style={{ width: `${graphBuildStatus.progress_percent || 0}%`, height: "100%", background: "linear-gradient(90deg,#22d3ee,#4ade80)", transition: "width 260ms ease" }} />
                       </div>
-                      <div style={{ marginTop: "0.55rem", fontSize: "0.72rem", color: "#67e8f9" }}>
+                      <div style={{ marginTop: "0.55rem", fontSize: "0.72rem", color: UI.text }}>
                         {graphBuildStatus.current || 0}/{graphBuildStatus.total || 0} · {graphBuildStatus.progress_percent || 0}%
                       </div>
                     </div>
-                  ) : "正在从 Neo4j 加载知识图谱…"}
+                  ) : <span style={{ color: UI.text }}>正在从 Neo4j 加载知识图谱…</span>}
                 </div>
               ) : graphError ? (
-                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#fca5a5", fontSize: "0.8rem", textAlign: "center", lineHeight: 1.8, padding: "0 1.5rem" }}>
+                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#b91c1c", fontSize: "0.8rem", textAlign: "center", lineHeight: 1.8, padding: "0 1.5rem" }}>
                   图谱加载失败
                   <br />
                   {graphError}
                 </div>
               ) : graph.nodes.length === 0 ? (
-                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", fontSize: "0.82rem", textAlign: "center", lineHeight: 1.8 }}>
+                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: UI.subtle, fontSize: "0.82rem", textAlign: "center", lineHeight: 1.8 }}>
                   当前没有可展示的图谱结果
                   <br />
                   先上传规程文档，或换一个关键词再检索
@@ -1600,7 +1617,7 @@ export default function CoalMineAgent() {
                     if (node.isCenter || selectedGraphNode?.uid === node.uid) {
                       ctx.beginPath();
                       ctx.arc(node.x, node.y, radius + (node.isCenter ? 7 : 4), 0, 2 * Math.PI, false);
-                      ctx.strokeStyle = node.isCenter ? "#fca5a5" : "#67e8f9";
+                      ctx.strokeStyle = node.isCenter ? "#ef4444" : "#0ea5e9";
                       ctx.lineWidth = node.isCenter ? 2.5 : 1.6;
                       ctx.stroke();
                     }
@@ -1608,7 +1625,7 @@ export default function CoalMineAgent() {
                     ctx.font = `${node.isCenter ? "700 " : ""}${fontSize}px sans-serif`;
                     ctx.textAlign = "left";
                     ctx.textBaseline = "middle";
-                    ctx.fillStyle = node.isCenter ? "#fecaca" : node.isMatched ? "#fde68a" : "#dbeafe";
+                    ctx.fillStyle = UI.text;
                     ctx.fillText(label.slice(0, node.isCenter ? 24 : 18), node.x + 8, node.y);
                   }}
                   linkCanvasObjectMode={() => "after"}
@@ -1625,13 +1642,13 @@ export default function CoalMineAgent() {
                     const label = String(link.relation_label || link.relation || "").slice(0, 10);
                     if (label) {
                       ctx.font = `${Math.max(7, 9 / globalScale)}px sans-serif`;
-                      ctx.fillStyle = "rgba(226,232,240,0.86)";
+                      ctx.fillStyle = UI.text;
                       ctx.textAlign = "center";
                       ctx.fillText(label, midX, midY + 8);
                     }
                     if (link.condition && distance > 95 && graph.links.length <= 120) {
                       ctx.font = `${Math.max(7, 8 / globalScale)}px sans-serif`;
-                      ctx.fillStyle = "#fcd34d";
+                      ctx.fillStyle = UI.text;
                       ctx.textAlign = "center";
                       ctx.fillText(String(link.condition).slice(0, 16), midX, midY - 7);
                     }
@@ -1641,38 +1658,38 @@ export default function CoalMineAgent() {
               )}
             </div>
 
-            <div style={{ borderLeft: "1px solid rgba(34,211,238,0.14)", padding: "0.8rem", overflowY: "auto", background: "rgba(15,23,42,0.36)" }}>
-              <div style={{ fontSize: "0.75rem", color: "#67e8f9", fontWeight: 800, marginBottom: "0.55rem" }}>图谱详情</div>
+            <div style={{ borderLeft: `1px solid ${UI.border}`, padding: "0.8rem", overflowY: "auto", background: UI.softBg }}>
+              <div style={{ fontSize: "0.75rem", color: UI.text, fontWeight: 800, marginBottom: "0.55rem" }}>图谱详情</div>
               {selectedGraphNode ? (
-                <div style={{ display: "grid", gap: "0.45rem", fontSize: "0.68rem", color: "#cbd5e1", lineHeight: 1.6 }}>
-                  <div style={{ fontSize: "0.86rem", color: selectedGraphNode.isCenter ? "#fca5a5" : nodeColor(selectedGraphNode.type), fontWeight: 800 }}>{graphNodeDisplayLabel(selectedGraphNode)}</div>
-                  <div><span style={{ color: "#94a3b8" }}>类型：</span>{selectedGraphNode.type_label || selectedGraphNode.type}</div>
-                  {selectedGraphNode.isCenter && <div style={{ color: "#fecaca" }}>当前搜索中心节点</div>}
-                  {selectedGraphNode.text_excerpt && <div style={{ color: "#94a3b8", whiteSpace: "pre-wrap" }}>{selectedGraphNode.text_excerpt}</div>}
+                <div style={{ display: "grid", gap: "0.45rem", fontSize: "0.68rem", color: UI.text, lineHeight: 1.6 }}>
+                  <div style={{ fontSize: "0.86rem", color: selectedGraphNode.isCenter ? "#991b1b" : UI.text, fontWeight: 800 }}>{graphNodeDisplayLabel(selectedGraphNode)}</div>
+                  <div><span style={{ color: UI.muted }}>类型：</span>{selectedGraphNode.type_label || selectedGraphNode.type}</div>
+                  {selectedGraphNode.isCenter && <div style={{ color: "#991b1b" }}>当前搜索中心节点</div>}
+                  {selectedGraphNode.text_excerpt && <div style={{ color: UI.muted, whiteSpace: "pre-wrap" }}>{selectedGraphNode.text_excerpt}</div>}
                   {Array.isArray(selectedGraphNode.sources) && selectedGraphNode.sources.length > 0 && (
                     <div>
-                      <span style={{ color: "#94a3b8" }}>来源：</span>
+                      <span style={{ color: UI.muted }}>来源：</span>
                       <div style={{ marginTop: "0.25rem", display: "grid", gap: "0.25rem" }}>
                         {selectedGraphNode.sources.slice(0, 5).map((source, idx) => (
-                          <div key={`${source}-${idx}`} style={{ padding: "0.28rem 0.4rem", borderRadius: "6px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", color: "#a7f3d0" }}>{source}</div>
+                          <div key={`${source}-${idx}`} style={{ padding: "0.28rem 0.4rem", borderRadius: "6px", background: "#ffffff", border: `1px solid ${UI.border}`, color: UI.text }}>{source}</div>
                         ))}
                       </div>
                     </div>
                   )}
-                  <div style={{ marginTop: "0.4rem", color: "#67e8f9", fontWeight: 800 }}>相邻关系</div>
+                  <div style={{ marginTop: "0.4rem", color: UI.text, fontWeight: 800 }}>相邻关系</div>
                   {selectedRelations.length === 0 ? (
-                    <div style={{ color: "#64748b" }}>暂无相邻关系</div>
+                    <div style={{ color: UI.subtle }}>暂无相邻关系</div>
                   ) : selectedRelations.slice(0, 10).map((rel, idx) => (
-                    <div key={`${rel.id || idx}`} style={{ padding: "0.42rem 0.48rem", borderRadius: "7px", background: "rgba(255,255,255,0.035)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                      <span style={{ color: "#fef08a" }}>{rel.head_label}</span>
-                      <span style={{ color: "#94a3b8" }}> → {rel.relation_label} → </span>
-                      <span style={{ color: "#bfdbfe" }}>{rel.tail_label}</span>
-                      {rel.source_ref && <div style={{ color: "#64748b", marginTop: "0.15rem" }}>{rel.source_ref}</div>}
+                    <div key={`${rel.id || idx}`} style={{ padding: "0.42rem 0.48rem", borderRadius: "7px", background: "#ffffff", border: `1px solid ${UI.border}` }}>
+                      <span style={{ color: "#92400e" }}>{rel.head_label}</span>
+                      <span style={{ color: UI.muted }}> → {rel.relation_label} → </span>
+                      <span style={{ color: "#1e40af" }}>{rel.tail_label}</span>
+                      {rel.source_ref && <div style={{ color: UI.subtle, marginTop: "0.15rem" }}>{rel.source_ref}</div>}
                     </div>
                   ))}
                 </div>
               ) : (
-                <div style={{ color: "#64748b", fontSize: "0.7rem", lineHeight: 1.8 }}>
+                <div style={{ color: UI.subtle, fontSize: "0.7rem", lineHeight: 1.8 }}>
                   图谱已改为稳定视图：节点点击只用于查看来源和相邻关系，不再动态展开。
                   <div style={{ marginTop: "0.8rem", display: "flex", gap: "0.28rem", flexWrap: "wrap" }}>
                     {Object.entries({
@@ -1712,43 +1729,43 @@ export default function CoalMineAgent() {
     const stillImageEvidenceCount = imageEvidence.length - videoEvidenceCount;
 
     return (
-      <details style={{ marginTop: "0.55rem", background: "rgba(15,23,42,0.35)", border: "1px solid rgba(74,222,128,0.14)", borderRadius: "8px", padding: "0.45rem 0.6rem" }}>
-        <summary style={{ cursor: "pointer", color: "#86efac", fontSize: "0.68rem", fontWeight: 700 }}>本次推理说明</summary>
-        <div style={{ marginTop: "0.45rem", display: "grid", gap: "0.35rem", fontSize: "0.65rem", color: "#cbd5e1", lineHeight: 1.6 }}>
-          <div><span style={{ color: "#86efac" }}>路由方式：</span>{meta.route_mode || "未知"}</div>
-          <div><span style={{ color: "#86efac" }}>路由原因：</span>{meta.route_reason || "无"}</div>
+      <details style={{ marginTop: "0.55rem", background: "rgba(255,255,255,0.72)", border: "1px solid rgba(15,23,42,0.10)", borderRadius: "8px", padding: "0.45rem 0.6rem" }}>
+        <summary style={{ cursor: "pointer", color: "#0f172a", fontSize: "0.68rem", fontWeight: 700 }}>本次推理说明</summary>
+        <div style={{ marginTop: "0.45rem", display: "grid", gap: "0.35rem", fontSize: "0.65rem", color: "#334155", lineHeight: 1.6 }}>
+          <div><span style={{ color: "#0f172a" }}>路由方式：</span>{meta.route_mode || "未知"}</div>
+          <div><span style={{ color: "#0f172a" }}>路由原因：</span>{meta.route_reason || "无"}</div>
           <div>
-            <span style={{ color: "#86efac" }}>激活角色：</span>
+            <span style={{ color: "#0f172a" }}>激活角色：</span>
             {selectedAgents.length > 0 ? selectedAgents.join("、") : "无"}
           </div>
           <div>
-            <span style={{ color: "#86efac" }}>风险识别：</span>
+            <span style={{ color: "#0f172a" }}>风险识别：</span>
             {risk.risk_level ? `${risk.risk_level}风险` : "未识别"}
             {Array.isArray(risk.risk_type_labels) && risk.risk_type_labels.length > 0 ? `（${risk.risk_type_labels.join("、")}）` : ""}
           </div>
           <div>
-            <span style={{ color: "#86efac" }}>证据使用：</span>
+            <span style={{ color: "#0f172a" }}>证据使用：</span>
             文档 {docEvidence.length} 条，图片 {stillImageEvidenceCount} 条，视频 {videoEvidenceCount} 帧
           </div>
           <div>
-            <span style={{ color: "#86efac" }}>会话记忆：</span>
+            <span style={{ color: "#0f172a" }}>会话记忆：</span>
             {memory.history_messages || 0} 条历史消息，最终会话 {memory.session_history_messages || 0} 条
           </div>
           <div>
-            <span style={{ color: "#86efac" }}>图谱命中：</span>
+            <span style={{ color: "#0f172a" }}>图谱命中：</span>
             节点 {kgUsed.node_count || 0} 个，关系 {kgUsed.relation_count || 0} 条，相关关系 {matchedRelations.length} 条
           </div>
           <div>
-            <span style={{ color: "#86efac" }}>多源融合：</span>
+            <span style={{ color: "#0f172a" }}>多源融合：</span>
             {sourceFusion.history_used ? "使用历史" : "未使用历史"}，文档 {sourceFusion.document_count || 0} 份，图像/视频证据 {sourceFusion.image_count || 0} 条
           </div>
 
           {docEvidence.length > 0 && (
             <div>
-              <span style={{ color: "#86efac" }}>文档证据：</span>
+              <span style={{ color: "#0f172a" }}>文档证据：</span>
               <div style={{ marginTop: "0.18rem", display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
                 {docEvidence.map((doc, idx) => (
-                  <span key={`${doc.doc_name || "doc"}-${idx}`} style={{ padding: "0.08rem 0.38rem", borderRadius: "999px", background: "rgba(74,222,128,0.12)", border: "1px solid rgba(74,222,128,0.2)", color: "#bbf7d0" }}>
+                  <span key={`${doc.doc_name || "doc"}-${idx}`} style={{ padding: "0.08rem 0.38rem", borderRadius: "999px", background: "#ecfdf5", border: "1px solid rgba(22,163,74,0.22)", color: "#0f172a" }}>
                     {(doc.doc_name || "未知文档")}{doc.chunk_id ? ` · ${doc.chunk_id}` : ""}
                   </span>
                 ))}
@@ -1758,10 +1775,10 @@ export default function CoalMineAgent() {
 
           {imageEvidence.length > 0 && (
             <div>
-              <span style={{ color: "#86efac" }}>图片证据：</span>
+              <span style={{ color: "#0f172a" }}>图片证据：</span>
               <div style={{ marginTop: "0.18rem", display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
                 {imageEvidence.map((img, idx) => (
-                  <span key={`${img.image_name || "img"}-${idx}`} style={{ padding: "0.08rem 0.38rem", borderRadius: "999px", background: "rgba(59,130,246,0.12)", border: "1px solid rgba(59,130,246,0.2)", color: "#bfdbfe" }}>
+                  <span key={`${img.image_name || "img"}-${idx}`} style={{ padding: "0.08rem 0.38rem", borderRadius: "999px", background: "#eff6ff", border: "1px solid rgba(59,130,246,0.22)", color: "#0f172a" }}>
                     {img.image_name || "未知图片"}{String(img.source_type || "") === "video_analysis" ? "（视频帧）" : ""}
                   </span>
                 ))}
@@ -1771,10 +1788,10 @@ export default function CoalMineAgent() {
 
           {riskSignals.length > 0 && (
             <div>
-              <span style={{ color: "#86efac" }}>风险触发信号：</span>
+              <span style={{ color: "#0f172a" }}>风险触发信号：</span>
               <div style={{ marginTop: "0.18rem", display: "grid", gap: "0.2rem" }}>
                 {riskSignals.slice(0, 6).map((signal, idx) => (
-                  <div key={`${signal.signal_id || "signal"}-${idx}`} style={{ color: "#94a3b8" }}>
+                  <div key={`${signal.signal_id || "signal"}-${idx}`} style={{ color: "#475569" }}>
                     - {signal.signal_label || signal.signal_id || "未知信号"}
                     {signal.source ? `（来源：${signal.source}` : ""}
                     {signal.keywords ? `；命中：${signal.keywords}` : ""}
@@ -1787,10 +1804,10 @@ export default function CoalMineAgent() {
 
           {matchedNodes.length > 0 && (
             <div>
-              <span style={{ color: "#86efac" }}>命中实体：</span>
+              <span style={{ color: "#0f172a" }}>命中实体：</span>
               <div style={{ marginTop: "0.18rem", display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
                 {matchedNodes.slice(0, 8).map((node) => (
-                  <span key={node.id} style={{ padding: "0.08rem 0.38rem", borderRadius: "999px", background: "rgba(168,85,247,0.12)", border: "1px solid rgba(168,85,247,0.2)", color: "#e9d5ff" }}>
+                  <span key={node.id} style={{ padding: "0.08rem 0.38rem", borderRadius: "999px", background: "#faf5ff", border: "1px solid rgba(168,85,247,0.22)", color: "#0f172a" }}>
                     {node.label}{node.type ? ` · ${node.type}` : ""}
                   </span>
                 ))}
@@ -1800,13 +1817,13 @@ export default function CoalMineAgent() {
 
           {matchedRelations.length > 0 && (
             <div>
-              <span style={{ color: "#86efac" }}>命中关系链：</span>
+              <span style={{ color: "#0f172a" }}>命中关系链：</span>
               <div style={{ marginTop: "0.18rem", display: "grid", gap: "0.2rem" }}>
                 {matchedRelations.slice(0, 6).map((rel, idx) => (
-                  <div key={`${rel.head_id || "h"}-${rel.tail_id || "t"}-${idx}`} style={{ color: "#cbd5e1", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "6px", padding: "0.28rem 0.42rem" }}>
-                    <span style={{ color: "#fef08a" }}>{rel.head_label || rel.head_id}</span>
-                    <span style={{ color: "#94a3b8" }}> → {rel.relation_label || rel.relation} → </span>
-                    <span style={{ color: "#bfdbfe" }}>{rel.tail_label || rel.tail_id}</span>
+                  <div key={`${rel.head_id || "h"}-${rel.tail_id || "t"}-${idx}`} style={{ color: "#334155", background: "#ffffff", border: "1px solid rgba(15,23,42,0.08)", borderRadius: "6px", padding: "0.28rem 0.42rem" }}>
+                    <span style={{ color: "#92400e" }}>{rel.head_label || rel.head_id}</span>
+                    <span style={{ color: "#475569" }}> → {rel.relation_label || rel.relation} → </span>
+                    <span style={{ color: "#1e40af" }}>{rel.tail_label || rel.tail_id}</span>
                     {rel.source ? <span style={{ color: "#64748b" }}>（{rel.source}）</span> : null}
                   </div>
                 ))}
@@ -1815,13 +1832,13 @@ export default function CoalMineAgent() {
           )}
 
           {risk.summary && (
-            <div style={{ whiteSpace: "pre-wrap", color: "#94a3b8" }}>
-              <span style={{ color: "#86efac" }}>风险摘要：</span>{risk.summary}
+            <div style={{ whiteSpace: "pre-wrap", color: "#475569" }}>
+              <span style={{ color: "#0f172a" }}>风险摘要：</span>{risk.summary}
             </div>
           )}
           {kgUsed.summary && (
-            <div style={{ whiteSpace: "pre-wrap", color: "#94a3b8" }}>
-              <span style={{ color: "#86efac" }}>图谱摘要：</span>{kgUsed.summary}
+            <div style={{ whiteSpace: "pre-wrap", color: "#475569" }}>
+              <span style={{ color: "#0f172a" }}>图谱摘要：</span>{kgUsed.summary}
             </div>
           )}
         </div>
@@ -1831,14 +1848,14 @@ export default function CoalMineAgent() {
 
   const renderLibraryEmpty = (title, hint, actionLabel, onAction, disabled = false) => (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem" }}>
-      <div style={{ width: "min(560px, 100%)", borderRadius: "18px", border: "1px solid rgba(74,222,128,0.14)", background: "rgba(255,255,255,0.03)", padding: "2rem", textAlign: "center", boxShadow: "0 18px 50px rgba(2,6,23,0.18)" }}>
-        <div style={{ fontSize: "1rem", fontWeight: 800, color: "#e2e8f0" }}>{title}</div>
-        <div style={{ marginTop: "0.55rem", fontSize: "0.78rem", lineHeight: 1.9, color: "#94a3b8" }}>{hint}</div>
+      <div style={{ width: "min(560px, 100%)", borderRadius: "18px", border: `1px solid ${UI.border}`, background: UI.cardBg, padding: "2rem", textAlign: "center", boxShadow: UI.shadow }}>
+        <div style={{ fontSize: "1rem", fontWeight: 800, color: UI.text }}>{title}</div>
+        <div style={{ marginTop: "0.55rem", fontSize: "0.78rem", lineHeight: 1.9, color: UI.subtle }}>{hint}</div>
         {onAction ? (
           <button
             onClick={onAction}
             disabled={disabled}
-            style={{ marginTop: "1rem", padding: "0.65rem 1rem", borderRadius: "10px", border: "1px dashed rgba(74,222,128,0.45)", background: "linear-gradient(135deg,rgba(74,222,128,0.15),rgba(34,211,238,0.08))", color: disabled ? "#4ade8060" : "#4ade80", cursor: disabled ? "not-allowed" : "pointer", fontWeight: 700 }}
+            style={{ marginTop: "1rem", padding: "0.65rem 1rem", borderRadius: "10px", border: `1px dashed ${UI.borderStrong}`, background: "rgba(56,189,248,0.10)", color: disabled ? "#94a3b8" : UI.text, cursor: disabled ? "not-allowed" : "pointer", fontWeight: 700 }}
           >
             {actionLabel}
           </button>
@@ -1855,7 +1872,7 @@ export default function CoalMineAgent() {
             {msg.role === "assistant" && (
               <div style={{ width: 32, height: 32, borderRadius: "8px", flexShrink: 0, background: "linear-gradient(135deg,#4ade80,#22d3ee)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.9rem", marginRight: "0.6rem", marginTop: "0.2rem", boxShadow: "0 0 10px rgba(74,222,128,0.3)" }}>⛏</div>
             )}
-            <div style={{ maxWidth: "76%", background: msg.role === "user" ? "linear-gradient(135deg,#1d4ed8,#1e40af)" : "rgba(255,255,255,0.05)", border: msg.role === "user" ? "1px solid rgba(59,130,246,0.4)" : "1px solid rgba(74,222,128,0.15)", borderRadius: msg.role === "user" ? "14px 4px 14px 14px" : "4px 14px 14px 14px", padding: "0.75rem 0.95rem", fontSize: "0.85rem", lineHeight: "1.7", backdropFilter: "blur(10px)", textAlign: "left" }}>
+            <div style={{ maxWidth: "76%", background: msg.role === "user" ? "linear-gradient(135deg,#3b82f6,#2563eb)" : UI.cardBg, border: msg.role === "user" ? "1px solid rgba(59,130,246,0.35)" : `1px solid ${UI.border}`, borderRadius: msg.role === "user" ? "14px 4px 14px 14px" : "4px 14px 14px 14px", padding: "0.75rem 0.95rem", fontSize: "0.85rem", lineHeight: "1.7", backdropFilter: "blur(10px)", textAlign: "left", color: msg.role === "user" ? "#ffffff" : UI.text, boxShadow: msg.role === "user" ? "none" : UI.shadow }}>
               {fmt(msg.content)}
               {msg.role === "assistant" && renderMetaPanel(msg.meta)}
               <div style={{ fontSize: "0.6rem", color: "#475569", marginTop: "0.3rem", textAlign: "right" }}>
@@ -1868,7 +1885,7 @@ export default function CoalMineAgent() {
         {loading && (
           <div style={{ display: "flex", alignItems: "flex-start", gap: "0.6rem", animation: "fadeUp 0.3s ease" }}>
             <div style={{ width: 32, height: 32, borderRadius: "8px", background: "linear-gradient(135deg,#4ade80,#22d3ee)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.9rem", boxShadow: "0 0 10px rgba(74,222,128,0.3)" }}>⛏</div>
-            <div style={{ padding: "0.75rem 0.95rem", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(74,222,128,0.15)", borderRadius: "4px 14px 14px 14px", fontSize: "0.82rem", color: "#94a3b8" }}>
+            <div style={{ padding: "0.75rem 0.95rem", background: UI.cardBg, border: `1px solid ${UI.border}`, borderRadius: "4px 14px 14px 14px", fontSize: "0.82rem", color: UI.subtle, boxShadow: UI.shadow }}>
               <span>多智能体协同推理中</span><span className="dots">...</span>
               {docs.length > 0 && <div style={{ fontSize: "0.63rem", color: "#4ade80", marginTop: "0.2rem" }}>📄 正在检索 {docs.length} 份规程文档</div>}
               <div style={{ marginTop: "0.35rem", display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
@@ -1886,9 +1903,9 @@ export default function CoalMineAgent() {
         <div style={{ display: "flex", gap: "0.38rem", flexWrap: "wrap" }}>
           {QUICK_QUESTIONS.map((q, i) => (
             <button key={i} onClick={() => sendMessage(q.text)} disabled={loading}
-              style={{ padding: "0.32rem 0.75rem", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(74,222,128,0.2)", borderRadius: "20px", color: "#94a3b8", fontSize: "0.7rem", cursor: "pointer", transition: "all 0.2s" }}
-              onMouseEnter={e => { e.currentTarget.style.background = "rgba(74,222,128,0.1)"; e.currentTarget.style.borderColor = "rgba(74,222,128,0.5)"; e.currentTarget.style.color = "#4ade80"; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor = "rgba(74,222,128,0.2)"; e.currentTarget.style.color = "#94a3b8"; }}
+              style={{ padding: "0.32rem 0.75rem", background: UI.cardBg, border: `1px solid ${UI.border}`, borderRadius: "20px", color: UI.subtle, fontSize: "0.7rem", cursor: "pointer", transition: "all 0.2s" }}
+              onMouseEnter={e => { e.currentTarget.style.background = "#e0f2fe"; e.currentTarget.style.borderColor = "rgba(56,189,248,0.55)"; e.currentTarget.style.color = UI.text; }}
+              onMouseLeave={e => { e.currentTarget.style.background = UI.cardBg; e.currentTarget.style.borderColor = UI.border; e.currentTarget.style.color = UI.subtle; }}
             >{q.icon} {q.text}</button>
           ))}
         </div>
@@ -1919,7 +1936,7 @@ export default function CoalMineAgent() {
             )}
           </div>
         )}
-        <div style={{ display: "flex", gap: "0.6rem", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(74,222,128,0.25)", borderRadius: "13px", padding: "0.4rem 0.4rem 0.4rem 0.85rem", backdropFilter: "blur(20px)", boxShadow: "0 0 25px rgba(74,222,128,0.05)" }}>
+        <div style={{ display: "flex", gap: "0.6rem", background: UI.cardBg, border: `1px solid ${UI.border}`, borderRadius: "13px", padding: "0.4rem 0.4rem 0.4rem 0.85rem", backdropFilter: "blur(20px)", boxShadow: UI.shadow }}>
           <button onClick={() => navigateToView(APP_VIEW_DOCUMENTS)} title="打开文档库" style={{ width: 34, height: 34, borderRadius: "7px", flexShrink: 0, alignSelf: "flex-end", background: "rgba(74,222,128,0.1)", border: "1px solid rgba(74,222,128,0.3)", color: "#4ade80", cursor: "pointer", fontSize: "0.95rem", display: "flex", alignItems: "center", justifyContent: "center" }}>📎</button>
           <button onClick={() => navigateToView(APP_VIEW_IMAGES)} title="打开图片库" style={{ width: 34, height: 34, borderRadius: "7px", flexShrink: 0, alignSelf: "flex-end", background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.3)", color: "#60a5fa", cursor: "pointer", fontSize: "0.95rem", display: "flex", alignItems: "center", justifyContent: "center" }}>📸</button>
           <button onClick={() => navigateToView(APP_VIEW_VIDEOS)} title="打开视频库" style={{ width: 34, height: 34, borderRadius: "7px", flexShrink: 0, alignSelf: "flex-end", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", color: "#f59e0b", cursor: "pointer", fontSize: "0.95rem", display: "flex", alignItems: "center", justifyContent: "center" }}>🎬</button>
@@ -1927,7 +1944,7 @@ export default function CoalMineAgent() {
           <textarea value={input} onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
             placeholder="描述灾害情况或输入应急问题（Shift+Enter换行）..." rows={2}
-            style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#e2e8f0", fontSize: "0.85rem", lineHeight: "1.6", resize: "none", fontFamily: "inherit" }} />
+            style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: UI.text, fontSize: "0.85rem", lineHeight: "1.6", resize: "none", fontFamily: "inherit" }} />
           <button onClick={() => sendMessage()} disabled={loading || !input.trim()}
             style={{ padding: "0.5rem 1.1rem", background: loading || !input.trim() ? "rgba(74,222,128,0.12)" : "linear-gradient(135deg,#4ade80,#22d3ee)", border: "none", borderRadius: "9px", color: loading || !input.trim() ? "#4ade8044" : "#0a0f1e", fontWeight: 700, fontSize: "0.8rem", cursor: loading || !input.trim() ? "not-allowed" : "pointer", transition: "all 0.2s", flexShrink: 0, alignSelf: "flex-end", boxShadow: !loading && input.trim() ? "0 0 16px rgba(74,222,128,0.4)" : "none" }}>
             {loading ? "推理中" : "发送 ↑"}
@@ -1941,17 +1958,17 @@ export default function CoalMineAgent() {
   );
 
   const renderPageShell = (title, subtitle, actions, content) => (
-    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", padding: "1.1rem 1.25rem", gap: "0.9rem" }}>
+    <div style={{ flex: 1, minHeight: 0, height: "100%", display: "flex", flexDirection: "column", padding: "1.1rem 1.25rem", gap: "0.9rem" }}>
       <div style={{ textAlign: "center" }}>
         <div>
-          <div style={{ fontSize: "1rem", fontWeight: 800, color: "#e2e8f0" }}>{title}</div>
-          <div style={{ marginTop: "0.18rem", fontSize: "0.72rem", lineHeight: 1.7, color: "#94a3b8" }}>{subtitle}</div>
+          <div style={{ fontSize: "1rem", fontWeight: 800, color: UI.text }}>{title}</div>
+          <div style={{ marginTop: "0.18rem", fontSize: "0.72rem", lineHeight: 1.7, color: UI.subtle }}>{subtitle}</div>
         </div>
         <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center", justifyContent: "center", marginTop: "0.75rem" }}>
           {actions}
         </div>
       </div>
-      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+      <div style={{ flex: 1, minHeight: 0, height: 0, display: "flex", flexDirection: "column" }}>
         {content}
       </div>
     </div>
@@ -1960,22 +1977,22 @@ export default function CoalMineAgent() {
   const renderDocumentsPage = () => renderPageShell(
     "文档库",
     "这里存放当前会话已入库的规程文档。上传后会进入向量检索，并参与知识图谱构建。",
-    <button onClick={() => fileInputRef.current?.click()} disabled={uploading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: "1px dashed rgba(74,222,128,0.45)", background: "linear-gradient(135deg,rgba(74,222,128,0.15),rgba(34,211,238,0.08))", color: uploading ? "#4ade8060" : "#4ade80", cursor: uploading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{uploading ? "解析中..." : "上传规程文档"}</button>,
+    <button onClick={() => fileInputRef.current?.click()} disabled={uploading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: `1px dashed ${UI.borderStrong}`, background: "rgba(56,189,248,0.10)", color: uploading ? UI.subtle : UI.text, cursor: uploading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{uploading ? "解析中..." : "上传规程文档"}</button>,
     docs.length === 0
       ? renderLibraryEmpty("当前文档库为空", "上传 PDF、DOCX 或 TXT 后，问答智能体会优先参考这些规程内容。", uploading ? "文档解析中..." : "上传规程文档", () => fileInputRef.current?.click(), uploading)
       : (
         <div style={{ display: "grid", gap: "0.65rem", overflowY: "auto", paddingRight: "0.2rem" }}>
           {docs.map((doc) => (
-            <div key={doc.document_id || doc.name} style={{ padding: "0.9rem 1rem", background: "rgba(74,222,128,0.06)", border: "1px solid rgba(74,222,128,0.16)", borderRadius: "14px", display: "flex", alignItems: "flex-start", gap: "0.7rem" }}>
-              <div style={{ width: 44, height: 44, borderRadius: "12px", background: "rgba(74,222,128,0.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.1rem", flexShrink: 0 }}>{fileIcon(doc.name || "")}</div>
+            <div key={doc.document_id || doc.name} style={{ padding: "0.9rem 1rem", background: UI.cardBg, border: `1px solid ${UI.border}`, borderRadius: "14px", display: "flex", alignItems: "flex-start", gap: "0.7rem", boxShadow: UI.shadow }}>
+              <div style={{ width: 44, height: 44, borderRadius: "12px", background: "#ecfeff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.1rem", flexShrink: 0 }}>{fileIcon(doc.name || "")}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: "0.88rem", fontWeight: 800, color: "#bbf7d0", wordBreak: "break-all" }}>{doc.name}</div>
-                <div style={{ marginTop: "0.28rem", fontSize: "0.7rem", color: "#94a3b8" }}>{doc.sizeMB} MB · {(doc.charCount || 0).toLocaleString()} 字符 · {doc.chunkCount || 0} 个检索块</div>
+                <div style={{ fontSize: "0.88rem", fontWeight: 800, color: UI.text, wordBreak: "break-all" }}>{doc.name}</div>
+                <div style={{ marginTop: "0.28rem", fontSize: "0.7rem", color: UI.subtle }}>{doc.sizeMB} MB · {(doc.charCount || 0).toLocaleString()} 字符 · {doc.chunkCount || 0} 个检索块</div>
                 {(doc.graphNodeCount || doc.graphRelationCount) ? (
                   <div style={{ marginTop: "0.25rem", fontSize: "0.68rem", color: "#67e8f9" }}>图谱节点 {doc.graphNodeCount || 0} · 关系 {doc.graphRelationCount || 0}</div>
                 ) : null}
               </div>
-              <button onClick={() => removeUploadedDocument(doc)} style={{ padding: "0.45rem 0.7rem", borderRadius: "8px", border: "1px solid rgba(248,113,113,0.16)", background: "rgba(239,68,68,0.08)", color: "#fca5a5", cursor: "pointer", fontSize: "0.72rem" }}>移除</button>
+              <button onClick={() => removeUploadedDocument(doc)} style={{ padding: "0.45rem 0.7rem", borderRadius: "8px", border: "1px solid rgba(248,113,113,0.24)", background: "#fff1f2", color: "#b91c1c", cursor: "pointer", fontSize: "0.72rem" }}>移除</button>
             </div>
           ))}
         </div>
@@ -1985,24 +2002,24 @@ export default function CoalMineAgent() {
   const renderImagesPage = () => renderPageShell(
     "图片库",
     "这里保存当前会话上传的现场图片。上传后会立即完成识别，并把摘要结果作为可参与问答的图像证据。",
-    <button onClick={() => imageInputRef.current?.click()} disabled={imageUploading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: "1px dashed rgba(59,130,246,0.45)", background: "linear-gradient(135deg,rgba(59,130,246,0.15),rgba(14,165,233,0.08))", color: imageUploading ? "#60a5fa60" : "#60a5fa", cursor: imageUploading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{imageUploading ? "上传中..." : "上传现场图片"}</button>,
+    <button onClick={() => imageInputRef.current?.click()} disabled={imageUploading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: `1px dashed ${UI.borderStrong}`, background: "#eff6ff", color: imageUploading ? UI.subtle : UI.text, cursor: imageUploading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{imageUploading ? "上传中..." : "上传现场图片"}</button>,
     images.length === 0
       ? renderLibraryEmpty("当前图片库为空", "上传 JPG、PNG 或 WEBP 后，问答链路会在发送前自动补充图片识别结果。", imageUploading ? "上传中..." : "上传现场图片", () => imageInputRef.current?.click(), imageUploading)
       : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: "0.75rem", overflowY: "auto", paddingRight: "0.2rem" }}>
           {images.map((img) => (
-            <div key={img.name} style={{ padding: "0.75rem", background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.18)", borderRadius: "16px" }}>
-              <div style={{ height: 150, borderRadius: "12px", background: "rgba(15,23,42,0.72)", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div key={img.name} style={{ padding: "0.75rem", background: UI.cardBg, border: `1px solid ${UI.border}`, borderRadius: "16px", boxShadow: UI.shadow }}>
+              <div style={{ height: 150, borderRadius: "12px", background: "#e2e8f0", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <img src={img.dataUrl} alt={img.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               </div>
-              <div style={{ marginTop: "0.6rem", fontSize: "0.8rem", fontWeight: 700, color: "#bfdbfe", wordBreak: "break-all" }}>{img.name}</div>
-              <div style={{ marginTop: "0.2rem", fontSize: "0.68rem", color: "#94a3b8" }}>{img.sizeMB} MB</div>
+              <div style={{ marginTop: "0.6rem", fontSize: "0.8rem", fontWeight: 700, color: UI.text, wordBreak: "break-all" }}>{img.name}</div>
+              <div style={{ marginTop: "0.2rem", fontSize: "0.68rem", color: UI.subtle }}>{img.sizeMB} MB</div>
               {img.summary_text ? (
-                <div style={{ marginTop: "0.35rem", fontSize: "0.68rem", lineHeight: 1.7, color: "#cbd5e1", whiteSpace: "pre-wrap" }}>
+                <div style={{ marginTop: "0.35rem", fontSize: "0.68rem", lineHeight: 1.7, color: UI.text, whiteSpace: "pre-wrap" }}>
                   {img.summary_text.split("\n").slice(0, 4).join("\n")}
                 </div>
               ) : null}
-              <button onClick={() => setImages(prev => prev.filter((item) => item.name !== img.name))} style={{ marginTop: "0.55rem", width: "100%", padding: "0.45rem 0.7rem", borderRadius: "8px", border: "1px solid rgba(148,163,184,0.16)", background: "rgba(255,255,255,0.04)", color: "#cbd5e1", cursor: "pointer", fontSize: "0.72rem" }}>移出图片库</button>
+              <button onClick={() => setImages(prev => prev.filter((item) => item.name !== img.name))} style={{ marginTop: "0.55rem", width: "100%", padding: "0.45rem 0.7rem", borderRadius: "8px", border: `1px solid ${UI.border}`, background: UI.softBg, color: UI.text, cursor: "pointer", fontSize: "0.72rem" }}>移出图片库</button>
             </div>
           ))}
         </div>
@@ -2068,25 +2085,25 @@ export default function CoalMineAgent() {
     "知识图谱库",
     "当前知识图谱按 session 合并构建。这里可以手动生成文档库对应图谱、上传三元组测试文件，并直接检索当前会话的图谱结果。",
     <>
-      <button onClick={handleGenerateKnowledgeGraph} disabled={docs.length === 0 || graphGenerating || graphBuildStatus.state === "running" || graphBuildStatus.state === "queued"} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: "1px dashed rgba(74,222,128,0.45)", background: "linear-gradient(135deg,rgba(74,222,128,0.15),rgba(34,211,238,0.08))", color: (docs.length === 0 || graphGenerating || graphBuildStatus.state === "running" || graphBuildStatus.state === "queued") ? "#4ade8060" : "#4ade80", cursor: (docs.length === 0 || graphGenerating || graphBuildStatus.state === "running" || graphBuildStatus.state === "queued") ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{graphGenerating ? "提交中..." : "生成知识图谱"}</button>
-      <button onClick={() => triplesInputRef.current?.click()} disabled={uploading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: "1px dashed rgba(34,211,238,0.45)", background: "linear-gradient(135deg,rgba(34,211,238,0.15),rgba(20,184,166,0.08))", color: uploading ? "#22d3ee60" : "#67e8f9", cursor: uploading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{uploading ? "导入中..." : "上传三元组 JSON"}</button>
-      <button onClick={() => loadKnowledgeGraph(graphKeyword)} disabled={graphLoading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: "1px solid rgba(34,211,238,0.26)", background: "rgba(34,211,238,0.08)", color: graphLoading ? "#67e8f960" : "#67e8f9", cursor: graphLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{graphLoading ? "加载中..." : "刷新图谱"}</button>
+      <button onClick={handleGenerateKnowledgeGraph} disabled={docs.length === 0 || graphGenerating || graphBuildStatus.state === "running" || graphBuildStatus.state === "queued"} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: `1px dashed ${UI.borderStrong}`, background: "#ecfeff", color: (docs.length === 0 || graphGenerating || graphBuildStatus.state === "running" || graphBuildStatus.state === "queued") ? UI.subtle : UI.text, cursor: (docs.length === 0 || graphGenerating || graphBuildStatus.state === "running" || graphBuildStatus.state === "queued") ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{graphGenerating ? "提交中..." : "生成知识图谱"}</button>
+      <button onClick={() => triplesInputRef.current?.click()} disabled={uploading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: `1px dashed ${UI.borderStrong}`, background: "#f8fafc", color: uploading ? UI.subtle : UI.text, cursor: uploading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{uploading ? "导入中..." : "上传三元组 JSON"}</button>
+      <button onClick={() => loadKnowledgeGraph(graphKeyword)} disabled={graphLoading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: `1px solid ${UI.borderStrong}`, background: "#ffffff", color: graphLoading ? UI.subtle : UI.text, cursor: graphLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{graphLoading ? "加载中..." : "刷新图谱"}</button>
     </>,
-    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: "0.8rem" }}>
+    <div style={{ flex: 1, minHeight: 0, height: "100%", display: "flex", flexDirection: "column", gap: "0.8rem" }}>
       <div style={{ display: "flex", gap: "0.55rem", flexWrap: "wrap", alignItems: "flex-start", alignContent: "flex-start" }}>
-        <span style={{ display: "inline-flex", alignItems: "center", whiteSpace: "nowrap", lineHeight: 1.2, padding: "0.18rem 0.5rem", borderRadius: "999px", background: "rgba(34,211,238,0.12)", border: "1px solid rgba(34,211,238,0.24)", color: "#67e8f9", fontSize: "0.66rem" }}>状态：{graphBuildStatus.state || "idle"}</span>
-        <span style={{ display: "inline-flex", alignItems: "center", whiteSpace: "nowrap", lineHeight: 1.2, padding: "0.18rem 0.5rem", borderRadius: "999px", background: "rgba(74,222,128,0.12)", border: "1px solid rgba(74,222,128,0.24)", color: "#86efac", fontSize: "0.66rem" }}>节点：{graphBuildStatus.node_count || graphData.stats?.node_count || 0}</span>
-        <span style={{ display: "inline-flex", alignItems: "center", whiteSpace: "nowrap", lineHeight: 1.2, padding: "0.18rem 0.5rem", borderRadius: "999px", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.24)", color: "#fbbf24", fontSize: "0.66rem" }}>关系：{graphBuildStatus.relation_count || graphData.stats?.relation_count || 0}</span>
-        <span style={{ display: "inline-flex", alignItems: "center", whiteSpace: "nowrap", lineHeight: 1.2, padding: "0.18rem 0.5rem", borderRadius: "999px", background: "rgba(148,163,184,0.10)", border: "1px solid rgba(148,163,184,0.18)", color: "#cbd5e1", fontSize: "0.66rem" }}>来源文档：{docs.length}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", whiteSpace: "nowrap", lineHeight: 1.2, padding: "0.18rem 0.5rem", borderRadius: "999px", background: "#eef2ff", border: "1px solid rgba(99,102,241,0.22)", color: UI.text, fontSize: "0.66rem", fontWeight: 700 }}>状态：{graphBuildStatus.state || "idle"}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", whiteSpace: "nowrap", lineHeight: 1.2, padding: "0.18rem 0.5rem", borderRadius: "999px", background: "#f0fdf4", border: "1px solid rgba(22,163,74,0.22)", color: UI.text, fontSize: "0.66rem", fontWeight: 700 }}>节点：{graphBuildStatus.node_count || graphData.stats?.node_count || 0}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", whiteSpace: "nowrap", lineHeight: 1.2, padding: "0.18rem 0.5rem", borderRadius: "999px", background: "#fff7ed", border: "1px solid rgba(217,119,6,0.22)", color: UI.text, fontSize: "0.66rem", fontWeight: 700 }}>关系：{graphBuildStatus.relation_count || graphData.stats?.relation_count || 0}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", whiteSpace: "nowrap", lineHeight: 1.2, padding: "0.18rem 0.5rem", borderRadius: "999px", background: "#f8fafc", border: "1px solid rgba(100,116,139,0.22)", color: UI.text, fontSize: "0.66rem", fontWeight: 700 }}>来源文档：{docs.length}</span>
       </div>
       {docs.length > 0 ? (
         <div style={{ display: "flex", gap: "0.32rem", flexWrap: "wrap", alignItems: "flex-start", alignContent: "flex-start" }}>
           {docs.map((doc) => (
-            <span key={doc.document_id || doc.name} style={{ display: "inline-flex", alignItems: "center", whiteSpace: "nowrap", lineHeight: 1.2, padding: "0.18rem 0.45rem", borderRadius: "999px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#cbd5e1", fontSize: "0.64rem" }}>{doc.name}</span>
+            <span key={doc.document_id || doc.name} style={{ display: "inline-flex", alignItems: "center", whiteSpace: "nowrap", lineHeight: 1.2, padding: "0.18rem 0.45rem", borderRadius: "999px", background: "#ffffff", border: `1px solid ${UI.border}`, color: UI.text, fontSize: "0.64rem" }}>{doc.name}</span>
           ))}
         </div>
       ) : null}
-      <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
+      <div style={{ flex: 1, minHeight: 0, height: 0, display: "flex" }}>
         {renderGraphDialog(true)}
       </div>
     </div>
@@ -2111,7 +2128,7 @@ export default function CoalMineAgent() {
   };
 
   return (
-    <div style={{ height: "100vh", background: "linear-gradient(135deg,#0a0f1e,#0d1b2a,#0a1628)", fontFamily: "'Noto Sans SC','PingFang SC',sans-serif", color: "#e2e8f0", display: "flex", flexDirection: "column" }}>
+    <div className="light-theme-app" style={{ height: "100vh", background: UI.appBg, fontFamily: "'Noto Sans SC','PingFang SC',sans-serif", color: UI.text, display: "flex", flexDirection: "column" }}>
 
       {/* Alert */}
       {alertLevel && (
@@ -2121,19 +2138,19 @@ export default function CoalMineAgent() {
       )}
 
       {/* Header */}
-      <div style={{ background: "rgba(255,255,255,0.03)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(74,222,128,0.2)", padding: "0.8rem 1.25rem", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, gap: "1rem", flexWrap: "wrap" }}>
+      <div style={{ background: UI.headerBg, backdropFilter: "blur(20px)", borderBottom: `1px solid ${UI.border}`, padding: "0.8rem 1.25rem", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, gap: "1rem", flexWrap: "wrap", boxShadow: "0 2px 12px rgba(15,23,42,0.04)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.8rem" }}>
           <div style={{ width: 40, height: 40, background: "linear-gradient(135deg,#4ade80,#22d3ee)", borderRadius: "9px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.2rem", boxShadow: "0 0 18px rgba(74,222,128,0.4)", flexShrink: 0 }}>⛏</div>
           <div>
             <div style={{ fontWeight: 800, fontSize: "0.95rem" }}>煤矿应急救援决策 AI 智能体</div>
-            <div style={{ fontSize: "0.68rem", color: "#64748b", marginTop: "0.1rem" }}>中国矿业大学 · 煤炭无人化开采数智技术全国重点实验室</div>
+            <div style={{ fontSize: "0.68rem", color: UI.subtle, marginTop: "0.1rem" }}>中国矿业大学 · 煤炭无人化开采数智技术全国重点实验室</div>
           </div>
         </div>
         <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
           {AGENTS.map(a => (
-            <div key={a.id} style={{ display: "flex", alignItems: "center", gap: "0.25rem", padding: "0.22rem 0.5rem", background: activeAgents.includes(a.id) ? `${a.color}20` : "rgba(255,255,255,0.04)", border: `1px solid ${activeAgents.includes(a.id) ? a.color : "rgba(255,255,255,0.08)"}`, borderRadius: "5px", fontSize: "0.65rem", transition: "all 0.3s", boxShadow: activeAgents.includes(a.id) ? `0 0 8px ${a.color}44` : "none" }}>
+            <div key={a.id} style={{ display: "flex", alignItems: "center", gap: "0.25rem", padding: "0.22rem 0.5rem", background: activeAgents.includes(a.id) ? `${a.color}20` : UI.cardBg, border: `1px solid ${activeAgents.includes(a.id) ? a.color : UI.border}`, borderRadius: "5px", fontSize: "0.65rem", transition: "all 0.3s", boxShadow: activeAgents.includes(a.id) ? `0 0 8px ${a.color}22` : "none" }}>
               <span style={{ width: 5, height: 5, borderRadius: "50%", background: activeAgents.includes(a.id) ? a.color : "#374151", animation: activeAgents.includes(a.id) ? "pulse 1s infinite" : "none", flexShrink: 0 }} />
-              <span style={{ color: activeAgents.includes(a.id) ? a.color : "#6b7280" }}>{a.icon} {a.name}</span>
+              <span style={{ color: UI.text }}>{a.icon} {a.name}</span>
             </div>
           ))}
         </div>
@@ -2147,13 +2164,13 @@ export default function CoalMineAgent() {
         <input ref={videoInputRef} type="file" accept="video/*" multiple onChange={handleVideoUpload} style={{ display: "none" }} />
         <input ref={sensorFileInputRef} type="file" accept=".json,application/json" multiple onChange={handleSensorFileUpload} style={{ display: "none" }} />
 
-        <div style={{ width: sidebarOpen ? 248 : 62, flexShrink: 0, background: "rgba(255,255,255,0.02)", borderRight: "1px solid rgba(74,222,128,0.1)", display: "flex", flexDirection: "column", transition: "width 0.3s ease", overflow: "hidden" }}>
-          <div style={{ padding: "0.75rem 0.7rem", borderBottom: "1px solid rgba(74,222,128,0.1)", display: "flex", alignItems: "center", gap: "0.55rem" }}>
-            <button onClick={() => setSidebarOpen(v => !v)} title="知识库导航" style={{ width: 38, height: 38, borderRadius: "10px", flexShrink: 0, background: sidebarOpen ? "rgba(74,222,128,0.15)" : "rgba(255,255,255,0.05)", border: "1px solid rgba(74,222,128,0.3)", color: "#4ade80", cursor: "pointer", fontSize: "1rem", display: "flex", alignItems: "center", justifyContent: "center" }}>📚</button>
+        <div style={{ width: sidebarOpen ? 248 : 62, flexShrink: 0, background: UI.sidebarBg, borderRight: `1px solid ${UI.border}`, display: "flex", flexDirection: "column", transition: "width 0.3s ease", overflow: "hidden" }}>
+          <div style={{ padding: "0.75rem 0.7rem", borderBottom: `1px solid ${UI.border}`, display: "flex", alignItems: "center", gap: "0.55rem" }}>
+            <button onClick={() => setSidebarOpen(v => !v)} title="知识库导航" style={{ width: 38, height: 38, borderRadius: "10px", flexShrink: 0, background: sidebarOpen ? "rgba(56,189,248,0.12)" : UI.cardBg, border: `1px solid ${UI.border}`, color: UI.text, cursor: "pointer", fontSize: "1rem", display: "flex", alignItems: "center", justifyContent: "center" }}>📚</button>
             {sidebarOpen && (
               <div>
-                <div style={{ fontSize: "0.78rem", fontWeight: 800, color: "#cbd5e1" }}>知识库导航</div>
-                <div style={{ fontSize: "0.64rem", color: "#64748b", marginTop: "0.12rem" }}>问答页为主页面，库页负责查看与上传</div>
+                <div style={{ fontSize: "0.78rem", fontWeight: 800, color: UI.text }}>知识库导航</div>
+                <div style={{ fontSize: "0.64rem", color: UI.subtle, marginTop: "0.12rem" }}>问答页为主页面，库页负责查看与上传</div>
               </div>
             )}
           </div>
@@ -2177,14 +2194,14 @@ export default function CoalMineAgent() {
                 <button
                   key={item.id}
                   onClick={clickHandler}
-                  style={{ width: "100%", marginBottom: "0.45rem", padding: sidebarOpen ? "0.72rem 0.78rem" : "0.72rem 0.4rem", borderRadius: "12px", background: active ? `${item.color}18` : "rgba(255,255,255,0.03)", border: `1px solid ${active ? item.color : "rgba(255,255,255,0.07)"}`, color: active ? item.color : "#94a3b8", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: sidebarOpen ? "space-between" : "center", gap: "0.55rem", textAlign: "left" }}
+                  style={{ width: "100%", marginBottom: "0.45rem", padding: sidebarOpen ? "0.72rem 0.78rem" : "0.72rem 0.4rem", borderRadius: "12px", background: active ? `${item.color}18` : UI.cardBg, border: `1px solid ${active ? item.color : UI.border}`, color: UI.text, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: sidebarOpen ? "space-between" : "center", gap: "0.55rem", textAlign: "left", boxShadow: active ? "0 8px 20px rgba(56,189,248,0.10)" : "none" }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: "0.55rem", minWidth: 0 }}>
                     <span style={{ fontSize: "1rem", flexShrink: 0 }}>{item.icon}</span>
                     {sidebarOpen && <span style={{ fontSize: "0.74rem", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.label}</span>}
                   </span>
                   {sidebarOpen && item.id !== APP_VIEW_CHAT && count > 0 ? (
-                    <span style={{ padding: "0.08rem 0.38rem", borderRadius: "999px", background: "rgba(15,23,42,0.55)", border: `1px solid ${item.color}55`, fontSize: "0.62rem", color: item.color, flexShrink: 0 }}>{count}</span>
+                    <span style={{ padding: "0.08rem 0.38rem", borderRadius: "999px", background: "#ffffff", border: `1px solid ${item.color}55`, fontSize: "0.62rem", color: UI.text, flexShrink: 0 }}>{count}</span>
                   ) : null}
                 </button>
               );
@@ -2198,23 +2215,23 @@ export default function CoalMineAgent() {
       </div>
 
       {sensorDialogOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(2,6,23,0.72)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300 }}>
-          <div style={{ width: "min(720px, 92vw)", background: "#0f172a", border: "1px solid rgba(168,85,247,0.28)", borderRadius: "12px", boxShadow: "0 18px 60px rgba(0,0,0,0.45)", padding: "1rem" }}>
+        <div style={{ position: "fixed", inset: 0, background: UI.overlay, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300 }}>
+          <div style={{ width: "min(720px, 92vw)", background: UI.cardBg, border: `1px solid ${UI.border}`, borderRadius: "12px", boxShadow: UI.shadow, padding: "1rem" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.8rem" }}>
               <div style={{ fontSize: "0.9rem", fontWeight: 800, color: "#d8b4fe" }}>传感器数据接入</div>
               <button onClick={() => setSensorDialogOpen(false)} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: "1rem" }}>×</button>
             </div>
-            <div style={{ fontSize: "0.68rem", color: "#94a3b8", lineHeight: 1.7, marginBottom: "0.6rem" }}>
+              <div style={{ fontSize: "0.68rem", color: UI.subtle, lineHeight: 1.7, marginBottom: "0.6rem" }}>
               在这里粘贴传感器 JSON 数组，提交后会进入当前会话，并参与风险识别和多智能体问答。
             </div>
             <textarea
               value={sensorInput}
               onChange={e => setSensorInput(e.target.value)}
               rows={14}
-              style={{ width: "100%", background: "rgba(15,23,42,0.9)", border: "1px solid rgba(168,85,247,0.2)", borderRadius: "10px", color: "#e2e8f0", fontSize: "0.75rem", lineHeight: 1.6, padding: "0.8rem", resize: "vertical", fontFamily: "Consolas, 'Courier New', monospace", outline: "none" }}
+              style={{ width: "100%", background: "#ffffff", border: `1px solid ${UI.border}`, borderRadius: "10px", color: UI.text, fontSize: "0.75rem", lineHeight: 1.6, padding: "0.8rem", resize: "vertical", fontFamily: "Consolas, 'Courier New', monospace", outline: "none" }}
             />
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.6rem", marginTop: "0.8rem" }}>
-              <button onClick={() => setSensorDialogOpen(false)} style={{ padding: "0.45rem 0.9rem", borderRadius: "8px", border: "1px solid rgba(148,163,184,0.2)", background: "rgba(255,255,255,0.04)", color: "#cbd5e1", cursor: "pointer" }}>取消</button>
+              <button onClick={() => setSensorDialogOpen(false)} style={{ padding: "0.45rem 0.9rem", borderRadius: "8px", border: `1px solid ${UI.border}`, background: UI.softBg, color: UI.text, cursor: "pointer" }}>取消</button>
               <button onClick={handleSensorSubmit} style={{ padding: "0.45rem 0.9rem", borderRadius: "8px", border: "none", background: "linear-gradient(135deg,#a855f7,#6366f1)", color: "#f8fafc", fontWeight: 700, cursor: "pointer" }}>接入数据</button>
             </div>
           </div>
