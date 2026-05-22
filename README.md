@@ -27,7 +27,7 @@ VITE_API_BASE_URL=http://127.0.0.1:5001 npm run dev
 
 ```bash
 pip install -r requirements.txt
-python pdf_parser.py
+python app.py
 ```
 
 运行前需要配置以下环境变量：
@@ -61,7 +61,7 @@ coal-mine-agent/
 │  ├─ config.py
 │  ├─ domain_schema.py
 │  ├─ knowledge_graph.py
-│  ├─ pdf_parser.py
+│  ├─ app.py
 │  ├─ requirements.txt
 │  ├─ retrieval.py
 │  └─ risk_fusion.py
@@ -73,7 +73,7 @@ coal-mine-agent/
 ## 核心模块说明
 
 - `src/App.jsx`：前端主界面，负责聊天、文档上传、图片上传和结果展示。
-- `server/pdf_parser.py`：Flask 主服务入口，提供文档上传、图片分析、聊天代理和多智能体接口。
+- `server/app.py`：Flask 主服务入口，提供文档上传、图片分析、聊天代理和多智能体接口。
 - `server/retrieval.py`：文档切块、向量索引和会话级检索。
 - `server/risk_fusion.py`：多源风险识别与风险等级生成。
 - `server/knowledge_graph.py`：轻量知识图谱抽取与摘要。

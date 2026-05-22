@@ -1,3 +1,10 @@
+# 后端总入口。
+# 这个文件把后端几条主链路都串在一起：
+# 1. 文档解析与上传；
+# 2. 图片 / 视频证据分析；
+# 3. 会话级检索与知识图谱接口；
+# 4. 传感器数据接入；
+# 5. 普通聊天与多智能体问答。
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import fitz  # PyMuPDF
@@ -36,6 +43,7 @@ from risk_fusion import build_risk_profile
 # LangChain Agent
 from agent import multi_agent_ask
 
+# 创建整个后端共用的 Flask 应用实例。
 app = Flask(__name__)
 
 # 更明确的CORS配置
@@ -48,6 +56,7 @@ CORS(
 
 
 def _graph_payload(graph):
+    # 统一整理图谱统计信息，避免每个接口都自己手工拼 node/relation 数量。
     stats = graph.get("stats") if isinstance(graph, dict) else {}
     return {
         "node_count": int((stats or {}).get("node_count") or len(graph.get("nodes", []))),
@@ -57,6 +66,7 @@ def _graph_payload(graph):
 
 
 def _rebuild_session_knowledge_graph(session_id):
+    # 用当前会话已经入库的检索片段重新构建知识图谱。
     chunks = list_session_chunks(session_id)
     graph = build_and_store_session_graph(session_id, chunks)
     return graph
@@ -96,6 +106,10 @@ def clean_text(text):
 
 
 def _clip_text(text, max_len):
+    # 对长文本做截断，主要用于：
+    # 1. 控制提示词长度；
+    # 2. 控制接口返回中的摘要长度；
+    # 3. 避免日志或前端面板被超长文本撑爆。
     text = str(text or "").strip()
     if len(text) <= max_len:
         return text
@@ -105,6 +119,8 @@ def _clip_text(text, max_len):
 
 
 def _normalize_history(history):
+    # 把前端传来的历史对话清洗成后端统一格式，
+    # 只保留 user/assistant 两类消息，并限制最大轮数。
     if not isinstance(history, list):
         return []
 
@@ -126,6 +142,8 @@ def _normalize_history(history):
 
 
 def _normalize_document_evidence(documents):
+    # 清洗文档证据，统一字段名、长度和来源类型，
+    # 让后面的多智能体流程不必关心前端字段是否有别名。
     if not isinstance(documents, list):
         return []
 
@@ -155,11 +173,13 @@ def _normalize_document_evidence(documents):
 
 
 def _normalize_image_evidence(images):
+    # 图片、视频命中帧在后端最终都按“图像证据”来处理，
+    # 这里负责把它们规整成统一结构。
     if not isinstance(images, list):
         return []
 
     normalized = []
-    for item in images[:config.AGENT_MAX_EVIDENCE_IMAGES]:
+    for item in images:
         if not isinstance(item, dict):
             continue
         summary = str(item.get("summary", "")).strip()
@@ -175,6 +195,7 @@ def _normalize_image_evidence(images):
 
 
 def _normalize_sensor_evidence(sensors):
+    # 传感器记录同样先做一遍规整，避免不同来源的字段不一致。
     if not isinstance(sensors, list):
         return []
 
@@ -208,6 +229,8 @@ def _normalize_sensor_evidence(sensors):
 
 
 def _normalize_agent_chat_request(data):
+    # agent-chat 是当前后端最核心的问答入口。
+    # 这里先把 query / history / evidence / options 一次性清洗干净。
     payload = data if isinstance(data, dict) else {}
     evidence = payload.get("evidence") if isinstance(payload.get("evidence"), dict) else {}
     options = payload.get("options") if isinstance(payload.get("options"), dict) else {}
@@ -223,6 +246,7 @@ def _normalize_agent_chat_request(data):
     }
 
 def _extract_pdf_text(file_storage):
+    # PDF 解析：提取全文，再走统一文本清洗流程。
     pdf_data = file_storage.read()
     doc = fitz.open(stream=pdf_data, filetype="pdf")
     full_text = ""
@@ -238,6 +262,7 @@ def _extract_pdf_text(file_storage):
 
 
 def _extract_docx_text(file_storage):
+    # DOCX 解析：按段落拼接。
     doc = DocxDocument(file_storage)
     text = "\n".join([para.text for para in doc.paragraphs])
     return {
@@ -247,6 +272,7 @@ def _extract_docx_text(file_storage):
 
 
 def _extract_plain_text(file_storage):
+    # TXT 解析：直接按 utf-8 读取，遇到异常字符则忽略。
     text = file_storage.read().decode('utf-8', errors='ignore')
     return {
         "text": text,
@@ -255,6 +281,7 @@ def _extract_plain_text(file_storage):
 
 
 def _extract_text_from_upload(file_storage):
+    # 根据文件后缀分发到具体的解析器。
     filename = str(getattr(file_storage, "filename", "") or "").lower()
     if filename.endswith('.pdf'):
         return _extract_pdf_text(file_storage)
@@ -266,6 +293,8 @@ def _extract_text_from_upload(file_storage):
 
 
 def _analyze_baidu_image_base64(img_base64, image_name="image"):
+    # 调用百度图像识别 API，传入 base64 图片，返回原始识别结果。
+    # 返回值示例：{"result": [{"keyword": "瓦斯", "score": 0.92}, ...]}
     image_data = _normalize_image_base64(img_base64)
 
     access_token = get_baidu_access_token()
@@ -283,12 +312,15 @@ def _analyze_baidu_image_base64(img_base64, image_name="image"):
     if "error_code" in result and result["error_code"] != 0:
         raise RuntimeError(result.get("error_msg", "Baidu API error"))
 
+    # 即使没识别出任何物体，也保证 result 字段存在，避免下游判空
     if "result" not in result:
         result["result"] = []
     return result
 
 
 def _extract_image_keywords(result, limit=3):
+    # 从百度 API 返回结果中提取关键词列表，去重，最多返回 limit 个。
+    # 兼容两种字段名：keyword（新）和 class_name（旧）。
     keywords = []
     items = result.get("result", []) if isinstance(result, dict) else []
     for item in items:
@@ -306,6 +338,8 @@ def _extract_image_keywords(result, limit=3):
 
 
 def _normalize_image_base64(img_base64):
+    # 去除 Data URL 前缀（如 "data:image/png;base64,"），只保留纯 base64 内容。
+    # 前端传图时可能有前缀，百度 API 要求纯 base64。
     image_data = str(img_base64 or "").strip()
     if not image_data:
         raise ValueError("Empty image data")
@@ -315,6 +349,8 @@ def _normalize_image_base64(img_base64):
 
 
 def _extract_openai_message_content(payload):
+    # 从 OpenAI 兼容 API 的响应中提取文本内容。
+    # 兼容两种 content 格式：{"content": "纯文本"} 或 {"content": [{"type":"text","text":"..."}]}（多模态返回）
     if not isinstance(payload, dict):
         return ""
     choices = payload.get("choices")
@@ -323,6 +359,7 @@ def _extract_openai_message_content(payload):
     message = choices[0].get("message") if isinstance(choices[0], dict) else {}
     content = message.get("content") if isinstance(message, dict) else ""
     if isinstance(content, list):
+        # 多模态模型返回 content 为数组，逐个拼接
         parts = []
         for item in content:
             if isinstance(item, dict):
@@ -336,6 +373,8 @@ def _extract_openai_message_content(payload):
 
 
 def _extract_json_block(raw_text):
+    # 视觉模型有时会把 JSON 包在 markdown 代码块里，
+    # 这里负责把真正的 JSON 片段剥出来。
     text = str(raw_text or "").strip()
     if not text:
         raise ValueError("视觉模型未返回内容。")
@@ -352,6 +391,8 @@ def _extract_json_block(raw_text):
 
 
 def _normalize_vision_payload(payload):
+    # 把视觉模型返回规范成系统内部统一结构：
+    # keywords / summary / risk_level
     if not isinstance(payload, dict):
         raise ValueError("视觉模型返回的 JSON 不是对象。")
 
@@ -382,6 +423,8 @@ def _normalize_vision_payload(payload):
 
 
 def _build_vision_prompt(image_name="image"):
+    # 给视觉模型一个固定输出格式的提示词；
+    # 文件名只是弱提示，真正判断仍应以画面内容为准。
     hint = str(image_name or "").strip()
     if not hint:
         return VISION_PROMPT_TEMPLATE
@@ -403,6 +446,7 @@ def _guess_image_mime_type(image_name="image"):
 
 
 def _analyze_openai_vision_base64(img_base64, image_name="image"):
+    # 走 OpenAI 兼容视觉接口分析图片。
     image_data = _normalize_image_base64(img_base64)
     prompt = _build_vision_prompt(image_name)
     mime_type = _guess_image_mime_type(image_name)
@@ -460,6 +504,8 @@ def _analyze_openai_vision_base64(img_base64, image_name="image"):
 
 
 def _analyze_image_base64(img_base64, image_name="image"):
+    # 图像分析统一入口：
+    # 根据配置决定走百度视觉还是 OpenAI 兼容视觉接口。
     provider = str(config.VISION_PROVIDER or "baidu").strip().lower()
     if provider == "baidu":
         baidu_result = _analyze_baidu_image_base64(img_base64, image_name)
@@ -477,6 +523,7 @@ def _analyze_image_base64(img_base64, image_name="image"):
 
 
 def _load_cv2():
+    # 视频分析依赖 OpenCV；如果没装，直接抛出清晰错误。
     try:
         import cv2
     except Exception as exc:
@@ -497,6 +544,7 @@ def _resize_video_frame(frame, cv2):
 
 
 def _sample_video_positions(total_frames, fps, max_frames):
+    # 按固定时间间隔抽帧，尽量覆盖整段视频，而不是只看前面几帧。
     if total_frames <= 0:
         return [0]
 
@@ -532,6 +580,7 @@ def _format_video_timestamp(seconds):
 
 
 def _extract_video_frames(video_path):
+    # 抽取视频关键帧，并把每一帧转成 base64 图片供视觉模型复用。
     cv2 = _load_cv2()
     capture = cv2.VideoCapture(str(video_path))
     if not capture.isOpened():
@@ -576,6 +625,10 @@ def _extract_video_frames(video_path):
 
 
 def _build_video_analysis_response(video_name, extracted, frame_reports):
+    # 把逐帧识别结果整理成：
+    # 1. 摘要文本；
+    # 2. 关键片段 evidence；
+    # 3. 前端视频库需要的统计字段。
     keywords = []
     evidence = []
     detail_lines = []

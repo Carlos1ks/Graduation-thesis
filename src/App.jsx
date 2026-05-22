@@ -1,6 +1,14 @@
+// 前端主入口文件。
+// 这个文件主要包含四类内容：
+// 1. 与后端通信的接口封装；
+// 2. 文档/图片/视频/传感器/图谱等会话资源的状态管理；
+// 3. 图谱展示相关的辅助函数；
+// 4. 整个页面的主 React 组件。
 import { useState, useRef, useEffect, useMemo } from "react";
 import ForceGraph2D from "react-force-graph-2d";
 
+// 前端统一维护的后端接口地址。
+// 这样查某个按钮或某个功能走的是哪个后端接口时，会更直观。
 const BACKEND_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const CHAT_API_URL = `${BACKEND_BASE_URL}/api/agent-chat`;
 const DOCUMENT_LIST_API_URL = `${BACKEND_BASE_URL}/api/documents/list`;
@@ -32,10 +40,14 @@ const LIBRARY_VIEW_SET = new Set([
 ]);
 
 function createSessionId() {
+  // 为当前浏览器标签页生成一个临时 session_id。
+  // 后端的文档库、图谱、传感器和聊天记忆都是按这个会话号隔离的。
   return `session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function getInitialSessionId() {
+  // 当前实现采用“每次刷新页面都开新会话”的策略，
+  // 所以这里会主动丢掉旧 session_id，避免把上次上传的知识混进来。
   const next = createSessionId();
   if (typeof window !== "undefined") {
     try {
@@ -45,6 +57,7 @@ function getInitialSessionId() {
   return next;
 }
 
+// 快捷问题：主要用于演示和快速切换典型应急场景。
 const QUICK_QUESTIONS = [
   { icon: "💨", text: "瓦斯浓度超标如何处置？" },
   { icon: "🔥", text: "井下火灾应急预案流程" },
@@ -54,6 +67,7 @@ const QUICK_QUESTIONS = [
   { icon: "🛤️", text: "灾后逃生通道如何规划？" },
 ];
 
+// 前端展示用的多智能体角色标签。
 const AGENTS = [
   { id: "knowledge", name: "知识图谱智能体", icon: "🧠", color: "#4ade80" },
   { id: "perception", name: "态势感知智能体", icon: "📡", color: "#60a5fa" },
@@ -61,6 +75,7 @@ const AGENTS = [
   { id: "coordination", name: "协同指挥智能体", icon: "🎯", color: "#f472b6" },
 ];
 
+// 左侧知识库导航项。这里的“库”都是当前会话私有的。
 const LIBRARY_NAV_ITEMS = [
   { id: APP_VIEW_CHAT, label: "问答窗口", icon: "💬", color: "#4ade80" },
   { id: APP_VIEW_DOCUMENTS, label: "文档库", icon: "📄", color: "#22d3ee" },
@@ -70,6 +85,8 @@ const LIBRARY_NAV_ITEMS = [
   { id: APP_VIEW_GRAPH, label: "知识图谱库", icon: "🧠", color: "#67e8f9" },
 ];
 
+// 统一的界面视觉变量。因为本项目大量使用内联样式，
+// 所以把常用颜色/阴影集中在这里便于统一调整。
 const UI = {
   appBg: "linear-gradient(180deg,#f9fbff 0%,#f1f5f9 52%,#e2e8f0 100%)",
   headerBg: "rgba(255,255,255,0.96)",
@@ -88,6 +105,7 @@ const UI = {
 };
 
 function hashForView(view) {
+  // 把当前页面视图同步到 URL hash，方便刷新后恢复当前位置。
   if (view === APP_VIEW_CHAT) {
     return "#/chat";
   }
@@ -95,6 +113,7 @@ function hashForView(view) {
 }
 
 function parseViewFromHash(hash) {
+  // 从 URL hash 解析出当前应该显示的页面。
   const normalized = String(hash || "").replace(/^#\/?/, "").trim().toLowerCase();
   if (!normalized || normalized === "chat") {
     return APP_VIEW_CHAT;
@@ -104,6 +123,8 @@ function parseViewFromHash(hash) {
 }
 
 async function uploadDocumentToBackend(file, sessionId) {
+  // 文档上传：
+  // 把 PDF/DOCX/TXT 交给后端入库，后端会完成解析、切块和向量索引。
   const formData = new FormData();
   formData.append("file", file);
   formData.append("session_id", sessionId);
@@ -120,6 +141,8 @@ async function uploadDocumentToBackend(file, sessionId) {
 }
 
 async function removeDocumentFromBackend(documentId, sessionId) {
+  // 从当前会话文档库里删除一个文档，
+  // 同时后端会把对应的检索索引一起更新掉。
   const response = await fetch(DOCUMENT_REMOVE_API_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -135,6 +158,7 @@ async function removeDocumentFromBackend(documentId, sessionId) {
 }
 
 async function fetchDocumentsFromBackend(sessionId) {
+  // 获取当前会话下已经上传并入库的文档列表。
   const params = new URLSearchParams({ session_id: sessionId });
   const response = await fetch(`${DOCUMENT_LIST_API_URL}?${params.toString()}`);
   const result = await response.json().catch(() => ({}));
@@ -145,6 +169,7 @@ async function fetchDocumentsFromBackend(sessionId) {
 }
 
 async function uploadTriplesToBackend(file, sessionId) {
+  // 上传外部三元组 JSON，直接写入当前会话的知识图谱。
   const formData = new FormData();
   formData.append("file", file);
   formData.append("session_id", sessionId);
@@ -161,6 +186,8 @@ async function uploadTriplesToBackend(file, sessionId) {
 }
 
 async function uploadVideoToBackend(file, sessionId) {
+  // 视频上传：
+  // 后端会抽帧、识别命中帧，再把结果转成可以参与问答的图像证据。
   const formData = new FormData();
   formData.append("file", file);
   formData.append("session_id", sessionId);
@@ -177,6 +204,8 @@ async function uploadVideoToBackend(file, sessionId) {
 }
 
 async function pushSensorsToBackend(records, sessionId) {
+  // 批量推送传感器记录到当前会话，
+  // 让风险识别和问答链路都能使用这些实时数据。
   const response = await fetch(SENSOR_PUSH_API_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -193,6 +222,7 @@ async function pushSensorsToBackend(records, sessionId) {
 }
 
 async function fetchSensorsFromBackend(sessionId) {
+  // 拉取当前会话最新的传感器状态。
   const params = new URLSearchParams({ session_id: sessionId });
   const response = await fetch(`${SENSOR_LATEST_API_URL}?${params.toString()}`);
   const result = await response.json().catch(() => ({}));
@@ -203,6 +233,7 @@ async function fetchSensorsFromBackend(sessionId) {
 }
 
 async function clearSensorsFromBackend(sessionId) {
+  // 清空当前会话缓存的传感器数据。
   const response = await fetch(SENSOR_CLEAR_API_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -255,6 +286,7 @@ async function fetchKnowledgeGraphStatus(sessionId) {
 }
 
 async function rebuildKnowledgeGraph(sessionId) {
+  // 触发后端重新为当前会话构建知识图谱。
   const response = await fetch(KNOWLEDGE_GRAPH_REBUILD_API_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -268,6 +300,8 @@ async function rebuildKnowledgeGraph(sessionId) {
 }
 
 function compactKnowledgeGraphForView(nodes, links) {
+  // 图谱接口返回的数据里，节点和边有时会带冗余引用。
+  // 这里先整理成“前端画图真正需要的最小结构”。
   const visibleNodes = Array.isArray(nodes) ? nodes : [];
   const visibleUids = new Set(visibleNodes.map(node => node.uid));
   const visibleLinks = (Array.isArray(links) ? links : []).filter(link => {
@@ -279,10 +313,12 @@ function compactKnowledgeGraphForView(nodes, links) {
 }
 
 function emptyGraphData() {
+  // 图谱页的空状态对象，避免组件里到处写判空逻辑。
   return { nodes: [], links: [], stats: {}, centerUid: "", matchedUids: [] };
 }
 
 function graphNodeDisplayLabel(node) {
+  // 节点展示时优先用中文标签；没有中文时再退回 id / name。
   const candidates = [
     node?.label,
     ...(Array.isArray(node?.aliases) ? node.aliases : []),
@@ -311,6 +347,8 @@ function stripGraphFocusNode(node) {
 }
 
 function graphNodeMatchScore(node, keyword) {
+  // 给本地图谱搜索做一个很轻量的匹配打分：
+  // 完全相等 > 前缀命中 > 包含命中。
   const text = normalizeGraphSearchText(keyword);
   if (!text) return 99;
   const fields = [
@@ -326,6 +364,7 @@ function graphNodeMatchScore(node, keyword) {
 }
 
 function clearGraphFocus(data) {
+  // 取消图谱局部聚焦，恢复完整视图。
   const nodes = (Array.isArray(data?.nodes) ? data.nodes : []).map(node => ({
     ...stripGraphFocusNode(node),
     isCenter: false,
@@ -349,6 +388,10 @@ function clearGraphFocus(data) {
 }
 
 function focusGraphLocally(data, keyword, layoutByUid = new Map()) {
+  // 在已经加载到前端的图谱上做“本地聚焦搜索”。
+  // 目的有两个：
+  // 1. 减少频繁请求后端；
+  // 2. 让搜索框输入后的反馈更及时。
   const text = normalizeGraphSearchText(keyword);
   if (!text) {
     return data?.nodes?.length ? clearGraphFocus(data) : null;
@@ -412,6 +455,7 @@ function focusGraphLocally(data, keyword, layoutByUid = new Map()) {
 }
 
 function graphFocusPoint(graphData) {
+  // 计算当前匹配节点的大致中心点，方便图谱视角自动移动过去。
   const nodes = Array.isArray(graphData?.nodes) ? graphData.nodes : [];
   if (!nodes.length) return null;
   const matched = new Set([
@@ -437,6 +481,7 @@ function graphFocusPoint(graphData) {
 }
 
 function graphPayloadForView(data, extra = {}) {
+  // 把后端图谱结果转换成前端 ForceGraph 更容易消费的结构。
   const compactGraph = compactKnowledgeGraphForView(data?.nodes, data?.links || data?.relations);
   const centerUid = data?.center_uid || extra.centerUid || "";
   const matchedUids = new Set([...(Array.isArray(data?.matched_uids) ? data.matched_uids : []), centerUid].filter(Boolean));
@@ -474,6 +519,7 @@ function graphPayloadForView(data, extra = {}) {
 }
 
 function dedupeGraphLinks(links) {
+  // 有些关系在视图里可能重复出现，这里去重并统计重复次数。
   const grouped = new Map();
   for (const link of Array.isArray(links) ? links : []) {
     if (!link?.source || !link?.target || !link?.relation) continue;
@@ -488,7 +534,43 @@ function dedupeGraphLinks(links) {
   return Array.from(grouped.values());
 }
 
+function getVideoSummaryPreview(summaryText) {
+  // 从后端的视频分析摘要里提取“适合卡片展示的前几行概览”。
+  return String(summaryText || "")
+    .split("\n")
+    .map(line => line.trim())
+    .filter(line => line && line !== "关键片段：" && !line.startsWith("- "))
+    .slice(0, 3);
+}
+
+function getVideoKeyClips(video) {
+  // 优先从结构化 evidence 中提取关键片段；
+  // 如果 evidence 不存在，再从 summary_text 的项目符号行兜底解析。
+  if (Array.isArray(video?.evidence) && video.evidence.length > 0) {
+    return video.evidence
+      .slice(0, 6)
+      .map((item, index) => ({
+        id: `${video.name || "video"}-clip-${index}`,
+        label: item.timestamp_s != null ? `${Number(item.timestamp_s).toFixed(1)}s` : `片段 ${index + 1}`,
+        summary: String(item.summary || "").trim() || "未识别到明显异常",
+      }));
+  }
+
+  return String(video?.summary_text || "")
+    .split("\n")
+    .map(line => line.trim())
+    .filter(line => line.startsWith("- "))
+    .slice(0, 6)
+    .map((line, index) => ({
+      id: `${video?.name || "video"}-summary-clip-${index}`,
+      label: `片段 ${index + 1}`,
+      summary: line.replace(/^-+\s*/, "").trim(),
+    }));
+}
+
 export default function CoalMineAgent() {
+  // 整个前端应用的根组件。
+  // 这里集中管理聊天记录、知识库资源、图谱状态以及各类弹窗/上传流程。
   const [messages, setMessages] = useState([{
     role: "assistant",
     content: "您好！我是**煤矿应急救援决策知识问答AI智能体**，由中国矿业大学研发。\n\n可为您提供：\n- ⚡ **实时应急决策支持**\n- 🔍 **灾害风险智能识别**\n- 📋 **救援策略精准生成**\n- 🤝 **跨部门协同指挥建议**\n\n💡 左侧已切换为知识库导航。您可以进入文档库、图片库、视频库、传感器数据库和知识图谱库管理当前会话的知识资源，然后回到问答页继续提问。",
@@ -536,6 +618,7 @@ export default function CoalMineAgent() {
   const graphViewActive = currentView === APP_VIEW_GRAPH;
 
   const navigateToView = (nextView) => {
+    // 切换左侧导航页时，同时更新 URL hash 和 React 状态。
     const normalized = LIBRARY_VIEW_SET.has(nextView) ? nextView : APP_VIEW_CHAT;
     const nextHash = hashForView(normalized);
     if (typeof window !== "undefined" && window.location.hash !== nextHash) {
@@ -545,10 +628,12 @@ export default function CoalMineAgent() {
   };
 
   useEffect(() => {
+    // 每次消息变化后，把聊天窗口滚动到底部。
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   useEffect(() => {
+    // 监听浏览器 hash 变化，让刷新和前进后退也能同步页面视图。
     if (typeof window === "undefined") return undefined;
     const syncViewFromHash = () => {
       setCurrentView(parseViewFromHash(window.location.hash));
@@ -559,6 +644,7 @@ export default function CoalMineAgent() {
   }, []);
 
   useEffect(() => {
+    // 页面初始化时，从后端恢复当前会话已有的资源和图谱状态。
     let active = true;
     fetchDocumentsFromBackend(sessionIdRef.current)
       .then((result) => {
@@ -613,6 +699,7 @@ export default function CoalMineAgent() {
   }, [graphOpen]);
 
   useEffect(() => {
+    // 图谱构建进行中时，定时轮询构建状态。
     if (!["running", "queued"].includes(graphBuildStatus.state)) return undefined;
     const timer = setInterval(async () => {
       try {
@@ -646,6 +733,7 @@ export default function CoalMineAgent() {
   }, [graphBuildStatus.state]);
 
   useEffect(() => {
+    // 进入文档库页时，再同步一次文档列表。
     if (currentView !== APP_VIEW_DOCUMENTS) return;
     let active = true;
     fetchDocumentsFromBackend(sessionIdRef.current)
@@ -673,6 +761,7 @@ export default function CoalMineAgent() {
   }, [currentView]);
 
   useEffect(() => {
+    // 进入传感器页时，再同步一次最新传感器状态。
     if (currentView !== APP_VIEW_SENSORS) return;
     let active = true;
     fetchSensorsFromBackend(sessionIdRef.current)
@@ -685,6 +774,7 @@ export default function CoalMineAgent() {
   }, [currentView]);
 
   useEffect(() => {
+    // 图谱页第一次打开且图谱已构建完成时，自动加载图谱数据。
     if (!graphViewActive) return;
     if (graphBuildStatus.state !== "completed") return;
     if (graphLoading) return;
@@ -708,6 +798,8 @@ export default function CoalMineAgent() {
   };
 
   const handleUpload = async (e) => {
+    // 处理规程文档上传。
+    // 上传成功后会同步更新文档库列表和聊天区提示消息。
     const files = Array.from(e.target.files);
     if (!files.length) return;
     setUploading(true);
@@ -757,6 +849,7 @@ export default function CoalMineAgent() {
 
   // 处理图片上传
   const handleTriplesUpload = async (e) => {
+    // 处理三元组 JSON 上传，直接补充知识图谱。
     const files = Array.from(e.target.files);
     if (!files.length) return;
     setUploading(true);
@@ -800,6 +893,7 @@ export default function CoalMineAgent() {
   };
 
   const handleGenerateKnowledgeGraph = async () => {
+    // 手动触发知识图谱重建。真正的构建过程在后端异步完成。
     if (docs.length === 0 || graphGenerating || ["running", "queued"].includes(graphBuildStatus.state)) {
       return;
     }
@@ -836,6 +930,7 @@ export default function CoalMineAgent() {
   };
 
   const analyzeSingleUploadedImage = async (base64, imageName) => {
+    // 上传图片时先做单张分析，把结果缓存下来，后面问答可以直接复用。
     const resp = await fetch(`${BACKEND_BASE_URL}/api/image-analyze`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -923,6 +1018,7 @@ export default function CoalMineAgent() {
 
   // 处理视频上传并自动分析
   const handleVideoUpload = async (e) => {
+    // 处理视频上传，后端会返回抽帧分析后的摘要和关键片段。
     const files = Array.from(e.target.files);
     if (!files.length) return;
     setVideoUploading(true);
@@ -971,6 +1067,7 @@ export default function CoalMineAgent() {
   };
 
   const applySensorRecords = async (records) => {
+    // 把传感器记录推到后端，并用后端返回的最新状态覆盖前端本地缓存。
     const result = await pushSensorsToBackend(records, sessionIdRef.current);
     const latestRecords = Array.isArray(result.latest_records) ? result.latest_records : [];
     setSensors(latestRecords);
@@ -983,6 +1080,7 @@ export default function CoalMineAgent() {
   };
 
   const handleSensorSubmit = async () => {
+    // 处理手工粘贴 JSON 的传感器录入。
     try {
       const records = JSON.parse(sensorInput);
       if (!Array.isArray(records) || records.length === 0) {
@@ -1000,6 +1098,7 @@ export default function CoalMineAgent() {
   };
 
   const handleSensorFileUpload = async (e) => {
+    // 处理传感器 JSON 文件导入。
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
     for (const file of files) {
@@ -1022,6 +1121,7 @@ export default function CoalMineAgent() {
   };
 
   const handleSensorClear = async () => {
+    // 清空当前会话中的传感器数据。
     try {
       await clearSensorsFromBackend(sessionIdRef.current);
       setSensors([]);
@@ -1041,6 +1141,8 @@ export default function CoalMineAgent() {
 
   // 汇总图片识别结果，优先复用上传阶段已缓存的摘要
   const analyzeImageEvidence = async () => {
+    // 汇总当前会话所有图片证据。
+    // 如果上传阶段已经分析过，就优先复用缓存，避免重复请求。
     if (images.length === 0) return { summaryText: "", evidence: [], usedCached: false };
 
     try {
@@ -1058,7 +1160,7 @@ export default function CoalMineAgent() {
 
       let lines = [];
       let evidence = [];
-      for (const img of images.slice(0, 2)) {
+      for (const img of images.slice(0, 6)) {
         try {
           const resp = await fetch(`${BACKEND_BASE_URL}/api/image-analyze`, {
             method: "POST",
@@ -1101,6 +1203,8 @@ export default function CoalMineAgent() {
   };
 
   const buildConversationHistory = (messageList) => {
+    // 从消息列表里提取真正需要发给后端的历史对话，
+    // 过滤掉上传提示、分析提示这类不适合当上下文的系统消息。
     return messageList
       .filter(m => ["user", "assistant"].includes(m.role))
       .filter(m => {
@@ -1112,6 +1216,11 @@ export default function CoalMineAgent() {
   };
 
   const sendMessage = async (text) => {
+    // 前端问答主链路：
+    // 1. 先写入用户消息；
+    // 2. 再整理图片/视频/传感器/文档等证据；
+    // 3. 组装请求发给后端；
+    // 4. 最后把回答和解释信息渲染出来。
     const userText = text || input.trim();
     if (!userText || loading) return;
     const level = detectAlertLevel(userText);
@@ -2047,9 +2156,28 @@ export default function CoalMineAgent() {
                     ))}
                   </div>
                 ) : null}
-                {video.summary_text ? (
-                  <div style={{ marginTop: "0.38rem", fontSize: "0.68rem", lineHeight: 1.7, color: "#cbd5e1", whiteSpace: "pre-wrap" }}>{video.summary_text.split("\n").slice(0, 4).join("\n")}</div>
-                ) : null}
+                {(() => {
+                  const summaryPreview = getVideoSummaryPreview(video.summary_text);
+                  const keyClips = getVideoKeyClips(video);
+                  return (
+                    <>
+                      {summaryPreview.length ? (
+                        <div style={{ marginTop: "0.38rem", fontSize: "0.68rem", lineHeight: 1.7, color: "#cbd5e1", whiteSpace: "pre-wrap" }}>{summaryPreview.join("\n")}</div>
+                      ) : null}
+                      {keyClips.length ? (
+                        <div style={{ marginTop: "0.48rem", display: "grid", gap: "0.35rem" }}>
+                          <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "#fcd34d" }}>关键片段</div>
+                          {keyClips.map((clip) => (
+                            <div key={clip.id} style={{ padding: "0.45rem 0.55rem", borderRadius: "10px", background: "rgba(15,23,42,0.34)", border: "1px solid rgba(245,158,11,0.14)", display: "grid", gap: "0.16rem" }}>
+                              <div style={{ fontSize: "0.62rem", color: "#fbbf24", fontWeight: 700 }}>{clip.label}</div>
+                              <div style={{ fontSize: "0.66rem", color: "#e2e8f0", lineHeight: 1.55 }}>{clip.summary}</div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </>
+                  );
+                })()}
               </div>
               <button onClick={() => setVideos(prev => prev.filter((item) => item.name !== video.name))} style={{ padding: "0.45rem 0.7rem", borderRadius: "8px", border: "1px solid rgba(148,163,184,0.16)", background: "rgba(255,255,255,0.04)", color: "#cbd5e1", cursor: "pointer", fontSize: "0.72rem", alignSelf: "flex-start" }}>移出视频库</button>
             </div>

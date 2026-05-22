@@ -1,3 +1,6 @@
+# 会话级检索层。
+# 这个模块负责把上传的规程文本切成可检索片段，
+# 再在问答开始前用多种信号对证据进行排序。
 import hashlib
 import math
 import re
@@ -14,6 +17,7 @@ _ARTICLE_LABEL_PATTERN = re.compile(r"第[一二三四五六七八九十百千�
 _SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[。；！？])")
 _HASH_EMBEDDING_DIM = 384
 
+# 每个会话各自维护自己的文档、分块和向量索引。
 _SESSION_RAG_STORES: Dict[str, Dict[str, Any]] = {}
 _STORE_LOCK = RLock()
 _MODEL_LOCK = RLock()
@@ -68,6 +72,7 @@ _EXACT_PRIORITY_TERMS = [
 
 
 class _HashingEmbedder:
+    # 当 sentence-transformers 不可用时，退化使用的简易向量器。
     def __init__(self, dimension: int = _HASH_EMBEDDING_DIM):
         self.dimension = max(64, int(dimension))
 
@@ -110,6 +115,8 @@ def _get_session_id(session_id: Optional[str]) -> str:
 
 
 def _ensure_dependencies() -> Tuple[Any, Any, Any]:
+    # 只在真正需要时才加载 numpy / faiss / 向量模型，
+    # 避免导入阶段过重，也方便缺依赖时优雅降级。
     global _np, _faiss, _embedder
     with _MODEL_LOCK:
         if _np is not None and _faiss is not None and _embedder is not None:
@@ -287,6 +294,7 @@ def _merge_sentences_by_semantics(sentences: List[str], max_chunk_size: int, ove
 
 
 def chunk_text(text: str, chunk_size: Optional[int] = None, chunk_overlap: Optional[int] = None) -> List[Dict[str, str]]:
+    # 先优先按规程条文边界切，再把过长条文拆成更平滑的语义块。
     normalized = _normalize_text(text)
     if not normalized:
         return []
@@ -388,6 +396,7 @@ def list_session_chunks(session_id: Optional[str]) -> List[Dict[str, Any]]:
 
 
 def ingest_document(session_id: Optional[str], file_name: str, text: str) -> Dict[str, Any]:
+    # 把单个上传文档切块、向量化，并合并进当前会话的检索库。
     if not config.RAG_ENABLED:
         raise RuntimeError("后端向量检索已关闭。")
 
@@ -479,6 +488,8 @@ def retrieve_relevant_chunks(
     risk_types: Optional[List[str]] = None,
     risk_signals: Optional[List[Dict[str, str]]] = None,
 ) -> List[Dict[str, Any]]:
+    # 问答前最核心的证据召回入口。
+    # 排序不是只看向量相似度，还会综合图谱、关键词和风险一致性信号。
     if not config.RAG_ENABLED:
         return []
 

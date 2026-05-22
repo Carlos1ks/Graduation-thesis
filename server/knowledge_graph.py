@@ -1,4 +1,10 @@
 """LLM triple extraction -> Neo4j graph storage and query helpers."""
+# 知识图谱层。
+# 主要职责有四个：
+# 1. 从规程文本里抽取轻量三元组；
+# 2. 把三元组标准化并合并成会话级图谱；
+# 3. 在 Neo4j 中存储和查询图谱；
+# 4. 为检索和问答提供图谱摘要证据。
 from __future__ import annotations
 
 import json
@@ -26,6 +32,7 @@ _DRIVER_LOCK = RLock()
 _TASK_LOCK = RLock()
 _BUILD_EXECUTOR = ThreadPoolExecutor(max_workers=1)
 _GRAPH_BUILD_STATUS: Dict[str, Dict[str, object]] = {}
+# 图谱构建进度按会话维护，方便前端轮询显示状态。
 _GRAPH_BUILD_FUTURES: Dict[str, Future] = {}
 _STATUS_DIR = Path(__file__).resolve().parent / ".graph_status"
 _ARTICLE_SPLIT_PATTERN = re.compile(r"(?=第[一二三四五六七八九十百千万零两\d]+条(?:\s|$))")

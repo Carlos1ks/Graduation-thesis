@@ -24,6 +24,34 @@ function Get-PortOwners {
     @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique)
 }
 
+function Stop-PortOwners {
+    param(
+        [int]$Port,
+        [string]$Name
+    )
+
+    $owners = @(Get-PortOwners -Port $Port)
+    if (-not $owners.Count) {
+        Write-Host "No running $Name process detected on port $Port."
+        return
+    }
+
+    foreach ($owner in $owners) {
+        if (-not $owner -or $owner -eq $PID) {
+            continue
+        }
+        try {
+            $process = Get-Process -Id $owner -ErrorAction Stop
+            Write-Host "Stopping $Name on port $Port (pid=$owner, process=$($process.ProcessName))..."
+            Stop-Process -Id $owner -Force -ErrorAction Stop
+        } catch {
+            Write-Host ("Failed to stop pid={0} on port {1}: {2}" -f $owner, $Port, $_.Exception.Message)
+        }
+    }
+
+    Start-Sleep -Milliseconds 800
+}
+
 function Wait-PortListening {
     param(
         [int]$Port,
@@ -63,42 +91,36 @@ function Start-DetachedProcess {
 
 Write-Host "Project root: $projectRoot"
 
-if (Test-PortListening -Port 5001) {
-    Write-Host "Backend already listening on 5001."
-} else {
-    $backend = Start-DetachedProcess `
-        -Name 'backend' `
-        -FilePath 'python' `
-        -ArgumentList @('pdf_parser.py') `
-        -WorkingDirectory $serverDir `
-        -StdOut $backendOut `
-        -StdErr $backendErr
+Stop-PortOwners -Port 5001 -Name 'backend'
+$backend = Start-DetachedProcess `
+    -Name 'backend' `
+    -FilePath 'python' `
+    -ArgumentList @('app.py') `
+    -WorkingDirectory $serverDir `
+    -StdOut $backendOut `
+    -StdErr $backendErr
 
-    if (-not (Wait-PortListening -Port 5001 -TimeoutSec 60)) {
-        Write-Host "Backend failed to start. Last log lines:"
-        if (Test-Path $backendErr) { Get-Content -Encoding UTF8 $backendErr -Tail 80 }
-        throw "Backend did not listen on port 5001."
-    }
+if (-not (Wait-PortListening -Port 5001 -TimeoutSec 60)) {
+    Write-Host "Backend failed to start. Last log lines:"
+    if (Test-Path $backendErr) { Get-Content -Encoding UTF8 $backendErr -Tail 80 }
+    throw "Backend did not listen on port 5001."
 }
 
 $env:VITE_API_BASE_URL = 'http://127.0.0.1:5001'
 
-if (Test-PortListening -Port 5173) {
-    Write-Host "Frontend already listening on 5173."
-} else {
-    $frontend = Start-DetachedProcess `
-        -Name 'frontend' `
-        -FilePath 'npm.cmd' `
-        -ArgumentList @('run', 'dev', '--', '--host', '127.0.0.1', '--port', '5173') `
-        -WorkingDirectory $projectRoot `
-        -StdOut $frontendOut `
-        -StdErr $frontendErr
+Stop-PortOwners -Port 5173 -Name 'frontend'
+$frontend = Start-DetachedProcess `
+    -Name 'frontend' `
+    -FilePath 'npm.cmd' `
+    -ArgumentList @('run', 'dev', '--', '--host', '127.0.0.1', '--port', '5173') `
+    -WorkingDirectory $projectRoot `
+    -StdOut $frontendOut `
+    -StdErr $frontendErr
 
-    if (-not (Wait-PortListening -Port 5173 -TimeoutSec 60)) {
-        Write-Host "Frontend failed to start. Last log lines:"
-        if (Test-Path $frontendErr) { Get-Content -Encoding UTF8 $frontendErr -Tail 80 }
-        throw "Frontend did not listen on port 5173."
-    }
+if (-not (Wait-PortListening -Port 5173 -TimeoutSec 60)) {
+    Write-Host "Frontend failed to start. Last log lines:"
+    if (Test-Path $frontendErr) { Get-Content -Encoding UTF8 $frontendErr -Tail 80 }
+    throw "Frontend did not listen on port 5173."
 }
 
 Write-Host ""

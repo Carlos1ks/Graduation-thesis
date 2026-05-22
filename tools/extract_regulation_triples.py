@@ -15,7 +15,7 @@ if str(SERVER_DIR) not in sys.path:
 
 import fitz  # noqa: E402
 
-from pdf_parser import clean_text  # noqa: E402
+from app import clean_text  # noqa: E402
 from knowledge_graph import (  # noqa: E402
     _build_graph_from_extracted_payload,
     _extract_article_graph,

@@ -1,5 +1,7 @@
 """煤矿应急领域轻量 schema 定义。"""
 
+# 图谱抽取和风险识别共用的领域字典。
+# 每个定义都把一个规范 id 映射到标签和关键词提示。
 HAZARD_DEFINITIONS = {
     "gas": {
         "label": "瓦斯灾害",
@@ -93,6 +95,7 @@ SENSOR_DEFINITIONS = {
     "power_sensor": {"label": "电气监测装置", "keywords": ["断电仪", "电气监测", "供电监测"]},
 }
 
+# 把所有实体字典收拢到一起，方便别的模块统一遍历 schema。
 ENTITY_GROUPS = {
     "document_type": DOCUMENT_DEFINITIONS,
     "hazard": HAZARD_DEFINITIONS,
@@ -106,6 +109,7 @@ ENTITY_GROUPS = {
     "stage": STAGE_DEFINITIONS,
 }
 
+# 轻量知识图谱中使用的人类可读关系标签。
 RELATION_LABELS = {
     "indicates": "征兆指向灾害",
     "requires_action": "灾害需要措施",

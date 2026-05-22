@@ -20,7 +20,7 @@ if str(SERVER_DIR) not in sys.path:
     sys.path.insert(0, str(SERVER_DIR))
 
 from config import config  # noqa: E402
-from pdf_parser import clean_text  # noqa: E402
+from app import clean_text  # noqa: E402
 from retrieval import _embed_texts, ingest_document, retrieve_relevant_chunks  # noqa: E402
 from risk_fusion import build_risk_profile  # noqa: E402
 

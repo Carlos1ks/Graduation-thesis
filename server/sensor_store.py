@@ -1,5 +1,8 @@
 """会话级传感器数据存储与规范化。"""
 from __future__ import annotations
+# 会话级传感器缓存。
+# 这个模块负责把推送进来的传感器记录标准化，
+# 并维护当前会话真正需要的轻量内存状态。
 
 from datetime import datetime, timezone
 from threading import RLock
@@ -9,6 +12,7 @@ from config import config
 
 _DEFAULT_SESSION_ID = "default"
 _SESSION_SENSOR_STORES: Dict[str, Dict[str, Any]] = {}
+# 传感器状态按会话号隔离，和文档库、图谱、聊天记忆的设计保持一致。
 _STORE_LOCK = RLock()
 
 
@@ -34,6 +38,7 @@ def _to_float(value: Any) -> Optional[float]:
 
 
 def _normalize_sensor_item(item: Dict[str, Any], idx: int = 0, source_type: str = "sensor_push") -> Dict[str, Any]:
+    # 把不同字段风格的传感器输入统一整理成系统内部固定结构。
     sensor_id = str(item.get("sensor_id") or item.get("sensorId") or item.get("id") or f"sensor-{idx + 1}").strip()
     name = str(item.get("name") or item.get("sensor_name") or item.get("sensorName") or sensor_id).strip() or sensor_id
     value = item.get("value")
@@ -85,6 +90,7 @@ def normalize_sensor_payload(payload: Any) -> List[Dict[str, Any]]:
 
 
 def push_session_sensors(session_id: Optional[str], payload: Any) -> Dict[str, Any]:
+    # 更新每个传感器的最新读数，同时保留一小段历史供调试和后续推理使用。
     sid = _get_session_id(session_id)
     records = normalize_sensor_payload(payload)
     if not records:

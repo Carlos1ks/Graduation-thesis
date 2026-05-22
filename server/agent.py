@@ -2,6 +2,12 @@
 LangChain多智能体协同定义（兼容OpenAI协议网关）
 """
 from concurrent.futures import ThreadPoolExecutor
+# 多智能体编排层。
+# 这个模块负责把已经规整好的证据继续组织成：
+# 1. 共享上下文；
+# 2. 角色选择结果；
+# 3. 分阶段角色执行过程；
+# 4. 最终聚合回答和解释字段。
 import json
 from typing import Dict, List, Optional
 
@@ -14,10 +20,12 @@ from risk_fusion import build_risk_profile
 
 # 进程内会话记忆，按 session_id 隔离
 _SESSION_CHAT_HISTORY: Dict[str, List[Dict[str, str]]] = {}
+# 轻量级进程内聊天记忆，按 session_id 隔离。
 _MAX_HISTORY_MESSAGES = config.AGENT_MAX_HISTORY_MESSAGES
 _DEFAULT_SESSION_ID = "default"
 
 def _build_llm(temperature: float, max_tokens: int, timeout: int) -> ChatOpenAI:
+    # 按给定参数创建一个通用的大模型客户端。
     return ChatOpenAI(
         api_key=config.require_longcat_api_key(),
         base_url=config.LONGCAT_BASE_URL,
@@ -29,6 +37,7 @@ def _build_llm(temperature: float, max_tokens: int, timeout: int) -> ChatOpenAI:
 
 
 def _get_llm() -> ChatOpenAI:
+    # 普通角色调用时使用的默认模型配置。
     return _build_llm(
         temperature=0.2,
         max_tokens=config.LONGCAT_MAX_TOKENS,
@@ -37,6 +46,7 @@ def _get_llm() -> ChatOpenAI:
 
 
 def _get_router_llm() -> ChatOpenAI:
+    # 路由模型只负责挑角色，所以这里把输出长度和超时都压得更紧。
     return _build_llm(
         temperature=0,
         max_tokens=96,
@@ -207,7 +217,7 @@ def _normalize_image_evidence(images: Optional[List[dict]]) -> List[Dict[str, st
         return []
 
     normalized: List[Dict[str, str]] = []
-    for item in images[:config.AGENT_MAX_EVIDENCE_IMAGES]:
+    for item in images:
         if not isinstance(item, dict):
             continue
         summary = str(item.get("summary", "")).strip()

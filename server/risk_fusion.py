@@ -1,5 +1,7 @@
 """煤矿应急多源风险融合。"""
 from __future__ import annotations
+# 这个模块负责把多源证据融合成“可解释的风险画像”。
+# 后面的检索重排、图谱摘要和智能体路由都会复用这里的输出。
 
 from typing import Dict, List, Optional
 
@@ -32,6 +34,7 @@ def _collect_texts(
     images: List[Dict[str, str]],
     sensors: Optional[List[Dict[str, object]]] = None,
 ) -> Dict[str, str]:
+    # 把不同来源的证据摊平成几类可比较的文本通道。
     sensor_lines = []
     for item in sensors or []:
         if not isinstance(item, dict):
@@ -87,6 +90,7 @@ def _append_signal(signals: List[Dict[str, str]], seen: set, signal_id: str, sou
 
 
 def _score_sensor_risks(sensors: Optional[List[Dict[str, object]]]) -> Dict[str, object]:
+    # 传感器数据被视为强信号，因为它比纯文本描述更接近实时现场状态。
     hazard_scores = {hazard_id: 0 for hazard_id in HAZARD_DEFINITIONS}
     signals: List[Dict[str, str]] = []
     seen = set()
@@ -275,6 +279,8 @@ def build_risk_profile(
     images: List[Dict[str, str]],
     sensors: Optional[List[Dict[str, object]]] = None,
 ) -> Dict[str, object]:
+    # 系统里统一使用的风险画像主入口。
+    # 它返回的是结构化风险信息，而不是一个孤立标签，方便后续模块继续解释和复用。
     if not config.RISK_RULES_ENABLED:
         return {
             "enabled": False,
