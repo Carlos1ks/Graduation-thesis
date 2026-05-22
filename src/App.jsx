@@ -1,4 +1,4 @@
-// 前端主入口文件。
+﻿// 前端主入口文件。
 // 这个文件主要包含四类内容：
 // 1. 与后端通信的接口封装；
 // 2. 文档/图片/视频/传感器/图谱等会话资源的状态管理；
@@ -10,12 +10,22 @@ import ForceGraph2D from "react-force-graph-2d";
 // 前端统一维护的后端接口地址。
 // 这样查某个按钮或某个功能走的是哪个后端接口时，会更直观。
 const BACKEND_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const AUTH_LOGIN_API_URL = `${BACKEND_BASE_URL}/api/auth/login`;
+const AUTH_REGISTER_API_URL = `${BACKEND_BASE_URL}/api/auth/register`;
+const AUTH_ME_API_URL = `${BACKEND_BASE_URL}/api/auth/me`;
+const AUTH_LOGOUT_API_URL = `${BACKEND_BASE_URL}/api/auth/logout`;
 const CHAT_API_URL = `${BACKEND_BASE_URL}/api/agent-chat`;
+const MESSAGE_LIST_API_URL = `${BACKEND_BASE_URL}/api/messages/list`;
 const DOCUMENT_LIST_API_URL = `${BACKEND_BASE_URL}/api/documents/list`;
 const DOCUMENT_UPLOAD_API_URL = `${BACKEND_BASE_URL}/api/documents/upload`;
 const DOCUMENT_REMOVE_API_URL = `${BACKEND_BASE_URL}/api/documents/remove`;
+const IMAGE_UPLOAD_API_URL = `${BACKEND_BASE_URL}/api/images/upload`;
+const IMAGE_LIST_API_URL = `${BACKEND_BASE_URL}/api/images/list`;
+const IMAGE_REMOVE_API_URL = `${BACKEND_BASE_URL}/api/images/remove`;
 const TRIPLES_UPLOAD_API_URL = `${BACKEND_BASE_URL}/api/knowledge-graph/triples/upload`;
-const VIDEO_ANALYZE_API_URL = `${BACKEND_BASE_URL}/api/video-analyze`;
+const VIDEO_UPLOAD_API_URL = `${BACKEND_BASE_URL}/api/videos/upload`;
+const VIDEO_LIST_API_URL = `${BACKEND_BASE_URL}/api/videos/list`;
+const VIDEO_REMOVE_API_URL = `${BACKEND_BASE_URL}/api/videos/remove`;
 const SENSOR_PUSH_API_URL = `${BACKEND_BASE_URL}/api/sensors/push`;
 const SENSOR_LATEST_API_URL = `${BACKEND_BASE_URL}/api/sensors/latest`;
 const SENSOR_CLEAR_API_URL = `${BACKEND_BASE_URL}/api/sensors/clear`;
@@ -23,6 +33,7 @@ const KNOWLEDGE_GRAPH_QUERY_API_URL = `${BACKEND_BASE_URL}/api/knowledge-graph/q
 const KNOWLEDGE_GRAPH_STATUS_API_URL = `${BACKEND_BASE_URL}/api/knowledge-graph/status`;
 const KNOWLEDGE_GRAPH_REBUILD_API_URL = `${BACKEND_BASE_URL}/api/knowledge-graph/rebuild`;
 const MAX_HISTORY_MESSAGES = 6;
+const AUTH_TOKEN_STORAGE_KEY = "coal-mine-agent-auth-token";
 const SESSION_STORAGE_KEY = "coal-mine-agent-session-id";
 const APP_VIEW_CHAT = "chat";
 const APP_VIEW_DOCUMENTS = "documents";
@@ -55,6 +66,38 @@ function getInitialSessionId() {
     } catch {}
   }
   return next;
+}
+
+function getStoredAuthToken() {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function setStoredAuthToken(token) {
+  if (typeof window === "undefined") return;
+  try {
+    if (token) {
+      window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+    } else {
+      window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    }
+  } catch {}
+}
+
+async function apiFetch(url, options = {}) {
+  const headers = new Headers(options.headers || {});
+  const token = getStoredAuthToken();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  return fetch(url, {
+    ...options,
+    headers,
+  });
 }
 
 // 快捷问题：主要用于演示和快速切换典型应急场景。
@@ -129,7 +172,7 @@ async function uploadDocumentToBackend(file, sessionId) {
   formData.append("file", file);
   formData.append("session_id", sessionId);
 
-  const response = await fetch(DOCUMENT_UPLOAD_API_URL, {
+  const response = await apiFetch(DOCUMENT_UPLOAD_API_URL, {
     method: "POST",
     body: formData,
   });
@@ -143,7 +186,7 @@ async function uploadDocumentToBackend(file, sessionId) {
 async function removeDocumentFromBackend(documentId, sessionId) {
   // 从当前会话文档库里删除一个文档，
   // 同时后端会把对应的检索索引一起更新掉。
-  const response = await fetch(DOCUMENT_REMOVE_API_URL, {
+  const response = await apiFetch(DOCUMENT_REMOVE_API_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -160,7 +203,7 @@ async function removeDocumentFromBackend(documentId, sessionId) {
 async function fetchDocumentsFromBackend(sessionId) {
   // 获取当前会话下已经上传并入库的文档列表。
   const params = new URLSearchParams({ session_id: sessionId });
-  const response = await fetch(`${DOCUMENT_LIST_API_URL}?${params.toString()}`);
+  const response = await apiFetch(`${DOCUMENT_LIST_API_URL}?${params.toString()}`);
   const result = await response.json().catch(() => ({}));
   if (!response.ok || !result.success) {
     throw new Error(result.error || `文档列表获取失败：${response.status}`);
@@ -174,7 +217,7 @@ async function uploadTriplesToBackend(file, sessionId) {
   formData.append("file", file);
   formData.append("session_id", sessionId);
 
-  const response = await fetch(TRIPLES_UPLOAD_API_URL, {
+  const response = await apiFetch(TRIPLES_UPLOAD_API_URL, {
     method: "POST",
     body: formData,
   });
@@ -192,7 +235,7 @@ async function uploadVideoToBackend(file, sessionId) {
   formData.append("file", file);
   formData.append("session_id", sessionId);
 
-  const response = await fetch(VIDEO_ANALYZE_API_URL, {
+  const response = await apiFetch(VIDEO_UPLOAD_API_URL, {
     method: "POST",
     body: formData,
   });
@@ -206,7 +249,7 @@ async function uploadVideoToBackend(file, sessionId) {
 async function pushSensorsToBackend(records, sessionId) {
   // 批量推送传感器记录到当前会话，
   // 让风险识别和问答链路都能使用这些实时数据。
-  const response = await fetch(SENSOR_PUSH_API_URL, {
+  const response = await apiFetch(SENSOR_PUSH_API_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -224,7 +267,7 @@ async function pushSensorsToBackend(records, sessionId) {
 async function fetchSensorsFromBackend(sessionId) {
   // 拉取当前会话最新的传感器状态。
   const params = new URLSearchParams({ session_id: sessionId });
-  const response = await fetch(`${SENSOR_LATEST_API_URL}?${params.toString()}`);
+  const response = await apiFetch(`${SENSOR_LATEST_API_URL}?${params.toString()}`);
   const result = await response.json().catch(() => ({}));
   if (!response.ok || !result.success) {
     throw new Error(result.error || `传感器列表获取失败：${response.status}`);
@@ -234,7 +277,7 @@ async function fetchSensorsFromBackend(sessionId) {
 
 async function clearSensorsFromBackend(sessionId) {
   // 清空当前会话缓存的传感器数据。
-  const response = await fetch(SENSOR_CLEAR_API_URL, {
+  const response = await apiFetch(SENSOR_CLEAR_API_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ session_id: sessionId }),
@@ -250,7 +293,7 @@ async function fetchKnowledgeGraph(sessionId, keyword = "") {
   const text = keyword.trim();
   if (!text) {
     const params = new URLSearchParams({ session_id: sessionId, limit: "1000" });
-    const response = await fetch(`${BACKEND_BASE_URL}/api/knowledge-graph?${params.toString()}`);
+    const response = await apiFetch(`${BACKEND_BASE_URL}/api/knowledge-graph?${params.toString()}`);
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.success) {
       throw new Error(result.error || `知识图谱加载失败：${response.status}`);
@@ -258,7 +301,7 @@ async function fetchKnowledgeGraph(sessionId, keyword = "") {
     return result;
   }
 
-  const response = await fetch(KNOWLEDGE_GRAPH_QUERY_API_URL, {
+  const response = await apiFetch(KNOWLEDGE_GRAPH_QUERY_API_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -277,7 +320,7 @@ async function fetchKnowledgeGraph(sessionId, keyword = "") {
 
 async function fetchKnowledgeGraphStatus(sessionId) {
   const params = new URLSearchParams({ session_id: sessionId });
-  const response = await fetch(`${KNOWLEDGE_GRAPH_STATUS_API_URL}?${params.toString()}`);
+  const response = await apiFetch(`${KNOWLEDGE_GRAPH_STATUS_API_URL}?${params.toString()}`);
   const result = await response.json().catch(() => ({}));
   if (!response.ok || !result.success) {
     throw new Error(result.error || `图谱状态获取失败：${response.status}`);
@@ -287,7 +330,7 @@ async function fetchKnowledgeGraphStatus(sessionId) {
 
 async function rebuildKnowledgeGraph(sessionId) {
   // 触发后端重新为当前会话构建知识图谱。
-  const response = await fetch(KNOWLEDGE_GRAPH_REBUILD_API_URL, {
+  const response = await apiFetch(KNOWLEDGE_GRAPH_REBUILD_API_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ session_id: sessionId }),
@@ -295,6 +338,121 @@ async function rebuildKnowledgeGraph(sessionId) {
   const result = await response.json().catch(() => ({}));
   if (!response.ok || !result.success) {
     throw new Error(result.error || `图谱生成失败：${response.status}`);
+  }
+  return result;
+}
+
+async function loginToBackend(username, password) {
+  const response = await apiFetch(AUTH_LOGIN_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `登录失败：${response.status}`);
+  }
+  return result;
+}
+
+async function registerToBackend(username, password) {
+  const response = await apiFetch(AUTH_REGISTER_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `注册失败：${response.status}`);
+  }
+  return result;
+}
+
+async function fetchCurrentUserFromBackend() {
+  const response = await apiFetch(AUTH_ME_API_URL);
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `获取登录态失败：${response.status}`);
+  }
+  return result;
+}
+
+async function logoutFromBackend() {
+  const response = await apiFetch(AUTH_LOGOUT_API_URL, { method: "POST" });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `退出登录失败：${response.status}`);
+  }
+  return result;
+}
+
+async function fetchMessagesFromBackend(sessionId) {
+  const params = new URLSearchParams({ session_id: sessionId });
+  const response = await apiFetch(`${MESSAGE_LIST_API_URL}?${params.toString()}`);
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `获取聊天记录失败：${response.status}`);
+  }
+  return result;
+}
+
+async function uploadImageToBackend(file, sessionId) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("session_id", sessionId);
+  const response = await apiFetch(IMAGE_UPLOAD_API_URL, {
+    method: "POST",
+    body: formData,
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `图片上传失败：${response.status}`);
+  }
+  return result;
+}
+
+async function fetchImagesFromBackend(sessionId) {
+  const params = new URLSearchParams({ session_id: sessionId });
+  const response = await apiFetch(`${IMAGE_LIST_API_URL}?${params.toString()}`);
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `图片列表获取失败：${response.status}`);
+  }
+  return result;
+}
+
+async function removeImageFromBackend(imageId, sessionId) {
+  const response = await apiFetch(IMAGE_REMOVE_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image_id: imageId, session_id: sessionId }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `图片删除失败：${response.status}`);
+  }
+  return result;
+}
+
+async function fetchVideosFromBackend(sessionId) {
+  const params = new URLSearchParams({ session_id: sessionId });
+  const response = await apiFetch(`${VIDEO_LIST_API_URL}?${params.toString()}`);
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `视频列表获取失败：${response.status}`);
+  }
+  return result;
+}
+
+async function removeVideoFromBackend(videoId, sessionId) {
+  const response = await apiFetch(VIDEO_REMOVE_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ video_id: videoId, session_id: sessionId }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `视频删除失败：${response.status}`);
   }
   return result;
 }
@@ -578,6 +736,12 @@ export default function CoalMineAgent() {
   }]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authSubmitting, setAuthSubmitting] = useState(false);
+  const [authMode, setAuthMode] = useState("login");
+  const [authError, setAuthError] = useState("");
+  const [authForm, setAuthForm] = useState({ username: "", password: "", confirmPassword: "" });
+  const [currentUser, setCurrentUser] = useState(null);
   const [activeAgents, setActiveAgents] = useState([]);
   const [alertLevel, setAlertLevel] = useState(null);
   const [currentView, setCurrentView] = useState(() => (
@@ -613,7 +777,7 @@ export default function CoalMineAgent() {
   const imageInputRef = useRef(null);
   const videoInputRef = useRef(null);
   const sensorFileInputRef = useRef(null);
-  const sessionIdRef = useRef(getInitialSessionId());
+  const sessionIdRef = useRef("");
   const [graphViewportSize, setGraphViewportSize] = useState({ width: 880, height: 620 });
   const graphViewActive = currentView === APP_VIEW_GRAPH;
 
@@ -625,6 +789,46 @@ export default function CoalMineAgent() {
       window.location.hash = nextHash;
     }
     setCurrentView(normalized);
+  };
+
+  const loadUserLibraries = async (sessionId) => {
+    const [docResult, imageResult, videoResult, sensorResult, graphStatusResult, messageResult] = await Promise.all([
+      fetchDocumentsFromBackend(sessionId).catch(() => ({ documents: [] })),
+      fetchImagesFromBackend(sessionId).catch(() => ({ images: [] })),
+      fetchVideosFromBackend(sessionId).catch(() => ({ videos: [] })),
+      fetchSensorsFromBackend(sessionId).catch(() => ({ records: [] })),
+      fetchKnowledgeGraphStatus(sessionId).catch(() => ({ build_status: { state: "idle", message: "" } })),
+      fetchMessagesFromBackend(sessionId).catch(() => ({ messages: [] })),
+    ]);
+
+    setDocs((docResult.documents || []).map((item) => ({
+      document_id: item.document_id,
+      name: item.file_name,
+      charCount: item.char_count || 0,
+      chunkCount: item.chunk_count || 0,
+      sizeMB: item.size_bytes ? (Number(item.size_bytes) / 1024 / 1024).toFixed(2) : "--",
+      graphNodeCount: 0,
+      graphRelationCount: 0,
+    })));
+    setImages(Array.isArray(imageResult.images) ? imageResult.images : []);
+    setVideos(Array.isArray(videoResult.videos) ? videoResult.videos : []);
+    setSensors(Array.isArray(sensorResult.records) ? sensorResult.records : []);
+    setGraphBuildStatus(graphStatusResult.build_status || { state: "idle", message: "" });
+
+    const persistedMessages = Array.isArray(messageResult.messages) ? messageResult.messages : [];
+    if (persistedMessages.length > 0) {
+      setMessages(persistedMessages.map((item) => ({
+        role: item.role,
+        content: item.content,
+        timestamp: item.timestamp ? new Date(item.timestamp) : new Date(),
+      })));
+    } else {
+      setMessages([{
+        role: "assistant",
+        content: "您好！我是**煤矿应急救援决策知识问答AI智能体**，登录后我会继续展示您历史会话中的知识库与问答内容。",
+        timestamp: new Date(),
+      }]);
+    }
   };
 
   useEffect(() => {
@@ -644,34 +848,30 @@ export default function CoalMineAgent() {
   }, []);
 
   useEffect(() => {
-    // 页面初始化时，从后端恢复当前会话已有的资源和图谱状态。
+    // 页面初始化时，如果本地有 token，就尝试恢复登录态和历史资源。
     let active = true;
-    fetchDocumentsFromBackend(sessionIdRef.current)
-      .then((result) => {
+    const restore = async () => {
+      const token = getStoredAuthToken();
+      if (!token) {
+        if (active) setAuthLoading(false);
+        return;
+      }
+      try {
+        const result = await fetchCurrentUserFromBackend();
         if (!active) return;
-        setDocs((result.documents || []).map((item) => ({
-          document_id: item.document_id,
-          name: item.file_name,
-          charCount: item.char_count || 0,
-          chunkCount: item.chunk_count || 0,
-          sizeMB: "--",
-          graphNodeCount: 0,
-          graphRelationCount: 0,
-        })));
-      })
-      .catch(() => {});
-    fetchSensorsFromBackend(sessionIdRef.current)
-      .then((result) => {
+        setCurrentUser(result.user);
+        sessionIdRef.current = result.user.session_id;
+        await loadUserLibraries(result.user.session_id);
+      } catch (err) {
         if (!active) return;
-        setSensors(Array.isArray(result.records) ? result.records : []);
-      })
-      .catch(() => {});
-    fetchKnowledgeGraphStatus(sessionIdRef.current)
-      .then((result) => {
-        if (!active || !result.build_status) return;
-        setGraphBuildStatus(result.build_status);
-      })
-      .catch(() => {});
+        setStoredAuthToken("");
+        setCurrentUser(null);
+        sessionIdRef.current = "";
+      } finally {
+        if (active) setAuthLoading(false);
+      }
+    };
+    restore();
     return () => { active = false; };
   }, []);
 
@@ -929,42 +1129,6 @@ export default function CoalMineAgent() {
     }
   };
 
-  const analyzeSingleUploadedImage = async (base64, imageName) => {
-    // 上传图片时先做单张分析，把结果缓存下来，后面问答可以直接复用。
-    const resp = await fetch(`${BACKEND_BASE_URL}/api/image-analyze`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        image_base64: base64,
-        image_name: imageName,
-      }),
-    });
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(err.error || `图片识别失败：${resp.status}`);
-    }
-    const data = await resp.json().catch(() => ({}));
-    const keywords = Array.isArray(data.keywords)
-      ? data.keywords.filter(Boolean)
-      : Array.isArray(data.result)
-        ? data.result.slice(0, 5).map((item) => item.keyword || item.class_name).filter(Boolean)
-        : [];
-    const uniqueKeywords = Array.from(new Set(keywords)).slice(0, 5);
-    const summaryCore = String(data.summary_text || "").trim() || uniqueKeywords.join("、");
-    const summaryText = summaryCore ? `【${imageName}】识别结果：${summaryCore}` : "";
-    return {
-      summary_text: summaryText,
-      evidence: uniqueKeywords.length > 0
-        ? [{
-            image_name: imageName,
-            summary: summaryCore || uniqueKeywords.join("、"),
-            source_type: "image_analysis",
-          }]
-        : [],
-      raw: data,
-    };
-  };
-
   const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files);
     if (!files.length) return;
@@ -975,39 +1139,22 @@ export default function CoalMineAgent() {
         if (!file.type.startsWith("image/")) {
           throw new Error("仅支持图片格式");
         }
-        const sizeMB = (file.size / 1024 / 1024).toFixed(2);
-        const dataUrl = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = (ev) => resolve(ev.target.result);
-          reader.onerror = () => reject(new Error("图片读取失败"));
-          reader.readAsDataURL(file);
-        });
-        
-        const [, base64] = String(dataUrl).split(",");
-        const analysis = await analyzeSingleUploadedImage(base64, file.name);
+        const result = await uploadImageToBackend(file, sessionIdRef.current);
         setImages(prev => [
-          ...prev.filter(img => img.name !== file.name),
-          {
-            name: file.name,
-            dataUrl,
-            base64,
-            sizeMB,
-            summary_text: analysis.summary_text || "",
-            evidence: Array.isArray(analysis.evidence) ? analysis.evidence : [],
-          }
+          ...prev.filter(img => img.image_id !== result.image_id && img.name !== result.name),
+          result,
         ]);
-        
         setMessages(prev => [...prev, {
           role: "assistant",
-          content: analysis.summary_text
-            ? `📸 已上传并分析图片《**${file.name}**》（${sizeMB} MB）\n\n${analysis.summary_text}`
-            : `📸 已上传图片《**${file.name}**》（${sizeMB} MB）\n\n未识别到明确目标，将在问答中作为补充图像证据保留。`,
+          content: result.summary_text
+            ? `📸 已上传并分析图片《**${result.name}**》（${result.sizeMB} MB）\n\n${result.summary_text}`
+            : `📸 已上传图片《**${result.name}**》（${result.sizeMB} MB）`,
           timestamp: new Date(),
         }]);
       } catch (err) {
         setMessages(prev => [...prev, {
           role: "assistant",
-          content: `⚠️ 图片《${file.name}》加载失败：${err.message}`,
+          content: `⚠️ 图片《${file.name}》上传失败：${err.message}` ,
           timestamp: new Date(),
         }]);
       }
@@ -1018,7 +1165,6 @@ export default function CoalMineAgent() {
 
   // 处理视频上传并自动分析
   const handleVideoUpload = async (e) => {
-    // 处理视频上传，后端会返回抽帧分析后的摘要和关键片段。
     const files = Array.from(e.target.files);
     if (!files.length) return;
     setVideoUploading(true);
@@ -1028,29 +1174,14 @@ export default function CoalMineAgent() {
         if (!file.type.startsWith("video/")) {
           throw new Error("仅支持视频格式");
         }
-
-        const sizeMB = (file.size / 1024 / 1024).toFixed(2);
         const result = await uploadVideoToBackend(file, sessionIdRef.current);
-        const summaryText = result.summary_text || "";
-        const evidence = Array.isArray(result.evidence) ? result.evidence : [];
-
         setVideos(prev => [
-          ...prev.filter(v => v.name !== file.name),
-          {
-            name: result.video_name || file.name,
-            sizeMB,
-            duration_s: result.duration_s || 0,
-            frames_extracted: result.frames_extracted || 0,
-            frames_matched: result.frames_matched || 0,
-            issue_keywords: Array.isArray(result.issue_keywords) ? result.issue_keywords : [],
-            summary_text: summaryText,
-            evidence,
-          }
+          ...prev.filter(v => v.video_id !== result.video_id && v.name !== result.name),
+          result,
         ]);
-
         setMessages(prev => [...prev, {
           role: "assistant",
-          content: summaryText || `🎬 已分析视频《**${result.video_name || file.name}**》`,
+          content: result.summary_text || `🎬 已分析视频《**${result.name}**》`,
           timestamp: new Date(),
         }]);
       } catch (err) {
@@ -1065,7 +1196,6 @@ export default function CoalMineAgent() {
     setVideoUploading(false);
     e.target.value = "";
   };
-
   const applySensorRecords = async (records) => {
     // 把传感器记录推到后端，并用后端返回的最新状态覆盖前端本地缓存。
     const result = await pushSensorsToBackend(records, sessionIdRef.current);
@@ -1202,6 +1332,82 @@ export default function CoalMineAgent() {
     }
   };
 
+  const handleAuthSubmit = async (e) => {
+    e?.preventDefault?.();
+    setAuthSubmitting(true);
+    setAuthError("");
+    try {
+      const username = String(authForm.username || "").trim();
+      const password = String(authForm.password || "");
+      if (!username || !password) {
+        throw new Error("请输入用户名和密码。");
+      }
+      if (authMode === "register" && password !== authForm.confirmPassword) {
+        throw new Error("两次输入的密码不一致。");
+      }
+      const result = authMode === "register"
+        ? await registerToBackend(username, password)
+        : await loginToBackend(username, password);
+      setStoredAuthToken(result.token || "");
+      setCurrentUser(result.user || null);
+      sessionIdRef.current = result.user?.session_id || "";
+      await loadUserLibraries(sessionIdRef.current);
+      setAuthForm({ username: "", password: "", confirmPassword: "" });
+      navigateToView(APP_VIEW_CHAT);
+    } catch (err) {
+      setAuthError(err.message || "登录失败");
+    } finally {
+      setAuthSubmitting(false);
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logoutFromBackend();
+    } catch {}
+    setStoredAuthToken("");
+    setCurrentUser(null);
+    sessionIdRef.current = "";
+    setDocs([]);
+    setImages([]);
+    setVideos([]);
+    setSensors([]);
+    setGraphData(emptyGraphData());
+    setGraphBuildStatus({ state: "idle", message: "" });
+    setMessages([{
+      role: "assistant",
+      content: "请先登录后再查看历史知识库。",
+      timestamp: new Date(),
+    }]);
+  };
+
+  const removeUploadedImage = async (image) => {
+    try {
+      await removeImageFromBackend(image.image_id, sessionIdRef.current);
+      setImages(prev => prev.filter(item => item.image_id !== image.image_id));
+    } catch (err) {
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: `⚠️ 图片《${image.name}》删除失败：${err.message}`,
+        timestamp: new Date(),
+      }]);
+    }
+  };
+
+  const removeUploadedVideo = async (video) => {
+    try {
+      await removeVideoFromBackend(video.video_id, sessionIdRef.current);
+      setVideos(prev => prev.filter(item => item.video_id !== video.video_id));
+    } catch (err) {
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: `⚠️ 视频《${video.name}》删除失败：${err.message}`,
+        timestamp: new Date(),
+      }]);
+    }
+  };
+
   const buildConversationHistory = (messageList) => {
     // 从消息列表里提取真正需要发给后端的历史对话，
     // 过滤掉上传提示、分析提示这类不适合当上下文的系统消息。
@@ -1264,7 +1470,7 @@ export default function CoalMineAgent() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 180000);
 
-      const res = await fetch(CHAT_API_URL, {
+      const res = await apiFetch(CHAT_API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2128,7 +2334,7 @@ export default function CoalMineAgent() {
                   {img.summary_text.split("\n").slice(0, 4).join("\n")}
                 </div>
               ) : null}
-              <button onClick={() => setImages(prev => prev.filter((item) => item.name !== img.name))} style={{ marginTop: "0.55rem", width: "100%", padding: "0.45rem 0.7rem", borderRadius: "8px", border: `1px solid ${UI.border}`, background: UI.softBg, color: UI.text, cursor: "pointer", fontSize: "0.72rem" }}>移出图片库</button>
+              <button onClick={() => removeUploadedImage(img)} style={{ marginTop: "0.55rem", width: "100%", padding: "0.45rem 0.7rem", borderRadius: "8px", border: `1px solid ${UI.border}`, background: UI.softBg, color: UI.text, cursor: "pointer", fontSize: "0.72rem" }}>移出图片库</button>
             </div>
           ))}
         </div>
@@ -2179,7 +2385,7 @@ export default function CoalMineAgent() {
                   );
                 })()}
               </div>
-              <button onClick={() => setVideos(prev => prev.filter((item) => item.name !== video.name))} style={{ padding: "0.45rem 0.7rem", borderRadius: "8px", border: "1px solid rgba(148,163,184,0.16)", background: "rgba(255,255,255,0.04)", color: "#cbd5e1", cursor: "pointer", fontSize: "0.72rem", alignSelf: "flex-start" }}>移出视频库</button>
+              <button onClick={() => removeUploadedVideo(video)} style={{ padding: "0.45rem 0.7rem", borderRadius: "8px", border: "1px solid rgba(148,163,184,0.16)", background: "rgba(255,255,255,0.04)", color: "#cbd5e1", cursor: "pointer", fontSize: "0.72rem", alignSelf: "flex-start" }}>移出视频库</button>
             </div>
           ))}
         </div>
@@ -2255,6 +2461,61 @@ export default function CoalMineAgent() {
     }
   };
 
+  if (authLoading) {
+    return (
+      <div className="light-theme-app" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: UI.appBg, color: UI.text }}>
+        <div style={{ padding: "1.2rem 1.6rem", borderRadius: "14px", background: UI.cardBg, border: `1px solid ${UI.border}`, boxShadow: UI.shadow, fontSize: "0.9rem" }}>
+          正在恢复登录状态...
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <div className="light-theme-app" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: UI.appBg, color: UI.text, padding: "1rem" }}>
+        <div style={{ width: "min(420px, 92vw)", background: UI.cardBg, border: `1px solid ${UI.border}`, borderRadius: "18px", boxShadow: UI.shadow, padding: "1.3rem" }}>
+          <div style={{ fontSize: "1.05rem", fontWeight: 800 }}>煤矿应急救援知识问答系统</div>
+          <div style={{ marginTop: "0.35rem", fontSize: "0.74rem", color: UI.subtle }}>
+            登录后可继续查看之前的文档库、图片库、视频库、传感器库、知识图谱和问答记录。
+          </div>
+          <div style={{ display: "flex", gap: "0.5rem", marginTop: "1rem" }}>
+            <button onClick={() => setAuthMode("login")} style={{ flex: 1, padding: "0.6rem 0.8rem", borderRadius: "10px", border: authMode === "login" ? "1px solid #22c55e" : `1px solid ${UI.border}`, background: authMode === "login" ? "rgba(34,197,94,0.12)" : "#fff", cursor: "pointer", fontWeight: 700 }}>登录</button>
+            <button onClick={() => setAuthMode("register")} style={{ flex: 1, padding: "0.6rem 0.8rem", borderRadius: "10px", border: authMode === "register" ? "1px solid #0ea5e9" : `1px solid ${UI.border}`, background: authMode === "register" ? "rgba(14,165,233,0.12)" : "#fff", cursor: "pointer", fontWeight: 700 }}>注册</button>
+          </div>
+          <form onSubmit={handleAuthSubmit} style={{ display: "grid", gap: "0.75rem", marginTop: "1rem" }}>
+            <input
+              value={authForm.username}
+              onChange={(e) => setAuthForm(prev => ({ ...prev, username: e.target.value }))}
+              placeholder="用户名"
+              style={{ padding: "0.72rem 0.82rem", borderRadius: "10px", border: `1px solid ${UI.border}`, fontSize: "0.8rem" }}
+            />
+            <input
+              type="password"
+              value={authForm.password}
+              onChange={(e) => setAuthForm(prev => ({ ...prev, password: e.target.value }))}
+              placeholder="密码"
+              style={{ padding: "0.72rem 0.82rem", borderRadius: "10px", border: `1px solid ${UI.border}`, fontSize: "0.8rem" }}
+            />
+            {authMode === "register" ? (
+              <input
+                type="password"
+                value={authForm.confirmPassword}
+                onChange={(e) => setAuthForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                placeholder="再次输入密码"
+                style={{ padding: "0.72rem 0.82rem", borderRadius: "10px", border: `1px solid ${UI.border}`, fontSize: "0.8rem" }}
+              />
+            ) : null}
+            {authError ? <div style={{ color: "#dc2626", fontSize: "0.74rem" }}>{authError}</div> : null}
+            <button type="submit" disabled={authSubmitting} style={{ padding: "0.75rem 0.9rem", borderRadius: "10px", border: "none", background: "linear-gradient(135deg,#22c55e,#0ea5e9)", color: "#fff", fontWeight: 800, cursor: authSubmitting ? "not-allowed" : "pointer" }}>
+              {authSubmitting ? "提交中..." : authMode === "login" ? "登录并恢复历史内容" : "注册并创建账号"}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="light-theme-app" style={{ height: "100vh", background: UI.appBg, fontFamily: "'Noto Sans SC','PingFang SC',sans-serif", color: UI.text, display: "flex", flexDirection: "column" }}>
 
@@ -2274,13 +2535,19 @@ export default function CoalMineAgent() {
             <div style={{ fontSize: "0.68rem", color: UI.subtle, marginTop: "0.1rem" }}>中国矿业大学 · 煤炭无人化开采数智技术全国重点实验室</div>
           </div>
         </div>
-        <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end" }}>
           {AGENTS.map(a => (
             <div key={a.id} style={{ display: "flex", alignItems: "center", gap: "0.25rem", padding: "0.22rem 0.5rem", background: activeAgents.includes(a.id) ? `${a.color}20` : UI.cardBg, border: `1px solid ${activeAgents.includes(a.id) ? a.color : UI.border}`, borderRadius: "5px", fontSize: "0.65rem", transition: "all 0.3s", boxShadow: activeAgents.includes(a.id) ? `0 0 8px ${a.color}22` : "none" }}>
               <span style={{ width: 5, height: 5, borderRadius: "50%", background: activeAgents.includes(a.id) ? a.color : "#374151", animation: activeAgents.includes(a.id) ? "pulse 1s infinite" : "none", flexShrink: 0 }} />
               <span style={{ color: UI.text }}>{a.icon} {a.name}</span>
             </div>
           ))}
+          <div style={{ padding: "0.26rem 0.6rem", borderRadius: "999px", background: "#ffffff", border: `1px solid ${UI.border}`, fontSize: "0.68rem", color: UI.text }}>
+            当前用户：{currentUser?.username || "未登录"}
+          </div>
+          <button onClick={handleLogout} style={{ padding: "0.38rem 0.78rem", borderRadius: "8px", border: `1px solid ${UI.border}`, background: "#fff7ed", color: "#9a3412", cursor: "pointer", fontSize: "0.72rem", fontWeight: 700 }}>
+            退出登录
+          </button>
         </div>
       </div>
 
@@ -2379,3 +2646,4 @@ export default function CoalMineAgent() {
     </div>
   );
 }
+

@@ -14,10 +14,13 @@ import os
 import tempfile
 import requests
 import base64
+import mimetypes
 from pathlib import Path
 import json
+from io import BytesIO
 from config import config
 from retrieval import (
+    hydrate_session_documents,
     ingest_document,
     retrieve_relevant_chunks,
     has_session_documents,
@@ -39,12 +42,34 @@ from knowledge_graph import (
     import_triples_graph,
 )
 from risk_fusion import build_risk_profile
+from persistence import (
+    init_storage,
+    register_user,
+    login_user,
+    get_user_by_token,
+    delete_token,
+    save_document_asset,
+    list_document_assets,
+    delete_document_asset,
+    save_image_asset,
+    list_image_assets,
+    delete_image_asset,
+    save_video_asset,
+    list_video_assets,
+    delete_video_asset,
+    save_sensor_records,
+    list_sensor_records,
+    clear_sensor_records,
+    save_message,
+    list_messages,
+)
 
 # LangChain Agent
 from agent import multi_agent_ask
 
 # 创建整个后端共用的 Flask 应用实例。
 app = Flask(__name__)
+init_storage()
 
 # 更明确的CORS配置
 CORS(
@@ -53,6 +78,79 @@ CORS(
     allow_headers=["Content-Type", "Authorization"],
     methods=["GET", "POST", "OPTIONS"],
 )
+
+
+def _extract_auth_token() -> str:
+    header = str(request.headers.get("Authorization", "") or "").strip()
+    if header.lower().startswith("bearer "):
+        return header[7:].strip()
+    return ""
+
+
+def _require_auth_user():
+    token = _extract_auth_token()
+    user = get_user_by_token(token)
+    if not user:
+        raise PermissionError("未登录或登录已失效。")
+    return user, token
+
+
+def _resolve_user_session(requested_session_id: str | None = None):
+    user, token = _require_auth_user()
+    stable_session_id = str(user.get("library_session_id") or "").strip()
+    incoming_session_id = str(requested_session_id or "").strip()
+    if incoming_session_id and incoming_session_id != stable_session_id:
+        raise PermissionError("会话标识与当前登录用户不匹配。")
+    return user, stable_session_id, token
+
+
+def _hydrate_persistent_runtime_state(user) -> None:
+    # 登录或首次访问资源时，把已经持久化的数据重新灌回运行时状态。
+    user_id = int(user["id"])
+    session_id = str(user["library_session_id"])
+
+    persisted_docs = list_document_assets(user_id)
+    if persisted_docs and not has_session_documents(session_id):
+        hydrate_session_documents(session_id, persisted_docs)
+
+    persisted_sensors = list_sensor_records(user_id)
+    if persisted_sensors and not has_session_sensors(session_id):
+        push_session_sensors(session_id=session_id, payload=persisted_sensors)
+
+
+def _guess_upload_mime(file_name: str, default: str = "application/octet-stream") -> str:
+    mime_type = mimetypes.guess_type(str(file_name or ""))[0]
+    return mime_type or default
+
+
+def _extract_text_from_upload_bytes(file_name: str, raw_bytes: bytes):
+    filename = str(file_name or "").lower()
+    if filename.endswith(".pdf"):
+        doc = fitz.open(stream=raw_bytes, filetype="pdf")
+        full_text = ""
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+            full_text += page.get_text() + "\n"
+        cleaned_text = clean_text(full_text)
+        return {
+            "text": cleaned_text,
+            "char_count": len(cleaned_text),
+            "page_count": len(doc),
+        }
+    if filename.endswith(".docx"):
+        doc = DocxDocument(BytesIO(raw_bytes))
+        text = "\n".join([para.text for para in doc.paragraphs])
+        return {
+            "text": text,
+            "char_count": len(text),
+        }
+    if filename.endswith(".txt"):
+        text = raw_bytes.decode("utf-8", errors="ignore")
+        return {
+            "text": text,
+            "char_count": len(text),
+        }
+    raise ValueError("不支持的文件格式，请上传 TXT、DOCX 或 PDF")
 
 
 def _graph_payload(graph):
@@ -470,6 +568,7 @@ def _load_cv2():
 
 
 def _resize_video_frame(frame, cv2):
+    #宽超过 960px 就等比缩到 960px 宽，高也跟着等比缩放。目的是避免把 4K 视频帧原样转 base64 发给视觉模型
     if frame is None:
         return frame
     height, width = frame.shape[:2]
@@ -482,7 +581,7 @@ def _resize_video_frame(frame, cv2):
 
 
 def _sample_video_positions(total_frames, fps, max_frames):
-    # 按固定时间间隔抽帧，尽量覆盖整段视频，而不是只看前面几帧。
+    # 按固定时间间隔抽帧，尽量覆盖整段视频，而不是只看前面几帧。算要抽哪些帧
     if total_frames <= 0:
         return [0]
 
@@ -495,7 +594,7 @@ def _sample_video_positions(total_frames, fps, max_frames):
     positions = list(range(0, total_frames, step))
     if positions and positions[-1] != total_frames - 1:
         positions.append(total_frames - 1)
-
+    #确保最后一帧也在名单里。按 step 跳可能刚好跳过了最后一帧，把它补进去，避免视频末尾的画面被漏掉。
     positions = sorted(set(pos for pos in positions if pos >= 0))
     if len(positions) > max_frames:
         stride = max(1, len(positions) // max_frames)
@@ -507,6 +606,7 @@ def _sample_video_positions(total_frames, fps, max_frames):
 
 
 def _format_video_timestamp(seconds):
+    #把秒数转成可读的时间戳字符串。_format_video_timestamp(15.7)   →  "00:15"
     if seconds is None:
         return "未知时刻"
     total = max(0, int(round(float(seconds))))
@@ -525,18 +625,18 @@ def _extract_video_frames(video_path):
         raise RuntimeError("无法打开视频文件。")
 
     try:
-        fps = float(capture.get(cv2.CAP_PROP_FPS) or 0.0)
-        total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-        duration_s = float(total_frames / fps) if fps > 0 else 0.0
+        fps = float(capture.get(cv2.CAP_PROP_FPS) or 0.0)# 帧率（如 30）
+        total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)# 总帧数（如 5400）
+        duration_s = float(total_frames / fps) if fps > 0 else 0.0# 时长秒（5400/30 = 180s）
         positions = _sample_video_positions(total_frames or 1, fps, config.VIDEO_MAX_FRAMES)
 
         frames = []
         for position in positions:
-            capture.set(cv2.CAP_PROP_POS_FRAMES, int(position))
-            ok, frame = capture.read()
+            capture.set(cv2.CAP_PROP_POS_FRAMES, int(position))# 跳到第 N 帧
+            ok, frame = capture.read()# 读画面
             if not ok or frame is None:
                 continue
-            frame = _resize_video_frame(frame, cv2)
+            frame = _resize_video_frame(frame, cv2)# 宽>960 则等比缩小
             ok, buffer = cv2.imencode(
                 ".jpg",
                 frame,
@@ -544,7 +644,7 @@ def _extract_video_frames(video_path):
             )
             if not ok:
                 continue
-            image_base64 = base64.b64encode(buffer.tobytes()).decode("utf-8")
+            image_base64 = base64.b64encode(buffer.tobytes()).decode("utf-8")# 转 base64 字符串
             timestamp_s = float(position / fps) if fps > 0 else float(len(frames))
             frames.append({
                 "frame_index": int(position),
@@ -617,63 +717,90 @@ def _build_video_analysis_response(video_name, extracted, frame_reports):
     }
 
 
-@app.route('/api/parse-pdf', methods=['POST'])
-def parse_pdf():
-    """处理PDF文件上传"""
-    if 'file' not in request.files:
-        return jsonify({'error': '未找到文件'}), 400
-
-    file = request.files['file']
-
+@app.route('/api/auth/register', methods=['POST'])
+def auth_register():
+    payload = request.get_json(silent=True) or {}
     try:
-        result = _extract_pdf_text(file)
+        result = register_user(
+            username=str(payload.get("username") or "").strip(),
+            password=str(payload.get("password") or ""),
+        )
+        user = result["user"]
         return jsonify({
-            'success': True,
-            'text': result['text'],
-            'char_count': result['char_count'],
-            'page_count': result['page_count'],
+            "success": True,
+            "token": result["token"],
+            "user": {
+                "id": user["id"],
+                "username": user["username"],
+                "session_id": user["library_session_id"],
+                "created_at": user["created_at"],
+            },
         })
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
 
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
-@app.route('/api/parse-docx', methods=['POST'])
-def parse_docx():
-    """处理DOCX文件"""
-    if 'file' not in request.files:
-        return jsonify({'error': '未找到文件'}), 400
-
-    file = request.files['file']
-
+@app.route('/api/auth/login', methods=['POST'])
+def auth_login():
+    payload = request.get_json(silent=True) or {}
     try:
-        result = _extract_docx_text(file)
+        result = login_user(
+            username=str(payload.get("username") or "").strip(),
+            password=str(payload.get("password") or ""),
+        )
+        user = result["user"]
+        _hydrate_persistent_runtime_state(user)
         return jsonify({
-            'success': True,
-            'text': result['text'],
-            'char_count': result['char_count'],
+            "success": True,
+            "token": result["token"],
+            "user": {
+                "id": user["id"],
+                "username": user["username"],
+                "session_id": user["library_session_id"],
+                "created_at": user["created_at"],
+            },
         })
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
 
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
-@app.route('/api/parse-text', methods=['POST'])
-def parse_text():
-    """处理TXT文件"""
-    if 'file' not in request.files:
-        return jsonify({'error': '未找到文件'}), 400
-
-    file = request.files['file']
-
+@app.route('/api/auth/me', methods=['GET'])
+def auth_me():
     try:
-        result = _extract_plain_text(file)
+        user, _token = _require_auth_user()
+        _hydrate_persistent_runtime_state(user)
         return jsonify({
-            'success': True,
-            'text': result['text'],
-            'char_count': result['char_count'],
+            "success": True,
+            "user": {
+                "id": user["id"],
+                "username": user["username"],
+                "session_id": user["library_session_id"],
+                "created_at": user["created_at"],
+            },
         })
+    except PermissionError as exc:
+        return jsonify({"error": str(exc)}), 401
 
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/auth/logout', methods=['POST'])
+def auth_logout():
+    token = _extract_auth_token()
+    if token:
+        delete_token(token)
+    return jsonify({"success": True})
+
+
+@app.route('/api/messages/list', methods=['GET'])
+def list_chat_messages():
+    try:
+        user, _session_id, _token = _resolve_user_session(request.args.get("session_id"))
+        records = list_messages(int(user["id"]))
+        return jsonify({
+            "success": True,
+            "messages": records,
+        })
+    except PermissionError as exc:
+        return jsonify({"error": str(exc)}), 401
 
 
 @app.route('/api/documents/upload', methods=['POST'])
@@ -683,14 +810,27 @@ def upload_document():
         return jsonify({'error': '未找到文件'}), 400
 
     file = request.files['file']
-    session_id = str(request.form.get('session_id', '')).strip() or None
 
     try:
-        parsed = _extract_text_from_upload(file)
+        user, session_id, _token = _resolve_user_session(request.form.get('session_id'))
+        raw_bytes = file.read()
+        parsed = _extract_text_from_upload_bytes(
+            str(getattr(file, 'filename', '') or '未命名文档'),
+            raw_bytes,
+        )
         result = ingest_document(
             session_id=session_id,
             file_name=str(getattr(file, 'filename', '') or '未命名文档'),
             text=parsed['text'],
+        )
+        save_document_asset(
+            user_id=int(user["id"]),
+            document_id=result["document_id"],
+            file_name=result["file_name"],
+            raw_bytes=raw_bytes,
+            text_content=parsed["text"],
+            char_count=result["char_count"],
+            chunk_count=result["chunk_count"],
         )
         clear_session_graph(session_id)
         build_status = mark_graph_build_pending(session_id, has_documents=True)
@@ -701,6 +841,8 @@ def upload_document():
                 "build_status": build_status,
             },
         })
+    except PermissionError as e:
+        return jsonify({'error': str(e)}), 401
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
     except RuntimeError as e:
@@ -716,10 +858,10 @@ def upload_knowledge_graph_triples():
         return jsonify({'error': '未找到三元组文件'}), 400
 
     file = request.files['file']
-    session_id = str(request.form.get('session_id', '')).strip() or None
     file_name = str(getattr(file, 'filename', '') or 'triples.json')
 
     try:
+        _user, session_id, _token = _resolve_user_session(request.form.get('session_id'))
         raw = file.read()
         if not raw:
             return jsonify({'error': '三元组文件为空'}), 400
@@ -736,6 +878,8 @@ def upload_knowledge_graph_triples():
                 "build_status": get_graph_build_status(session_id),
             },
         })
+    except PermissionError as e:
+        return jsonify({'error': str(e)}), 401
     except json.JSONDecodeError as e:
         return jsonify({'error': f'三元组 JSON 解析失败: {str(e)}'}), 400
     except ValueError as e:
@@ -748,14 +892,19 @@ def upload_knowledge_graph_triples():
 def remove_uploaded_document():
     """移除当前会话中的已入库文档。"""
     payload = request.get_json(silent=True) or {}
-    session_id = str(payload.get('session_id', '')).strip() or None
     document_id = str(payload.get('document_id', '')).strip()
 
     if not document_id:
         return jsonify({'error': 'document_id不能为空'}), 400
 
-    removed = remove_document(session_id=session_id, document_id=document_id)
-    if not removed:
+    try:
+        user, session_id, _token = _resolve_user_session(payload.get('session_id'))
+    except PermissionError as e:
+        return jsonify({'error': str(e)}), 401
+
+    removed_runtime = remove_document(session_id=session_id, document_id=document_id)
+    removed_persisted = delete_document_asset(int(user["id"]), document_id)
+    if not removed_runtime and not removed_persisted:
         return jsonify({'error': '未找到对应文档'}), 404
     remaining_chunks = list_session_chunks(session_id)
     clear_session_graph(session_id)
@@ -772,8 +921,26 @@ def remove_uploaded_document():
 @app.route('/api/documents/list', methods=['GET'])
 def list_uploaded_documents():
     """获取当前会话已入库文档列表。"""
-    session_id = str(request.args.get('session_id', '')).strip() or None
+    try:
+        user, session_id, _token = _resolve_user_session(request.args.get('session_id'))
+    except PermissionError as e:
+        return jsonify({'error': str(e)}), 401
+
+    persisted_documents = list_document_assets(int(user["id"]))
+    if persisted_documents and not has_session_documents(session_id):
+        hydrate_session_documents(session_id, persisted_documents)
     documents = list_session_documents(session_id)
+    size_by_id = {
+        str(item.get("document_id")): int(item.get("size_bytes") or 0)
+        for item in persisted_documents
+    }
+    documents = [
+        {
+            **item,
+            "size_bytes": size_by_id.get(str(item.get("document_id")), 0),
+        }
+        for item in documents
+    ]
     return jsonify({
         "success": True,
         "session_id": str(session_id or "default"),
@@ -785,7 +952,10 @@ def list_uploaded_documents():
 @app.route('/api/knowledge-graph', methods=['GET'])
 def get_knowledge_graph():
     """获取当前会话完整知识图谱。"""
-    session_id = str(request.args.get('session_id', '')).strip() or None
+    try:
+        _user, session_id, _token = _resolve_user_session(request.args.get('session_id'))
+    except PermissionError as e:
+        return jsonify({'error': str(e)}), 401
     keyword = str(request.args.get('keyword', '')).strip()
     limit = request.args.get('limit', 160)
     try:
@@ -837,7 +1007,10 @@ def get_knowledge_graph():
 def query_knowledge_graph():
     """按关键词返回图谱子图。"""
     payload = request.get_json(silent=True) or {}
-    session_id = str(payload.get('session_id', '')).strip() or None
+    try:
+        _user, session_id, _token = _resolve_user_session(payload.get('session_id'))
+    except PermissionError as e:
+        return jsonify({'error': str(e)}), 401
     keyword = str(payload.get('keyword', '')).strip()
     try:
         limit = int(payload.get("limit") or 80)
@@ -874,7 +1047,10 @@ def query_knowledge_graph():
 def rebuild_knowledge_graph():
     """根据当前会话已上传文档异步重建知识图谱。"""
     payload = request.get_json(silent=True) or {}
-    session_id = str(payload.get('session_id', '')).strip() or None
+    try:
+        _user, session_id, _token = _resolve_user_session(payload.get('session_id'))
+    except PermissionError as e:
+        return jsonify({'error': str(e)}), 401
     status = start_graph_build(session_id, list_session_chunks(session_id))
     return jsonify({
         "success": True,
@@ -886,7 +1062,10 @@ def rebuild_knowledge_graph():
 @app.route('/api/knowledge-graph/status', methods=['GET'])
 def knowledge_graph_status():
     """获取当前会话知识图谱构建状态。"""
-    session_id = str(request.args.get('session_id', '')).strip() or None
+    try:
+        _user, session_id, _token = _resolve_user_session(request.args.get('session_id'))
+    except PermissionError as e:
+        return jsonify({'error': str(e)}), 401
     status = get_graph_build_status(session_id)
     return jsonify({
         "success": True,
@@ -899,7 +1078,10 @@ def knowledge_graph_status():
 def expand_knowledge_graph():
     """按节点展开一跳邻居。"""
     payload = request.get_json(silent=True) or {}
-    session_id = str(payload.get('session_id', '')).strip() or None
+    try:
+        _user, session_id, _token = _resolve_user_session(payload.get('session_id'))
+    except PermissionError as e:
+        return jsonify({'error': str(e)}), 401
     node_uid = str(payload.get('node_uid', '')).strip()
     try:
         limit = int(payload.get("limit") or 60)
@@ -934,7 +1116,10 @@ def expand_knowledge_graph():
 def push_sensor_data():
     """接收传感器接口推送的数据。"""
     payload = request.get_json(silent=True) or {}
-    session_id = str(payload.get('session_id', '')).strip() or None
+    try:
+        user, session_id, _token = _resolve_user_session(payload.get('session_id'))
+    except PermissionError as e:
+        return jsonify({'error': str(e)}), 401
     records = payload.get("records")
     if records is None:
         records = payload.get("sensors")
@@ -942,6 +1127,7 @@ def push_sensor_data():
         records = payload.get("data")
 
     result = push_session_sensors(session_id=session_id, payload=records)
+    save_sensor_records(int(user["id"]), result.get("latest_records") or [])
     return jsonify({
         "success": True,
         **result,
@@ -951,8 +1137,15 @@ def push_sensor_data():
 @app.route('/api/sensors/latest', methods=['GET'])
 def latest_sensor_data():
     """获取当前会话最新传感器数据。"""
-    session_id = str(request.args.get('session_id', '')).strip() or None
+    try:
+        user, session_id, _token = _resolve_user_session(request.args.get('session_id'))
+    except PermissionError as e:
+        return jsonify({'error': str(e)}), 401
     records = list_session_sensors(session_id)
+    if not records:
+        records = list_sensor_records(int(user["id"]))
+        if records:
+            push_session_sensors(session_id=session_id, payload=records)
     return jsonify({
         "success": True,
         "session_id": str(session_id or "default"),
@@ -965,13 +1158,189 @@ def latest_sensor_data():
 def clear_sensor_data():
     """清空当前会话传感器缓存。"""
     payload = request.get_json(silent=True) or {}
-    session_id = str(payload.get('session_id', '')).strip() or None
+    try:
+        user, session_id, _token = _resolve_user_session(payload.get('session_id'))
+    except PermissionError as e:
+        return jsonify({'error': str(e)}), 401
     cleared = clear_session_sensors(session_id)
+    clear_sensor_records(int(user["id"]))
     return jsonify({
         "success": True,
         "session_id": str(session_id or "default"),
         "cleared": cleared,
     })
+
+@app.route('/api/images/upload', methods=['POST'])
+def upload_persistent_image():
+    if 'file' not in request.files:
+        return jsonify({'error': '未找到图片文件'}), 400
+
+    file = request.files['file']
+    try:
+        user, _session_id, _token = _resolve_user_session(request.form.get('session_id'))
+        raw_bytes = file.read()
+        if not raw_bytes:
+            return jsonify({'error': '图片文件为空'}), 400
+        file_name = str(getattr(file, 'filename', '') or 'image.png')
+        image_base64 = base64.b64encode(raw_bytes).decode("utf-8")
+        try:
+            analysis = _analyze_image_base64(image_base64, file_name)
+        except Exception:
+            analysis = {
+                "summary_text": "",
+                "keywords": [],
+            }
+        keywords = list(analysis.get("keywords") or [])[:5]
+        summary_core = str(analysis.get("summary_text") or "").strip()
+        evidence = []
+        if keywords:
+            evidence.append({
+                "image_name": file_name,
+                "summary": summary_core or "、".join(keywords),
+                "source_type": "image_analysis",
+            })
+        item = save_image_asset(
+            user_id=int(user["id"]),
+            file_name=file_name,
+            raw_bytes=raw_bytes,
+            mime_type=_guess_upload_mime(file_name, "image/png"),
+            summary_text=summary_core,
+            evidence=evidence,
+        )
+        return jsonify({
+            "success": True,
+            **item,
+        })
+    except PermissionError as e:
+        return jsonify({'error': str(e)}), 401
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/images/list', methods=['GET'])
+def list_persistent_images():
+    try:
+        user, _session_id, _token = _resolve_user_session(request.args.get('session_id'))
+        return jsonify({
+            "success": True,
+            "images": list_image_assets(int(user["id"])),
+        })
+    except PermissionError as e:
+        return jsonify({'error': str(e)}), 401
+
+
+@app.route('/api/images/remove', methods=['POST'])
+def remove_persistent_image():
+    payload = request.get_json(silent=True) or {}
+    image_id = str(payload.get("image_id") or "").strip()
+    if not image_id:
+        return jsonify({"error": "image_id不能为空"}), 400
+    try:
+        user, _session_id, _token = _resolve_user_session(payload.get('session_id'))
+    except PermissionError as e:
+        return jsonify({'error': str(e)}), 401
+    removed = delete_image_asset(int(user["id"]), image_id)
+    if not removed:
+        return jsonify({"error": "未找到对应图片"}), 404
+    return jsonify({"success": True, "image_id": image_id})
+
+
+@app.route('/api/videos/upload', methods=['POST'])
+def upload_persistent_video():
+    if 'file' not in request.files:
+        return jsonify({'error': '未找到视频文件'}), 400
+
+    file = request.files['file']
+    file_name = str(getattr(file, "filename", "") or "未命名视频")
+    suffix = Path(file_name).suffix or ".mp4"
+    temp_path = None
+    try:
+        user, _session_id, _token = _resolve_user_session(request.form.get('session_id'))
+        raw_bytes = file.read()
+        if not raw_bytes:
+            return jsonify({'error': '视频文件为空'}), 400
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            temp_path = tmp.name
+            tmp.write(raw_bytes)
+
+        extracted = _extract_video_frames(Path(temp_path))
+        frame_reports = []
+        for frame in extracted["frames"]:
+            frame_name = f"{file_name} @ {_format_video_timestamp(frame['timestamp_s'])}"
+            try:
+                result = _analyze_image_base64(frame["image_base64"], frame_name)
+            except Exception:
+                continue
+            keywords = list(result.get("keywords") or [])[:5]
+            if not keywords:
+                continue
+            frame_reports.append({
+                "frame_index": frame["frame_index"],
+                "timestamp_s": frame["timestamp_s"],
+                "timestamp_label": _format_video_timestamp(frame["timestamp_s"]),
+                "keywords": keywords,
+            })
+
+        payload = _build_video_analysis_response(file_name, extracted, frame_reports)
+        item = save_video_asset(
+            user_id=int(user["id"]),
+            file_name=file_name,
+            raw_bytes=raw_bytes,
+            mime_type=_guess_upload_mime(file_name, "video/mp4"),
+            duration_s=float(payload.get("duration_s") or 0.0),
+            frames_extracted=int(payload.get("frames_extracted") or 0),
+            frames_matched=int(payload.get("frames_matched") or 0),
+            summary_text=str(payload.get("summary_text") or ""),
+            issue_keywords=list(payload.get("issue_keywords") or []),
+            evidence=list(payload.get("evidence") or []),
+        )
+        return jsonify({
+            "success": True,
+            **item,
+        })
+    except PermissionError as e:
+        return jsonify({'error': str(e)}), 401
+    except RuntimeError as e:
+        return jsonify({"error": str(e), "summary_text": "", "evidence": []}), 500
+    except Exception as e:
+        return jsonify({"error": str(e), "summary_text": "", "evidence": []}), 500
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.unlink(temp_path)
+            except Exception:
+                pass
+
+
+@app.route('/api/videos/list', methods=['GET'])
+def list_persistent_videos():
+    try:
+        user, _session_id, _token = _resolve_user_session(request.args.get('session_id'))
+        return jsonify({
+            "success": True,
+            "videos": list_video_assets(int(user["id"])),
+        })
+    except PermissionError as e:
+        return jsonify({'error': str(e)}), 401
+
+
+@app.route('/api/videos/remove', methods=['POST'])
+def remove_persistent_video():
+    payload = request.get_json(silent=True) or {}
+    video_id = str(payload.get("video_id") or "").strip()
+    if not video_id:
+        return jsonify({"error": "video_id不能为空"}), 400
+    try:
+        user, _session_id, _token = _resolve_user_session(payload.get('session_id'))
+    except PermissionError as e:
+        return jsonify({'error': str(e)}), 401
+    removed = delete_video_asset(int(user["id"]), video_id)
+    if not removed:
+        return jsonify({"error": "未找到对应视频"}), 404
+    return jsonify({"success": True, "video_id": video_id})
+
 
 # 图片分析接口
 @app.route('/api/image-analyze', methods=['POST'])
@@ -1108,13 +1477,14 @@ def agent_chat():
         normalized = _normalize_agent_chat_request(request.get_json(silent=True) or {})
         if not normalized["query"]:
             return jsonify({"error": "query不能为空"}), 400
+        user, session_id, _token = _resolve_user_session(normalized.get("session_id"))
+        _hydrate_persistent_runtime_state(user)
 
         options = normalized["options"] or {}
         retrieval_documents = normalized["evidence_documents"]
         sensor_records = normalized["evidence_sensors"]
         use_retrieval = options.get("use_retrieval_evidence", True)
         use_sensor_evidence = options.get("use_sensor_evidence", True)
-        session_id = normalized["session_id"]
 
         if config.RAG_ENABLED and use_retrieval and has_session_documents(session_id):
             provisional_risk_profile = build_risk_profile(
@@ -1144,7 +1514,11 @@ def agent_chat():
             evidence_sensors=sensor_records,
             options=options,
         )
+        save_message(int(user["id"]), "user", normalized["query"])
+        save_message(int(user["id"]), "assistant", str(result.get("reply") or ""))
         return jsonify(result)
+    except PermissionError as e:
+        return jsonify({"error": str(e)}), 401
     except TimeoutError as e:
         return jsonify({"error": str(e)}), 504
     except RuntimeError as e:

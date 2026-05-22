@@ -92,7 +92,4 @@ coal-mine-agent/
 5. `POST /api/chat`
    - 鍚庣浠ｇ悊 LongCat 鑱婂ぉ璇锋眰銆?
 
-6. `POST /api/parse-pdf`
-7. `POST /api/parse-docx`
-8. `POST /api/parse-text`
    - 鍏煎淇濈暀鐨勫崟鏂囦欢瑙ｆ瀽鎺ュ彛銆?

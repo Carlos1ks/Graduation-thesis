@@ -32,7 +32,9 @@ __pycache__/
 .runlogs/
 tools/reports/
 server/.graph_status/
+server/.persist/
 docs/*.bad-split-*.json
 docs/*.pre-*.json
 docs/*.restart-*.json
 docs/*-smoke.json
+dist.zip

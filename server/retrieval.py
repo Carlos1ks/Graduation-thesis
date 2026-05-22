@@ -395,6 +395,71 @@ def list_session_chunks(session_id: Optional[str]) -> List[Dict[str, Any]]:
     ]
 
 
+def hydrate_session_documents(session_id: Optional[str], documents: List[Dict[str, Any]]) -> Dict[str, Any]:
+    # 把数据库里已经持久化的文档重新灌回会话级检索索引。
+    # 这样即使服务重启，只要用户重新登录，旧文档也还能继续参与问答。
+    sid = _get_session_id(session_id)
+    if not config.RAG_ENABLED:
+        return {"session_id": sid, "document_count": 0, "chunk_count": 0}
+
+    all_records: List[Dict[str, Any]] = []
+    documents_meta: Dict[str, Dict[str, Any]] = {}
+
+    for raw_doc in documents:
+        if not isinstance(raw_doc, dict):
+            continue
+        normalized_text = _normalize_text(raw_doc.get("text") or raw_doc.get("text_content") or "")
+        if not normalized_text:
+            continue
+        chunk_records = chunk_text(normalized_text)
+        if not chunk_records:
+            continue
+
+        chunk_texts = [item["text"] for item in chunk_records]
+        embeddings = _embed_texts(chunk_texts)
+        document_id = str(raw_doc.get("document_id") or uuid4().hex[:12]).strip() or uuid4().hex[:12]
+        file_name = str(raw_doc.get("file_name") or raw_doc.get("doc_name") or "未命名文档").strip() or "未命名文档"
+
+        records: List[Dict[str, Any]] = []
+        for idx, chunk in enumerate(chunk_records, start=1):
+            article_label = str(chunk.get("article_label") or "").strip()
+            chunk_id = f"{article_label}-{idx:03d}" if article_label else f"chunk-{idx:03d}"
+            records.append({
+                "document_id": document_id,
+                "doc_name": file_name,
+                "chunk_id": chunk_id,
+                "text": chunk["text"],
+                "article_label": article_label,
+                "embedding": embeddings[idx - 1],
+                "source_type": "uploaded_doc_vector",
+            })
+
+        all_records.extend(records)
+        documents_meta[document_id] = {
+            "document_id": document_id,
+            "file_name": file_name,
+            "char_count": int(raw_doc.get("char_count") or len(normalized_text)),
+            "chunk_count": len(records),
+        }
+
+    with _STORE_LOCK:
+        if not all_records:
+            _SESSION_RAG_STORES.pop(sid, None)
+            return {"session_id": sid, "document_count": 0, "chunk_count": 0}
+
+        _SESSION_RAG_STORES[sid] = {
+            "documents": documents_meta,
+            "chunks": all_records,
+            "index": _rebuild_index_from_chunks(all_records),
+        }
+
+    return {
+        "session_id": sid,
+        "document_count": len(documents_meta),
+        "chunk_count": len(all_records),
+    }
+
+
 def ingest_document(session_id: Optional[str], file_name: str, text: str) -> Dict[str, Any]:
     # 把单个上传文档切块、向量化，并合并进当前会话的检索库。
     if not config.RAG_ENABLED:
