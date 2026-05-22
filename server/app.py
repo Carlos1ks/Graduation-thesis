@@ -1,4 +1,4 @@
-# 后端总入口。
+﻿# 后端总入口。
 # 这个文件把后端几条主链路都串在一起：
 # 1. 文档解析与上传；
 # 2. 图片 / 视频证据分析；
@@ -71,8 +71,6 @@ def _rebuild_session_knowledge_graph(session_id):
     graph = build_and_store_session_graph(session_id, chunks)
     return graph
 
-# Token缓存
-_token_cache = {"token": None, "expires_at": 0}
 VISION_ALLOWED_RISK_LEVELS = {"低", "中", "高", "极高", "未识别"}
 VISION_PROMPT_TEMPLATE = (
     "你是煤矿安全应急图像识别助手。"
@@ -292,54 +290,9 @@ def _extract_text_from_upload(file_storage):
     raise ValueError('不支持的文件格式，请上传 TXT、DOCX 或 PDF')
 
 
-def _analyze_baidu_image_base64(img_base64, image_name="image"):
-    # 调用百度图像识别 API，传入 base64 图片，返回原始识别结果。
-    # 返回值示例：{"result": [{"keyword": "瓦斯", "score": 0.92}, ...]}
-    image_data = _normalize_image_base64(img_base64)
-
-    access_token = get_baidu_access_token()
-    api_url = f"{config.BAIDU_IMAGE_ANALYZE_URL}?access_token={access_token}"
-    payload = {"image": image_data}
-
-    resp = requests.post(
-        api_url,
-        data=payload,
-        timeout=15
-    )
-    resp.raise_for_status()
-    result = resp.json()
-
-    if "error_code" in result and result["error_code"] != 0:
-        raise RuntimeError(result.get("error_msg", "Baidu API error"))
-
-    # 即使没识别出任何物体，也保证 result 字段存在，避免下游判空
-    if "result" not in result:
-        result["result"] = []
-    return result
-
-
-def _extract_image_keywords(result, limit=3):
-    # 从百度 API 返回结果中提取关键词列表，去重，最多返回 limit 个。
-    # 兼容两种字段名：keyword（新）和 class_name（旧）。
-    keywords = []
-    items = result.get("result", []) if isinstance(result, dict) else []
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        keyword = item.get("keyword") or item.get("class_name")
-        if not keyword:
-            continue
-        keyword = str(keyword).strip()
-        if keyword and keyword not in keywords:
-            keywords.append(keyword)
-        if len(keywords) >= limit:
-            break
-    return keywords
-
-
 def _normalize_image_base64(img_base64):
     # 去除 Data URL 前缀（如 "data:image/png;base64,"），只保留纯 base64 内容。
-    # 前端传图时可能有前缀，百度 API 要求纯 base64。
+    # 前端传图时可能带有前缀，这里统一裁掉，只保留纯 base64 内容。
     image_data = str(img_base64 or "").strip()
     if not image_data:
         raise ValueError("Empty image data")
@@ -395,7 +348,7 @@ def _normalize_vision_payload(payload):
     # keywords / summary / risk_level
     if not isinstance(payload, dict):
         raise ValueError("视觉模型返回的 JSON 不是对象。")
-
+    #这里没写 try，所以这个异常会继续上抛到接口层（/api/image-analyze），最终被最外层的 except Exception as e 兜住，转成 500 错误返回给前端
     keywords = payload.get("keywords")
     if not isinstance(keywords, list):
         keywords = []
@@ -504,23 +457,8 @@ def _analyze_openai_vision_base64(img_base64, image_name="image"):
 
 
 def _analyze_image_base64(img_base64, image_name="image"):
-    # 图像分析统一入口：
-    # 根据配置决定走百度视觉还是 OpenAI 兼容视觉接口。
-    provider = str(config.VISION_PROVIDER or "baidu").strip().lower()
-    if provider == "baidu":
-        baidu_result = _analyze_baidu_image_base64(img_base64, image_name)
-        keywords = _extract_image_keywords(baidu_result, limit=5)
-        return {
-            "provider": "baidu",
-            "model": "baidu-advanced-general",
-            "risk_level": "未识别",
-            "keywords": keywords,
-            "summary_text": "、".join(keywords[:3]),
-            "result": baidu_result.get("result", []),
-            "raw_result": baidu_result,
-        }
+    # 图像分析统一入口：当前只保留 OpenAI 兼容视觉链路。
     return _analyze_openai_vision_base64(img_base64, image_name)
-
 
 def _load_cv2():
     # 视频分析依赖 OpenCV；如果没装，直接抛出清晰错误。
@@ -1035,33 +973,7 @@ def clear_sensor_data():
         "cleared": cleared,
     })
 
-# 获取百度API Token
-def get_baidu_access_token():
-    import time
-    current_time = time.time()
-    if _token_cache["token"] and _token_cache["expires_at"] > current_time:
-        return _token_cache["token"]
-
-    baidu_api_key, baidu_secret_key = config.require_baidu_credentials()
-    params = {
-        "grant_type": "client_credentials",
-        "client_id": baidu_api_key,
-        "client_secret": baidu_secret_key,
-    }
-    try:
-        resp = requests.post(config.BAIDU_TOKEN_URL, data=params, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
-        token = data.get("access_token")
-        expires_in = data.get("expires_in", 2592000)
-        _token_cache["token"] = token
-        _token_cache["expires_at"] = current_time + expires_in - 60
-        return token
-    except Exception as e:
-        print(f"获取百度token失败: {e}")
-        raise
-
-# 图片识别API
+# 图片分析接口
 @app.route('/api/image-analyze', methods=['POST'])
 def image_analyze():
     try:
