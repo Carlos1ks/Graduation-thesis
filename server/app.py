@@ -80,14 +80,19 @@ CORS(
 )
 
 
+# 从请求头中解析 Bearer Token。
 def _extract_auth_token() -> str:
+    # 从请求头 Authorization: Bearer <token> 中提取 token 字符串，失败则返回空串。
     header = str(request.headers.get("Authorization", "") or "").strip()
     if header.lower().startswith("bearer "):
         return header[7:].strip()
     return ""
 
 
+# 校验当前请求的登录用户是否有效。
 def _require_auth_user():
+    # 验证当前请求的 Bearer token 有效，返回 (user_dict, token)。
+    # token 无效则抛出 PermissionError，由上层接口返回 401。
     token = _extract_auth_token()
     user = get_user_by_token(token)
     if not user:
@@ -95,7 +100,10 @@ def _require_auth_user():
     return user, token
 
 
+# 解析并校验当前用户对应的知识库空间会话号。
 def _resolve_user_session(requested_session_id: str | None = None):
+    # 鉴权 + 校验前端传的 session_id 是否与登录用户的 library_session_id 一致。
+    # 返回 (user_dict, stable_session_id, token)。
     user, token = _require_auth_user()
     stable_session_id = str(user.get("library_session_id") or "").strip()
     incoming_session_id = str(requested_session_id or "").strip()
@@ -104,8 +112,9 @@ def _resolve_user_session(requested_session_id: str | None = None):
     return user, stable_session_id, token
 
 
+# 把持久化数据重新灌回运行时缓存。
 def _hydrate_persistent_runtime_state(user) -> None:
-    # 登录或首次访问资源时，把已经持久化的数据重新灌回运行时状态。
+    # 登录后把持久化的文档和传感器数据恢复到进程内存中，使 RAG 检索和传感器缓存立即可用。
     user_id = int(user["id"])
     session_id = str(user["library_session_id"])
 
@@ -118,12 +127,17 @@ def _hydrate_persistent_runtime_state(user) -> None:
         push_session_sensors(session_id=session_id, payload=persisted_sensors)
 
 
+# 根据文件名猜测上传文件的 MIME 类型。
 def _guess_upload_mime(file_name: str, default: str = "application/octet-stream") -> str:
+    # 根据文件名后缀猜测 MIME 类型，用于持久化时记录文件类型。
     mime_type = mimetypes.guess_type(str(file_name or ""))[0]
     return mime_type or default
 
 
+# 从原始字节流中提取文档文本内容。
 def _extract_text_from_upload_bytes(file_name: str, raw_bytes: bytes):
+    # 根据文件后缀从 bytes 中提取全文，支持 PDF/DOCX/TXT。
+    # 返回 {"text": ..., "char_count": ...}（PDF 额外包含 "page_count"）。
     filename = str(file_name or "").lower()
     if filename.endswith(".pdf"):
         doc = fitz.open(stream=raw_bytes, filetype="pdf")
@@ -153,6 +167,7 @@ def _extract_text_from_upload_bytes(file_name: str, raw_bytes: bytes):
     raise ValueError("不支持的文件格式，请上传 TXT、DOCX 或 PDF")
 
 
+# 统一整理图谱统计信息。
 def _graph_payload(graph):
     # 统一整理图谱统计信息，避免每个接口都自己手工拼 node/relation 数量。
     stats = graph.get("stats") if isinstance(graph, dict) else {}
@@ -163,6 +178,7 @@ def _graph_payload(graph):
     }
 
 
+# 用当前会话的检索片段重新构建知识图谱。
 def _rebuild_session_knowledge_graph(session_id):
     # 用当前会话已经入库的检索片段重新构建知识图谱。
     chunks = list_session_chunks(session_id)
@@ -181,6 +197,7 @@ VISION_PROMPT_TEMPLATE = (
     "若无法判断，请返回 keywords 为空数组，summary 为“未识别”，risk_level 为“未识别”。"
 )
 
+# 清洗从 PDF 抽取出的原始文本。
 def clean_text(text):
     """清洗PDF提取的文本"""
     # 1. 删除页眉页脚
@@ -201,6 +218,7 @@ def clean_text(text):
     return text
 
 
+# 截断过长文本以控制上下文长度。
 def _clip_text(text, max_len):
     # 对长文本做截断，主要用于：
     # 1. 控制提示词长度；
@@ -214,6 +232,7 @@ def _clip_text(text, max_len):
     return f"{text[:head]}\n...(中间已省略)...\n{text[-tail:]}"
 
 
+# 清洗并裁剪前端传来的历史对话。
 def _normalize_history(history):
     # 把前端传来的历史对话清洗成后端统一格式，
     # 只保留 user/assistant 两类消息，并限制最大轮数。
@@ -237,6 +256,7 @@ def _normalize_history(history):
     return normalized[-max_messages:]
 
 
+# 清洗前端上传的文档证据结构。
 def _normalize_document_evidence(documents):
     # 清洗文档证据，统一字段名、长度和来源类型，
     # 让后面的多智能体流程不必关心前端字段是否有别名。
@@ -268,6 +288,7 @@ def _normalize_document_evidence(documents):
     return normalized
 
 
+# 清洗前端上传的图片证据结构。
 def _normalize_image_evidence(images):
     # 图片、视频命中帧在后端最终都按“图像证据”来处理，
     # 这里负责把它们规整成统一结构。
@@ -290,6 +311,7 @@ def _normalize_image_evidence(images):
     return normalized
 
 
+# 清洗前端上传的传感器证据结构。
 def _normalize_sensor_evidence(sensors):
     # 传感器记录同样先做一遍规整，避免不同来源的字段不一致。
     if not isinstance(sensors, list):
@@ -324,6 +346,7 @@ def _normalize_sensor_evidence(sensors):
     return normalized
 
 
+# 把 agent-chat 请求统一整理成标准输入。
 def _normalize_agent_chat_request(data):
     # agent-chat 是当前后端最核心的问答入口。
     # 这里先把 query / history / evidence / options 一次性清洗干净。
@@ -341,8 +364,9 @@ def _normalize_agent_chat_request(data):
         "options": options,
     }
 
+# 从 PDF 文件对象中提取纯文本。
 def _extract_pdf_text(file_storage):
-    # PDF 解析：提取全文，再走统一文本清洗流程。
+    # 从 Flask file_storage 解析 PDF 全文，调用 clean_text 清洗后返回 {text, char_count, page_count}。
     pdf_data = file_storage.read()
     doc = fitz.open(stream=pdf_data, filetype="pdf")
     full_text = ""
@@ -357,8 +381,9 @@ def _extract_pdf_text(file_storage):
     }
 
 
+# 从 DOCX 文件对象中提取纯文本。
 def _extract_docx_text(file_storage):
-    # DOCX 解析：按段落拼接。
+    # 从 Flask file_storage 解析 DOCX 全文，按段落拼接返回 {text, char_count}。
     doc = DocxDocument(file_storage)
     text = "\n".join([para.text for para in doc.paragraphs])
     return {
@@ -367,8 +392,9 @@ def _extract_docx_text(file_storage):
     }
 
 
+# 从 TXT 文件对象中提取纯文本。
 def _extract_plain_text(file_storage):
-    # TXT 解析：直接按 utf-8 读取，遇到异常字符则忽略。
+    # 从 Flask file_storage 按 UTF-8 读取 TXT 全文，异常字符忽略，返回 {text, char_count}。
     text = file_storage.read().decode('utf-8', errors='ignore')
     return {
         "text": text,
@@ -376,8 +402,9 @@ def _extract_plain_text(file_storage):
     }
 
 
+# 根据文件后缀分发到对应的文本解析器。
 def _extract_text_from_upload(file_storage):
-    # 根据文件后缀分发到具体的解析器。
+    # 根据 Flask file_storage 的文件名后缀分发到 PDF/DOCX/TXT 解析器（旧版兼容接口，新版用 _extract_text_from_upload_bytes）。
     filename = str(getattr(file_storage, "filename", "") or "").lower()
     if filename.endswith('.pdf'):
         return _extract_pdf_text(file_storage)
@@ -388,6 +415,7 @@ def _extract_text_from_upload(file_storage):
     raise ValueError('不支持的文件格式，请上传 TXT、DOCX 或 PDF')
 
 
+# 去除 Data URL 前缀，只保留纯 base64 图片内容。
 def _normalize_image_base64(img_base64):
     # 去除 Data URL 前缀（如 "data:image/png;base64,"），只保留纯 base64 内容。
     # 前端传图时可能带有前缀，这里统一裁掉，只保留纯 base64 内容。
@@ -399,6 +427,7 @@ def _normalize_image_base64(img_base64):
     return image_data
 
 
+# 从 OpenAI 兼容响应结构中提取文本内容。
 def _extract_openai_message_content(payload):
     # 从 OpenAI 兼容 API 的响应中提取文本内容。
     # 兼容两种 content 格式：{"content": "纯文本"} 或 {"content": [{"type":"text","text":"..."}]}（多模态返回）
@@ -423,6 +452,7 @@ def _extract_openai_message_content(payload):
     return str(content or "").strip()
 
 
+# 从视觉模型返回文本中剥离出 JSON 片段。
 def _extract_json_block(raw_text):
     # 视觉模型有时会把 JSON 包在 markdown 代码块里，
     # 这里负责把真正的 JSON 片段剥出来。
@@ -441,6 +471,7 @@ def _extract_json_block(raw_text):
     return text[start:end + 1]
 
 
+# 把视觉模型 JSON 返回规整成统一字段。
 def _normalize_vision_payload(payload):
     # 把视觉模型返回规范成系统内部统一结构：
     # keywords / summary / risk_level
@@ -473,6 +504,7 @@ def _normalize_vision_payload(payload):
     }
 
 
+# 构造图片分析使用的固定提示词。
 def _build_vision_prompt(image_name="image"):
     # 给视觉模型一个固定输出格式的提示词；
     # 文件名只是弱提示，真正判断仍应以画面内容为准。
@@ -485,6 +517,7 @@ def _build_vision_prompt(image_name="image"):
     )
 
 
+# 根据图片文件名推断图片 MIME 类型。
 def _guess_image_mime_type(image_name="image"):
     suffix = Path(str(image_name or "image")).suffix.lower()
     if suffix in {".jpg", ".jpeg"}:
@@ -496,6 +529,7 @@ def _guess_image_mime_type(image_name="image"):
     return "image/png"
 
 
+# 调用 OpenAI 兼容视觉接口分析图片。
 def _analyze_openai_vision_base64(img_base64, image_name="image"):
     # 走 OpenAI 兼容视觉接口分析图片。
     image_data = _normalize_image_base64(img_base64)
@@ -554,10 +588,12 @@ def _analyze_openai_vision_base64(img_base64, image_name="image"):
     }
 
 
+# 作为统一入口调用当前配置的图片分析链路。
 def _analyze_image_base64(img_base64, image_name="image"):
     # 图像分析统一入口：当前只保留 OpenAI 兼容视觉链路。
     return _analyze_openai_vision_base64(img_base64, image_name)
 
+# 延迟加载 OpenCV 依赖。
 def _load_cv2():
     # 视频分析依赖 OpenCV；如果没装，直接抛出清晰错误。
     try:
@@ -567,6 +603,7 @@ def _load_cv2():
     return cv2
 
 
+# 按配置缩放视频帧尺寸。
 def _resize_video_frame(frame, cv2):
     #宽超过 960px 就等比缩到 960px 宽，高也跟着等比缩放。目的是避免把 4K 视频帧原样转 base64 发给视觉模型
     if frame is None:
@@ -580,6 +617,7 @@ def _resize_video_frame(frame, cv2):
     return cv2.resize(frame, (max_width, new_height), interpolation=cv2.INTER_AREA)
 
 
+# 计算视频抽帧时应采样的帧位置。
 def _sample_video_positions(total_frames, fps, max_frames):
     # 按固定时间间隔抽帧，尽量覆盖整段视频，而不是只看前面几帧。算要抽哪些帧
     if total_frames <= 0:
@@ -605,6 +643,7 @@ def _sample_video_positions(total_frames, fps, max_frames):
     return positions[:max_frames]
 
 
+# 把秒数格式化为视频时间标签。
 def _format_video_timestamp(seconds):
     #把秒数转成可读的时间戳字符串。_format_video_timestamp(15.7)   →  "00:15"
     if seconds is None:
@@ -617,6 +656,7 @@ def _format_video_timestamp(seconds):
     return f"{minute:02d}:{second:02d}"
 
 
+# 从视频中抽取关键帧并转为 base64。
 def _extract_video_frames(video_path):
     # 抽取视频关键帧，并把每一帧转成 base64 图片供视觉模型复用。
     cv2 = _load_cv2()
@@ -662,6 +702,7 @@ def _extract_video_frames(video_path):
         capture.release()
 
 
+# 把逐帧分析结果汇总成视频分析响应。
 def _build_video_analysis_response(video_name, extracted, frame_reports):
     # 把逐帧识别结果整理成：
     # 1. 摘要文本；
@@ -717,8 +758,10 @@ def _build_video_analysis_response(video_name, extracted, frame_reports):
     }
 
 
+# 处理用户注册请求。
 @app.route('/api/auth/register', methods=['POST'])
 def auth_register():
+    # 注册接口：接收 username + password，返回 token 和用户信息（含 library_session_id）。
     payload = request.get_json(silent=True) or {}
     try:
         result = register_user(
@@ -740,8 +783,10 @@ def auth_register():
         return jsonify({"error": str(exc)}), 400
 
 
+# 处理用户登录请求。
 @app.route('/api/auth/login', methods=['POST'])
 def auth_login():
+    # 登录接口：验密成功后将持久化文档和传感器恢复到运行时，返回 token 和用户信息。
     payload = request.get_json(silent=True) or {}
     try:
         result = login_user(
@@ -764,8 +809,10 @@ def auth_login():
         return jsonify({"error": str(exc)}), 400
 
 
+# 返回当前登录用户信息。
 @app.route('/api/auth/me', methods=['GET'])
 def auth_me():
+    # 获取当前登录用户信息（前端刷新页面后用于恢复登录态）。
     try:
         user, _token = _require_auth_user()
         _hydrate_persistent_runtime_state(user)
@@ -782,16 +829,20 @@ def auth_me():
         return jsonify({"error": str(exc)}), 401
 
 
+# 处理退出登录请求。
 @app.route('/api/auth/logout', methods=['POST'])
 def auth_logout():
+    # 登出：删除 token，前端清除本地存储的 auth token。
     token = _extract_auth_token()
     if token:
         delete_token(token)
     return jsonify({"success": True})
 
 
+# 返回当前用户持久化保存的聊天消息。
 @app.route('/api/messages/list', methods=['GET'])
 def list_chat_messages():
+    # 获取当前用户持久化的历史聊天消息列表。
     try:
         user, _session_id, _token = _resolve_user_session(request.args.get("session_id"))
         records = list_messages(int(user["id"]))
@@ -803,6 +854,7 @@ def list_chat_messages():
         return jsonify({"error": str(exc)}), 401
 
 
+# 上传文档、建检索索引并做持久化保存。
 @app.route('/api/documents/upload', methods=['POST'])
 def upload_document():
     """统一文档入库接口：解析文本后建立后端向量索引，图谱改为手动生成。"""
@@ -851,9 +903,10 @@ def upload_document():
         return jsonify({'error': str(e)}), 500
 
 
+# 上传外部三元组 JSON 并写入知识图谱。
 @app.route('/api/knowledge-graph/triples/upload', methods=['POST'])
 def upload_knowledge_graph_triples():
-    """Upload pre-extracted triples JSON and write it directly to Neo4j."""
+    # 上传预抽取的三元组 JSON 文件，直接导入 Neo4j（跳过 LLM 抽取步骤）。
     if 'file' not in request.files:
         return jsonify({'error': '未找到三元组文件'}), 400
 
@@ -888,6 +941,7 @@ def upload_knowledge_graph_triples():
         return jsonify({'error': str(e)}), 500
 
 
+# 删除当前用户的文档及其检索索引。
 @app.route('/api/documents/remove', methods=['POST'])
 def remove_uploaded_document():
     """移除当前会话中的已入库文档。"""
@@ -918,6 +972,7 @@ def remove_uploaded_document():
     })
 
 
+# 列出当前用户的文档库。
 @app.route('/api/documents/list', methods=['GET'])
 def list_uploaded_documents():
     """获取当前会话已入库文档列表。"""
@@ -949,6 +1004,7 @@ def list_uploaded_documents():
     })
 
 
+# 返回当前用户的完整或聚焦知识图谱。
 @app.route('/api/knowledge-graph', methods=['GET'])
 def get_knowledge_graph():
     """获取当前会话完整知识图谱。"""
@@ -1003,6 +1059,7 @@ def get_knowledge_graph():
     })
 
 
+# 按关键词查询当前用户的图谱子图。
 @app.route('/api/knowledge-graph/query', methods=['POST'])
 def query_knowledge_graph():
     """按关键词返回图谱子图。"""
@@ -1043,6 +1100,7 @@ def query_knowledge_graph():
     })
 
 
+# 触发当前用户知识图谱重建。
 @app.route('/api/knowledge-graph/rebuild', methods=['POST'])
 def rebuild_knowledge_graph():
     """根据当前会话已上传文档异步重建知识图谱。"""
@@ -1059,6 +1117,7 @@ def rebuild_knowledge_graph():
     })
 
 
+# 获取当前用户图谱构建状态。
 @app.route('/api/knowledge-graph/status', methods=['GET'])
 def knowledge_graph_status():
     """获取当前会话知识图谱构建状态。"""
@@ -1074,6 +1133,7 @@ def knowledge_graph_status():
     })
 
 
+# 按节点继续展开当前用户图谱邻居。
 @app.route('/api/knowledge-graph/expand', methods=['POST'])
 def expand_knowledge_graph():
     """按节点展开一跳邻居。"""
@@ -1112,6 +1172,7 @@ def expand_knowledge_graph():
     })
 
 
+# 接收并保存当前用户的传感器数据。
 @app.route('/api/sensors/push', methods=['POST'])
 def push_sensor_data():
     """接收传感器接口推送的数据。"""
@@ -1134,6 +1195,7 @@ def push_sensor_data():
     })
 
 
+# 返回当前用户最新的传感器数据。
 @app.route('/api/sensors/latest', methods=['GET'])
 def latest_sensor_data():
     """获取当前会话最新传感器数据。"""
@@ -1154,6 +1216,7 @@ def latest_sensor_data():
     })
 
 
+# 清空当前用户的传感器数据。
 @app.route('/api/sensors/clear', methods=['POST'])
 def clear_sensor_data():
     """清空当前会话传感器缓存。"""
@@ -1170,8 +1233,10 @@ def clear_sensor_data():
         "cleared": cleared,
     })
 
+# 上传图片并持久化保存到用户图片库。
 @app.route('/api/images/upload', methods=['POST'])
 def upload_persistent_image():
+    # 上传图片并持久化：存储文件 + 调用视觉模型分析 + 保存摘要和 evidence。
     if 'file' not in request.files:
         return jsonify({'error': '未找到图片文件'}), 400
 
@@ -1219,8 +1284,10 @@ def upload_persistent_image():
         return jsonify({'error': str(e)}), 500
 
 
+# 列出当前用户图片库中的图片。
 @app.route('/api/images/list', methods=['GET'])
 def list_persistent_images():
+    # 列出当前用户所有已持久化的图片，含 Data URL 和视觉分析结果。
     try:
         user, _session_id, _token = _resolve_user_session(request.args.get('session_id'))
         return jsonify({
@@ -1231,8 +1298,10 @@ def list_persistent_images():
         return jsonify({'error': str(e)}), 401
 
 
+# 从当前用户图片库中删除图片。
 @app.route('/api/images/remove', methods=['POST'])
 def remove_persistent_image():
+    # 删除持久化图片：数据库记录和磁盘文件同时清除。
     payload = request.get_json(silent=True) or {}
     image_id = str(payload.get("image_id") or "").strip()
     if not image_id:
@@ -1247,8 +1316,10 @@ def remove_persistent_image():
     return jsonify({"success": True, "image_id": image_id})
 
 
+# 上传视频并持久化保存到用户视频库。
 @app.route('/api/videos/upload', methods=['POST'])
 def upload_persistent_video():
+    # 上传视频并持久化：存储文件 + 抽帧 + 逐帧视觉分析 + 保存 summary/evidence/keywords。
     if 'file' not in request.files:
         return jsonify({'error': '未找到视频文件'}), 400
 
@@ -1314,8 +1385,10 @@ def upload_persistent_video():
                 pass
 
 
+# 列出当前用户视频库中的视频。
 @app.route('/api/videos/list', methods=['GET'])
 def list_persistent_videos():
+    # 列出当前用户所有已持久化的视频，含抽帧统计、关键词和 evidence。
     try:
         user, _session_id, _token = _resolve_user_session(request.args.get('session_id'))
         return jsonify({
@@ -1326,8 +1399,10 @@ def list_persistent_videos():
         return jsonify({'error': str(e)}), 401
 
 
+# 从当前用户视频库中删除视频。
 @app.route('/api/videos/remove', methods=['POST'])
 def remove_persistent_video():
+    # 删除持久化视频：数据库记录和磁盘文件同时清除。
     payload = request.get_json(silent=True) or {}
     video_id = str(payload.get("video_id") or "").strip()
     if not video_id:
@@ -1342,7 +1417,8 @@ def remove_persistent_video():
     return jsonify({"success": True, "video_id": video_id})
 
 
-# 图片分析接口
+# 图片分析接口（旧版兼容，无鉴权，接收 base64 返回视觉分析结果）。
+# 提供单张图片分析接口。
 @app.route('/api/image-analyze', methods=['POST'])
 def image_analyze():
     try:
@@ -1363,6 +1439,8 @@ def image_analyze():
         return jsonify({"error": str(e), "result": []}), 500
 
 
+# 视频分析接口（旧版兼容，无鉴权，上传视频文件返回抽帧分析结果）。
+# 提供单个视频抽帧分析接口。
 @app.route('/api/video-analyze', methods=['POST'])
 def video_analyze():
     """处理视频上传并抽帧分析。"""
@@ -1409,6 +1487,7 @@ def video_analyze():
                 pass
 
 
+# 提供普通模型代理聊天接口。
 @app.route('/api/chat', methods=['POST'])
 def chat_with_longcat():
     """后端代理 LongCat 请求，避免浏览器直连外网导致超时或受限。"""
@@ -1466,6 +1545,7 @@ def chat_with_longcat():
         return jsonify({"error": f"LongCat代理错误: {str(e)}"}), 500
 
 # LangChain智能体对话接口
+# 提供多智能体问答主接口。
 @app.route('/api/agent-chat', methods=['POST'])
 def agent_chat():
     """

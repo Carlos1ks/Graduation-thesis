@@ -24,6 +24,7 @@ _SESSION_CHAT_HISTORY: Dict[str, List[Dict[str, str]]] = {}
 _MAX_HISTORY_MESSAGES = config.AGENT_MAX_HISTORY_MESSAGES
 _DEFAULT_SESSION_ID = "default"
 
+# 按给定参数创建一个通用的大模型客户端。
 def _build_llm(temperature: float, max_tokens: int, timeout: int) -> ChatOpenAI:
     # 按给定参数创建一个通用的大模型客户端。
     return ChatOpenAI(
@@ -36,6 +37,7 @@ def _build_llm(temperature: float, max_tokens: int, timeout: int) -> ChatOpenAI:
     )
 
 
+# 返回普通角色推理使用的默认模型配置。
 def _get_llm() -> ChatOpenAI:
     # 普通角色调用时使用的默认模型配置。
     return _build_llm(
@@ -45,6 +47,7 @@ def _get_llm() -> ChatOpenAI:
     )
 
 
+# 返回用于角色路由的小型模型配置。
 def _get_router_llm() -> ChatOpenAI:
     # 路由模型只负责挑角色，所以这里把输出长度和超时都压得更紧。
     return _build_llm(
@@ -57,6 +60,7 @@ _ROLE_CONTEXT_LIMIT = 1400
 _SHORT_RETRY_LIMIT = 700
 
 
+# 把模型返回内容统一整理成纯文本。
 def _normalize_content(content) -> str:
     """将模型返回内容统一为纯文本。"""
     if isinstance(content, str):
@@ -74,6 +78,7 @@ def _normalize_content(content) -> str:
     return str(content)
 
 
+# 执行单个角色智能体的推理调用。
 def _run_role(role_name: str, role_prompt: str, user_query: str) -> str:
     """执行单个角色智能体。"""
     try:
@@ -87,12 +92,14 @@ def _run_role(role_name: str, role_prompt: str, user_query: str) -> str:
         raise RuntimeError(f"{role_name}智能体调用失败：{str(e)}") from e
 
 
+# 判断错误消息是否属于超时类异常。
 def _is_timeout_error_msg(msg: str) -> bool:
     """判断错误信息是否属于超时类错误。"""
     text = (msg or "").lower()
     return "timed out" in text or "timeout" in text or "超时" in text
 
 
+# 截断长文本，避免提示词过长。
 def _clip_text(text: str, max_len: int) -> str:
     """截断长文本，避免单次角色调用输入过大导致超时。"""
     text = str(text or "")
@@ -103,6 +110,7 @@ def _clip_text(text: str, max_len: int) -> str:
     return f"{text[:head]}\n...(中间已省略)...\n{text[-tail:]}"
 
 
+# 当角色调用失败时生成规则化兜底结果。
 def _build_fallback_role_output(
     role_name: str,
     risk_profile: Dict[str, object],
@@ -163,7 +171,9 @@ def _build_fallback_role_output(
     )
 
 
+# 清洗并裁剪历史对话。
 def _normalize_history(history: Optional[List[dict]]) -> List[Dict[str, str]]:
+    # 清洗对话历史：只保留 user/assistant 消息，截断每条 500 字符，限制最大条数。
     if not isinstance(history, list):
         return []
 
@@ -184,7 +194,9 @@ def _normalize_history(history: Optional[List[dict]]) -> List[Dict[str, str]]:
     return normalized[-max_messages:]
 
 
+# 清洗文档证据并统一字段结构。
 def _normalize_document_evidence(documents: Optional[List[dict]]) -> List[Dict[str, object]]:
+    # 清洗文档证据：兼容驼峰/下划线字段名，控制数量和截断长度，让多智能体流程不必关心前端差异。
     if not isinstance(documents, list):
         return []
 
@@ -212,7 +224,9 @@ def _normalize_document_evidence(documents: Optional[List[dict]]) -> List[Dict[s
     return normalized
 
 
+# 清洗图片或视频帧证据并统一字段结构。
 def _normalize_image_evidence(images: Optional[List[dict]]) -> List[Dict[str, str]]:
+    # 清洗图像证据：兼容字段名差异，截断摘要到 300 字，统一 source_type 兜底。
     if not isinstance(images, list):
         return []
 
@@ -231,22 +245,30 @@ def _normalize_image_evidence(images: Optional[List[dict]]) -> List[Dict[str, st
     return normalized
 
 
+# 规范化会话编号。
 def _get_session_id(session_id: Optional[str]) -> str:
+    # 规范化 session_id，为空时回退到 default。
     sid = str(session_id or "").strip()
     return sid or _DEFAULT_SESSION_ID
 
 
+# 读取当前会话缓存的历史聊天记录。
 def _get_session_history(session_id: Optional[str]) -> List[Dict[str, str]]:
+    # 获取某个会话的进程内聊天历史副本。
     return list(_SESSION_CHAT_HISTORY.get(_get_session_id(session_id), []))
 
 
+# 保存当前会话的历史聊天记录。
 def _save_session_history(session_id: Optional[str], history: List[Dict[str, str]]) -> None:
+    # 保存会话的聊天历史，自动清洗并截断到最大条数。
     sid = _get_session_id(session_id)
     trimmed = _normalize_history(history)
     _SESSION_CHAT_HISTORY[sid] = trimmed[-_MAX_HISTORY_MESSAGES:]
 
 
+# 向当前会话追加一轮用户与助手对话。
 def _append_session_turn(session_id: Optional[str], user_query: str, reply: str) -> List[Dict[str, str]]:
+    # 向会话历史追加本轮问答 pair，返回更新后的完整历史。
     history = _get_session_history(session_id)
     history.extend([
         {"role": "user", "content": _clip_text(user_query, 500)},
@@ -256,7 +278,9 @@ def _append_session_turn(session_id: Optional[str], user_query: str, reply: str)
     return _get_session_history(session_id)
 
 
+# 按字符上限裁剪历史消息。
 def _limit_history_chars(history: List[Dict[str, str]], max_chars: int) -> List[Dict[str, str]]:
+    # 从尾部往前截取历史消息，使总字符数不超过 max_chars，保证 prompt 不超长。
     selected: List[Dict[str, str]] = []
     total = 0
     for item in reversed(history):
@@ -268,7 +292,9 @@ def _limit_history_chars(history: List[Dict[str, str]], max_chars: int) -> List[
     return list(reversed(selected))
 
 
+# 把历史对话格式化为提示词可读文本。
 def _format_history_for_prompt(history: List[Dict[str, str]]) -> str:
+    # 将对话历史格式化为 "用户: ...\n助手: ..." 的 prompt 片段。
     if not history:
         return "无历史会话。"
     lines = []
@@ -278,7 +304,9 @@ def _format_history_for_prompt(history: List[Dict[str, str]]) -> str:
     return "\n".join(lines)
 
 
+# 把文档证据格式化为提示词可读文本。
 def _format_document_evidence_for_prompt(documents: List[Dict[str, object]]) -> str:
+    # 将文档证据列表格式化为带来源标注的 prompt 片段，总长度受控。
     if not documents:
         return "无文档证据。"
 
@@ -299,7 +327,9 @@ def _format_document_evidence_for_prompt(documents: List[Dict[str, object]]) -> 
     return "\n\n----\n\n".join(blocks) if blocks else "无文档证据。"
 
 
+# 把图片证据格式化为提示词可读文本。
 def _format_image_evidence_for_prompt(images: List[Dict[str, str]]) -> str:
+    # 将图像证据列表格式化为 "图片：xxx；识别摘要：xxx" 的 prompt 片段。
     if not images:
         return "无图片证据。"
     return "\n".join(
@@ -308,7 +338,9 @@ def _format_image_evidence_for_prompt(images: List[Dict[str, str]]) -> str:
     )
 
 
+# 把传感器证据格式化为提示词可读文本。
 def _format_sensor_evidence_for_prompt(sensors: List[Dict[str, object]]) -> str:
+    # 将传感器记录格式化为多行 key=value 文本，每条传感器一行。
     if not sensors:
         return "无传感器数据。"
     lines = []
@@ -327,14 +359,19 @@ def _format_sensor_evidence_for_prompt(sensors: List[Dict[str, object]]) -> str:
     return "\n".join(lines)
 
 
+# 把图谱摘要整理为提示词中的文本片段。
 def _format_graph_summary_for_prompt(graph_summary: str) -> str:
+    # 图谱摘要兜底：如果没有命中则返回明确提示。
     return graph_summary or "无图谱命中。"
 
 
+# 把风险画像转换成提示词中的摘要文本。
 def _format_risk_profile_for_prompt(risk_profile: Dict[str, object]) -> str:
+    # 风险画像兜底：防止 summary 为空导致 prompt 中出现空白。
     return str(risk_profile.get("summary") or "未识别风险画像。")
 
 
+# 把问题和多源证据拼成多智能体共享上下文。
 def _build_shared_context(
     query: str,
     history: List[Dict[str, str]],
@@ -362,6 +399,7 @@ def _build_shared_context(
     )
 
 
+# 在模型路由失败时按规则决定启用哪些角色。
 def _route_agents_by_rules(query: str) -> List[str]:
     """规则路由（仅用于模型路由失败时的后备）。"""
     q = query.strip()
@@ -392,6 +430,7 @@ def _route_agents_by_rules(query: str) -> List[str]:
     return ordered
 
 
+# 清洗和规范角色路由结果。
 def _sanitize_selected_agents(agents: List[str]) -> List[str]:
     """清洗路由结果并按固定顺序输出。"""
     allow = {"perception", "knowledge", "decision", "coordination"}
@@ -401,6 +440,7 @@ def _sanitize_selected_agents(agents: List[str]) -> List[str]:
     return [a for a in ["perception", "knowledge", "decision", "coordination"] if a in selected]
 
 
+# 根据问题特征对角色集合再做一次收敛。
 def _apply_route_guard(query: str, selected_agents: List[str]) -> List[str]:
     """路由守门：去掉明显不必要的高耗时角色，降低超时率。"""
     q = query.strip()
@@ -425,6 +465,7 @@ def _apply_route_guard(query: str, selected_agents: List[str]) -> List[str]:
     return [a for a in ["perception", "knowledge", "decision", "coordination"] if a in guarded]
 
 
+# 综合模型路由和规则回退决定当前轮次角色组合。
 def _route_agents(
     query: str,
     has_doc_evidence: bool = False,
@@ -488,6 +529,7 @@ def _route_agents(
         }
 
 
+# 把各角色输出汇总成最终回复文本。
 def _compose_final_reply(user_query: str, agents: Dict[str, str], selected_agents: List[str]) -> str:
     """总控聚合器：仅融合本次被路由选中的智能体结果。"""
     title_map = {
@@ -509,6 +551,7 @@ def _compose_final_reply(user_query: str, agents: Dict[str, str], selected_agent
     return "\n".join(lines)
 
 
+# 执行完整的多智能体问答主流程。
 def multi_agent_ask(
     query: str,
     session_id: Optional[str] = None,
@@ -781,6 +824,7 @@ def multi_agent_ask(
     }
 
 
+# 保留的简化入口，兼容旧调用方式。
 def agent_ask(query: str) -> str:
     """兼容旧调用方式，仅返回最终答复文本。"""
     result = multi_agent_ask(query=query)

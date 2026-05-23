@@ -177,19 +177,23 @@ _CANONICAL_NODE_RULES = {
 }
 
 
+# 把关系编码转换成人类可读的关系标签。
 def _relation_label(rel_type: str) -> str:
     code = str(rel_type or "").strip()
     return RELATION_LABEL_OVERRIDES.get(code.upper()) or RELATION_LABELS.get(code) or RELATION_LABELS.get(code.lower()) or code
 
 
+# 读取单次图谱构建允许处理的最大条文数。
 def _article_limit() -> int:
     return max(_NO_ARTICLE_LIMIT, int(config.KG_MAX_ARTICLES_PER_BUILD))
 
 
+# 判断当前处理条文数是否达到预算上限。
 def _article_budget_reached(count: int, limit: int) -> bool:
     return limit > 0 and count >= limit
 
 
+# 创建用于图谱抽取的大模型客户端。
 def _build_llm() -> ChatOpenAI:
     return ChatOpenAI(
         api_key=config.require_longcat_api_key(),
@@ -201,15 +205,18 @@ def _build_llm() -> ChatOpenAI:
     )
 
 
+# 规范化图谱作用域使用的会话编号。
 def _get_session_id(session_id: str | None) -> str:
     sid = str(session_id or "").strip()
     return sid or _DEFAULT_SESSION_ID
 
 
+# 返回当前 UTC 时间戳字符串。
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# 把任意字符串清洗为安全的标识符。
 def _safe_id(value: str) -> str:
     text = str(value or "").strip()
     text = re.sub(r"\s+", "_", text)
@@ -217,10 +224,12 @@ def _safe_id(value: str) -> str:
     return text.strip("_")[:120] or "unknown"
 
 
+# 生成图节点唯一 UID。
 def _node_uid(node_type: str, node_id: str) -> str:
     return f"{node_type}:{node_id}"
 
 
+# 清洗节点文本键，便于实体归一。
 def _normalize_node_key_text(value: str) -> str:
     text = str(value or "").strip().lower()
     text = re.sub(r"\s+", "", text)
@@ -231,7 +240,9 @@ def _normalize_node_key_text(value: str) -> str:
     return text or "unknown"
 
 
+# 把节点归并为统一实体表示。
 def _canonical_entity(node_type: str, node_id: str, label: str) -> Tuple[str, str]:
+    # 将 LLM 抽取的实体映射到预定义的规范实体 ID 和中文标签（如 "瓦斯""火灾"→ 规范 hazard:gas）。
     clean_type = str(node_type or "").strip().lower()
     raw_id = str(node_id or "").strip()
     raw_label = str(label or raw_id).strip()
@@ -246,6 +257,7 @@ def _canonical_entity(node_type: str, node_id: str, label: str) -> Tuple[str, st
     return canonical_id, raw_label or canonical_id
 
 
+# 为原始实体解析或生成规范化节点 UID。
 def _resolve_node_uid(nodes_by_uid: Dict[str, Dict[str, object]], node_type: str, raw_id: str) -> str:
     canonical_id, _ = _canonical_entity(node_type, raw_id, raw_id)
     canonical_uid = _node_uid(node_type, canonical_id)
@@ -266,6 +278,7 @@ def _resolve_node_uid(nodes_by_uid: Dict[str, Dict[str, object]], node_type: str
     return canonical_uid
 
 
+# 从已有 UID 中提取规范化 UID。
 def _canonical_uid_from_uid(uid: str) -> str:
     text = str(uid or "").strip()
     if ":" not in text:
@@ -275,6 +288,7 @@ def _canonical_uid_from_uid(uid: str) -> str:
     return _node_uid(node_type, canonical_id)
 
 
+# 合并同一节点的多次抽取结果。
 def _merge_node_record(existing: Dict[str, object] | None, incoming: Dict[str, object]) -> Dict[str, object]:
     if not existing:
         merged = dict(incoming)
@@ -292,6 +306,7 @@ def _merge_node_record(existing: Dict[str, object] | None, incoming: Dict[str, o
     return merged
 
 
+# 将一个节点写入节点映射表。
 def _put_node(nodes_by_uid: Dict[str, Dict[str, object]], node: Dict[str, object]) -> None:
     uid = str(node.get("uid") or "").strip()
     if not uid:
@@ -299,6 +314,7 @@ def _put_node(nodes_by_uid: Dict[str, Dict[str, object]], node: Dict[str, object
     nodes_by_uid[uid] = _merge_node_record(nodes_by_uid.get(uid), node)
 
 
+# 截断过长证据文本。
 def _clip_text(text: str, limit: int = 220) -> str:
     content = re.sub(r"\s+", " ", str(text or "")).strip()
     if len(content) <= limit:
@@ -306,11 +322,13 @@ def _clip_text(text: str, limit: int = 220) -> str:
     return f"{content[:limit]}..."
 
 
+# 从文本中提取条文编号。
 def _extract_article_label(text: str) -> str:
     match = _ARTICLE_LABEL_PATTERN.search(str(text or ""))
     return match.group(0) if match else ""
 
 
+# 清洗文档列表并统一图谱构建输入。
 def _normalize_documents(documents: List[Dict[str, object]] | None) -> List[Dict[str, object]]:
     if not isinstance(documents, list):
         return []
@@ -333,6 +351,7 @@ def _normalize_documents(documents: List[Dict[str, object]] | None) -> List[Dict
     return normalized
 
 
+# 按条文边界切分规程文本。
 def _split_articles(text: str, fallback_id: str) -> List[Dict[str, str]]:
     content = str(text or "").strip()
     if not content:
@@ -353,6 +372,7 @@ def _split_articles(text: str, fallback_id: str) -> List[Dict[str, str]]:
     return results
 
 
+# 构造单条文图谱抽取提示词。
 def _build_graph_extraction_prompt(doc_name: str, article_label: str, text: str) -> str:
     return (
         "请从下面的煤矿安全规程条文中抽取知识图谱三元组，严格输出 JSON。\n"
@@ -374,6 +394,7 @@ def _build_graph_extraction_prompt(doc_name: str, article_label: str, text: str)
     )
 
 
+# 解析图谱抽取模型返回的 JSON。
 def _parse_llm_json(text: str) -> Dict[str, object]:
     content = str(text or "").strip()
     if not content:
@@ -387,6 +408,7 @@ def _parse_llm_json(text: str) -> Dict[str, object]:
     return {"nodes": [], "relationships": []}
 
 
+# 抽取单个条文对应的图谱片段。
 def _extract_article_graph(doc_name: str, article_label: str, text: str) -> Dict[str, object]:
     prompt = _build_graph_extraction_prompt(doc_name, article_label, text)
     messages = [
@@ -402,7 +424,9 @@ def _extract_article_graph(doc_name: str, article_label: str, text: str) -> Dict
     return {"nodes": nodes, "relationships": relationships}
 
 
+# 清洗和补全抽取出的节点。
 def _sanitize_node(node: Dict[str, object], doc_name: str, article_label: str, article_uid: str) -> Dict[str, object] | None:
+    # 清洗 LLM 抽取的单个节点：校验类型、映射规范实体、生成 uid，不合格则返回 None。
     node_type = str(node.get("type") or "").strip().lower()
     if node_type not in ALLOWED_NODE_TYPES:
         return None
@@ -425,12 +449,14 @@ def _sanitize_node(node: Dict[str, object], doc_name: str, article_label: str, a
     }
 
 
+# 清洗和补全抽取出的关系。
 def _sanitize_relation(
     rel: Dict[str, object],
     nodes_by_uid: Dict[str, Dict[str, object]],
     doc_name: str,
     article_label: str,
 ) -> Dict[str, object] | None:
+    # 清洗 LLM 抽取的关系：校验类型、解析头尾节点 uid，不合格则返回 None。
     article_label = str(rel.get("article_label") or article_label or "").strip()
     rel_type = str(rel.get("type") or "").strip().upper()
     if rel_type not in ALLOWED_RELATIONS:
@@ -467,6 +493,7 @@ def _sanitize_relation(
     }
 
 
+# 从文档集合构建完整图谱对象。
 def _build_graph_documents(documents: List[Dict[str, object]]) -> Dict[str, object]:
     normalized_documents = _normalize_documents(documents)
     nodes_by_uid: Dict[str, Dict[str, object]] = {}
@@ -568,6 +595,7 @@ def _build_graph_documents(documents: List[Dict[str, object]]) -> Dict[str, obje
     return _normalize_graph_shape(list(nodes_by_uid.values()), list(relations_by_id.values()))
 
 
+# 带进度状态地构建文档图谱。
 def _build_graph_documents_with_progress(documents: List[Dict[str, object]], session_id: str) -> Dict[str, object]:
     normalized_documents = _normalize_documents(documents)
     nodes_by_uid: Dict[str, Dict[str, object]] = {}
@@ -696,6 +724,7 @@ def _build_graph_documents_with_progress(documents: List[Dict[str, object]], ses
     return _normalize_graph_shape(list(nodes_by_uid.values()), list(relations_by_id.values()))
 
 
+# 获取 Neo4j 驱动连接。
 def _get_driver():
     global _DRIVER
     with _DRIVER_LOCK:
@@ -705,7 +734,9 @@ def _get_driver():
         return _DRIVER
 
 
+# 关闭全局 Neo4j 驱动。
 def close_driver() -> None:
+    # 关闭 Neo4j 连接驱动，在服务关闭时调用释放资源。
     global _DRIVER
     with _DRIVER_LOCK:
         if _DRIVER is not None:
@@ -713,6 +744,7 @@ def close_driver() -> None:
             _DRIVER = None
 
 
+# 执行一条 Neo4j 写操作。
 def _execute_write(query: str, **params):
     driver = _get_driver()
     _, _, _, database = config.require_neo4j_credentials()
@@ -720,6 +752,7 @@ def _execute_write(query: str, **params):
         return session.execute_write(lambda tx: list(tx.run(query, **params)))
 
 
+# 执行一条 Neo4j 读操作。
 def _execute_read(query: str, **params):
     driver = _get_driver()
     _, _, _, database = config.require_neo4j_credentials()
@@ -727,6 +760,7 @@ def _execute_read(query: str, **params):
         return session.execute_read(lambda tx: [record.data() for record in tx.run(query, **params)])
 
 
+# 确保 Neo4j 中的约束与索引存在。
 def _ensure_schema() -> None:
     _execute_write("CREATE CONSTRAINT session_uid IF NOT EXISTS FOR (n:KGNode) REQUIRE (n.session_id, n.uid) IS UNIQUE")
     _execute_write("CREATE INDEX kg_node_session_label IF NOT EXISTS FOR (n:KGNode) ON (n.session_id, n.label)")
@@ -736,6 +770,7 @@ def _ensure_schema() -> None:
     _execute_write("CREATE INDEX kg_rel_session_relation IF NOT EXISTS FOR ()-[r:KG_REL]-() ON (r.session_id, r.relation)")
 
 
+# 删除指定会话在 Neo4j 中的图谱数据。
 def _clear_session_graph_neo4j(session_id: str) -> None:
     _execute_write(
         """
@@ -746,12 +781,14 @@ def _clear_session_graph_neo4j(session_id: str) -> None:
     )
 
 
+# 把整张图谱完整写入 Neo4j。
 def _write_graph_to_neo4j(session_id: str, graph: Dict[str, object]) -> None:
     _ensure_schema()
     _clear_session_graph_neo4j(session_id)
     _upsert_graph_to_neo4j(session_id, graph)
 
 
+# 把节点和关系增量写入 Neo4j。
 def _upsert_graph_to_neo4j(session_id: str, graph: Dict[str, object]) -> None:
     _ensure_schema()
 
@@ -827,6 +864,7 @@ def _upsert_graph_to_neo4j(session_id: str, graph: Dict[str, object]) -> None:
         )
 
 
+# 把多批次抽取得到的图谱片段合并成一张图。
 def _merge_graph_chunks(base: Dict[str, object], incoming: Dict[str, object]) -> Dict[str, object]:
     node_map = {str(node.get("uid")): dict(node) for node in base.get("nodes", [])}
     for node in incoming.get("nodes", []):
@@ -848,7 +886,9 @@ def _merge_graph_chunks(base: Dict[str, object], incoming: Dict[str, object]) ->
     return _normalize_graph_shape(list(node_map.values()), list(rel_map.values()))
 
 
+# 统计指定会话图谱的节点和关系数量。
 def _stats_for_session(session_id: str) -> Dict[str, object]:
+    # 统计某会话在 Neo4j 中的节点和关系数量，结果缓存 10 分钟。
     cache_key = f"stats::{session_id}"
     cached = _cache_get(cache_key)
     if cached is not None:
@@ -866,16 +906,19 @@ def _stats_for_session(session_id: str) -> Dict[str, object]:
     return result
 
 
+# 返回图谱构建状态文件的路径。
 def _status_file(session_id: str) -> Path:
     _STATUS_DIR.mkdir(parents=True, exist_ok=True)
     return _STATUS_DIR / f"{_safe_id(session_id)}.json"
 
 
+# 将图谱构建状态写入本地文件。
 def _write_status_file(session_id: str, status: Dict[str, object]) -> None:
     path = _status_file(session_id)
     path.write_text(json.dumps(status, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+# 从本地文件读取图谱构建状态。
 def _read_status_file(session_id: str) -> Dict[str, object] | None:
     path = _status_file(session_id)
     if not path.exists():
@@ -886,6 +929,7 @@ def _read_status_file(session_id: str) -> Dict[str, object] | None:
         return None
 
 
+# 更新指定会话的图谱构建状态。
 def _set_build_status(session_id: str, **updates) -> Dict[str, object]:
     with _TASK_LOCK:
         status = _GRAPH_BUILD_STATUS.setdefault(session_id, {
@@ -907,6 +951,7 @@ def _set_build_status(session_id: str, **updates) -> Dict[str, object]:
         return snapshot
 
 
+# 获取当前会话图谱构建状态。
 def get_graph_build_status(session_id: str | None) -> Dict[str, object]:
     sid = _get_session_id(session_id)
     with _TASK_LOCK:
@@ -946,6 +991,7 @@ def get_graph_build_status(session_id: str | None) -> Dict[str, object]:
     return status
 
 
+# 在文档变化后把图谱状态标记为待重建。
 def mark_graph_build_pending(session_id: str | None, has_documents: bool = True) -> Dict[str, object]:
     sid = _get_session_id(session_id)
     _cache_clear()
@@ -964,13 +1010,17 @@ def mark_graph_build_pending(session_id: str | None, has_documents: bool = True)
     )
 
 
+# 构建一张内存中的知识图谱。
 def build_knowledge_graph(documents: List[Dict[str, object]]) -> Dict[str, object]:
+    # 从文档列表构建知识图谱：LLM 抽取三元组 → 标准化 → 合并去重，不写入 Neo4j。
     return _build_graph_documents(documents) if config.KG_ENABLED else {
         "nodes": [], "relations": [], "links": [], "document_summaries": [], "stats": {}
     }
 
 
+# 构建并持久化当前会话的知识图谱。
 def build_and_store_session_graph(session_id: str | None, documents: List[Dict[str, object]]) -> Dict[str, object]:
+    # 从文档构建图谱并写入 Neo4j。同步执行，一般被 rebuild 接口或问答流程调用。
     sid = _get_session_id(session_id)
     graph = build_knowledge_graph(documents)
     if config.NEO4J_ENABLED:
@@ -978,6 +1028,7 @@ def build_and_store_session_graph(session_id: str | None, documents: List[Dict[s
     return graph
 
 
+# 启动异步知识图谱构建任务。
 def start_graph_build(session_id: str | None, documents: List[Dict[str, object]]) -> Dict[str, object]:
     sid = _get_session_id(session_id)
     current = get_graph_build_status(sid)
@@ -1006,6 +1057,7 @@ def start_graph_build(session_id: str | None, documents: List[Dict[str, object]]
         error="",
     )
 
+    # 异步任务执行函数：在后台真正完成图谱构建并更新状态。
     def _runner():
         try:
             _set_build_status(
@@ -1042,6 +1094,7 @@ def start_graph_build(session_id: str | None, documents: List[Dict[str, object]]
     return get_graph_build_status(sid)
 
 
+# 把外部三元组载荷转换成图谱对象。
 def _build_graph_from_extracted_payload(payload: Dict[str, object], doc_name: str = "uploaded triples") -> Dict[str, object]:
     if not isinstance(payload, dict):
         raise ValueError("三元组文件必须是 JSON 对象")
@@ -1077,7 +1130,9 @@ def _build_graph_from_extracted_payload(payload: Dict[str, object], doc_name: st
     return graph
 
 
+# 导入外部三元组 JSON 并写入会话图谱。
 def import_triples_graph(session_id: str | None, payload: Dict[str, object], doc_name: str = "uploaded triples") -> Dict[str, object]:
+    # 导入预抽取的三元组 JSON：规范化后直接写入 Neo4j，跳过 LLM 抽取步骤。
     sid = _get_session_id(session_id)
     graph = _build_graph_from_extracted_payload(payload, doc_name=doc_name)
     if config.NEO4J_ENABLED:
@@ -1100,6 +1155,7 @@ def import_triples_graph(session_id: str | None, payload: Dict[str, object], doc
     return graph
 
 
+# 标准化关系对象字段。
 def _normalize_relation(rel: Dict[str, object]) -> Dict[str, object]:
     normalized = dict(rel)
     relation = str(normalized.get("relation") or normalized.get("type") or "").strip().upper()
@@ -1108,6 +1164,7 @@ def _normalize_relation(rel: Dict[str, object]) -> Dict[str, object]:
     return normalized
 
 
+# 标准化节点对象字段。
 def _normalize_node(node: Dict[str, object]) -> Dict[str, object]:
     normalized = dict(node)
     node_type = str(normalized.get("type") or "").strip()
@@ -1125,7 +1182,9 @@ def _normalize_node(node: Dict[str, object]) -> Dict[str, object]:
     return normalized
 
 
+# 统一图谱对象的 nodes/relations/links 结构。
 def _normalize_graph_shape(nodes: List[Dict[str, object]], relations: List[Dict[str, object]]) -> Dict[str, object]:
+    # 将节点和关系列表统一规范化：实体映射、uid 重定向、去重合并、按优先级排序，输出标准图谱结构。
     node_map: Dict[str, Dict[str, object]] = {}
     uid_redirect: Dict[str, str] = {}
     for raw_node in nodes:
@@ -1187,7 +1246,9 @@ def _normalize_graph_shape(nodes: List[Dict[str, object]], relations: List[Dict[
     }
 
 
+# 裁剪图谱视图，只保留适合展示的语义节点和关系。
 def _visible_semantic_view(nodes: List[Dict[str, object]], relations: List[Dict[str, object]], limit: int = 1000) -> Dict[str, object]:
+    # 过滤掉支援边（CONTAINS/MENTIONS）和非业务节点（regulation/chapter/article），只保留语义关系和灾害相关节点供前端展示。
     visible_nodes_by_uid = {
         str(node.get("uid")): node
         for node in nodes
@@ -1220,6 +1281,7 @@ def _visible_semantic_view(nodes: List[Dict[str, object]], relations: List[Dict[
     }
 
 
+# 读取图谱查询缓存。
 def _cache_get(key: str) -> Dict[str, object] | None:
     now = time.time()
     with _GRAPH_QUERY_CACHE_LOCK:
@@ -1235,6 +1297,7 @@ def _cache_get(key: str) -> Dict[str, object] | None:
         return cached
 
 
+# 写入图谱查询缓存。
 def _cache_set(key: str, value: Dict[str, object]) -> Dict[str, object]:
     with _GRAPH_QUERY_CACHE_LOCK:
         if len(_GRAPH_QUERY_CACHE) >= _GRAPH_QUERY_CACHE_MAX_ITEMS:
@@ -1248,15 +1311,18 @@ def _cache_set(key: str, value: Dict[str, object]) -> Dict[str, object]:
     return result
 
 
+# 清空图谱查询缓存。
 def _cache_clear() -> None:
     with _GRAPH_QUERY_CACHE_LOCK:
         _GRAPH_QUERY_CACHE.clear()
 
 
+# 返回关系类型的排序优先级。
 def _relation_priority(relation: str) -> int:
     return RELATION_PRIORITY.get(str(relation or "").upper(), 50)
 
 
+# 把底层记录整理成前端可直接消费的图谱结果。
 def _finalize_graph_response(
     records: List[Dict[str, object]],
     *,
@@ -1290,6 +1356,7 @@ def _finalize_graph_response(
     return graph
 
 
+# 把 Neo4j 查询结果映射成图谱结构。
 def _map_neo4j_records_to_graph(records: List[Dict[str, object]]) -> Dict[str, object]:
     nodes: Dict[str, Dict[str, object]] = {}
     relations: Dict[str, Dict[str, object]] = {}
@@ -1332,7 +1399,9 @@ def _map_neo4j_records_to_graph(records: List[Dict[str, object]]) -> Dict[str, o
     return {"nodes": list(nodes.values()), "relations": list(relations.values()), "links": list(relations.values())}
 
 
+# 读取某个会话完整的知识图谱。
 def get_session_graph(session_id: str | None) -> Dict[str, object]:
+    # 从 Neo4j 读取指定会话的完整知识图谱，返回标准化格式。
     sid = _get_session_id(session_id)
     if not config.NEO4J_ENABLED:
         return {"nodes": [], "relations": [], "links": [], "document_summaries": [], "stats": {"node_count": 0, "relation_count": 0}}
@@ -1348,7 +1417,9 @@ def get_session_graph(session_id: str | None) -> Dict[str, object]:
     return graph
 
 
+# 清空某个会话的知识图谱。
 def clear_session_graph(session_id: str | None) -> bool:
+    # 删除指定会话在 Neo4j 中的所有图谱节点和关系。
     sid = _get_session_id(session_id)
     if not config.NEO4J_ENABLED:
         return False
@@ -1356,11 +1427,13 @@ def clear_session_graph(session_id: str | None) -> bool:
     return True
 
 
+# 过滤掉不需要展示的支撑类节点。
 def _strip_support_nodes(nodes: List[Dict[str, object]], relations: List[Dict[str, object]]) -> Tuple[List[Dict[str, object]], List[Dict[str, object]]]:
     view = _visible_semantic_view(nodes, relations, limit=max(len(relations), 1))
     return view["nodes"], view["relations"]
 
 
+# 根据关键词判断当前查询主题。
 def _detect_topic(keyword: str) -> Dict[str, object] | None:
     text = str(keyword or "").strip()
     if not text:
@@ -1371,6 +1444,7 @@ def _detect_topic(keyword: str) -> Dict[str, object] | None:
     return None
 
 
+# 判断节点是否命中查询关键词。
 def _node_matches_keyword(node: Dict[str, object], keyword: str) -> bool:
     text = str(keyword or "").strip()
     if not text:
@@ -1385,6 +1459,7 @@ def _node_matches_keyword(node: Dict[str, object], keyword: str) -> bool:
     return any(text in field for field in fields)
 
 
+# 判断关系是否命中查询关键词。
 def _relation_matches_keyword(rel: Dict[str, object], keyword: str) -> bool:
     text = str(keyword or "").strip()
     if not text:
@@ -1400,6 +1475,7 @@ def _relation_matches_keyword(rel: Dict[str, object], keyword: str) -> bool:
     return any(text in field for field in fields)
 
 
+# 为检索阶段计算图谱相关度分值。
 def score_graph_relevance(
     query: str,
     *,
@@ -1526,7 +1602,9 @@ def score_graph_relevance(
     }
 
 
+# 在图谱上执行轻量关键字查询。
 def query_graph(graph: Dict[str, object], keyword: str = "", limit: int = 80) -> Dict[str, object]:
+    # 在内存图谱中按关键词过滤节点和关系，过滤支援边（CONTAINS/MENTIONS）只保留语义边。
     normalized = _normalize_graph_shape(list(graph.get("nodes", [])), list(graph.get("relations", graph.get("links", []))))
     nodes = list(normalized.get("nodes", []))
     relations = list(normalized.get("relations", normalized.get("links", [])))
@@ -1572,7 +1650,9 @@ def query_graph(graph: Dict[str, object], keyword: str = "", limit: int = 80) ->
     }
 
 
+# 围绕关键词返回局部聚焦子图。
 def query_centered_graph(session_id: str | None, keyword: str = "", limit: int = 80, depth: int = 1) -> Dict[str, object]:
+    # 在 Neo4j 中以关键词匹配的节点为中心，返回其一跳邻居子图（按关系优先级排序输出）。
     sid = _get_session_id(session_id)
     keyword_text = str(keyword or "").strip()
     safe_limit = min(160, max(10, int(limit or 80)))
@@ -1694,7 +1774,9 @@ def query_centered_graph(session_id: str | None, keyword: str = "", limit: int =
     return _cache_set(cache_key, result)
 
 
+# 沿某个节点继续展开邻接关系。
 def expand_graph_neighbors(session_id: str | None, node_uid: str, limit: int = 60, offset: int = 0, direction: str = "both") -> Dict[str, object]:
+    # 展开指定节点的一跳邻居，支持分页和方向过滤（out/in/both），用于前端图谱交互式探索。
     sid = _get_session_id(session_id)
     target_uid = str(node_uid or "").strip()
     safe_limit = min(120, max(10, int(limit or 60)))
@@ -1790,13 +1872,16 @@ def expand_graph_neighbors(session_id: str | None, node_uid: str, limit: int = 6
     return _cache_set(cache_key, result)
 
 
+# 把单条关系格式化为文本摘要。
 def _relation_text(rel: Dict[str, object]) -> str:
     source = rel.get("source_ref") or "未知来源"
     condition = f"；条件：{rel.get('condition')}" if rel.get("condition") else ""
     return f"{rel['head_label']} -> {rel['relation_label']} -> {rel['tail_label']}（来源：{source}{condition}）"
 
 
+# 根据问题和风险类型生成图谱关系摘要。
 def summarize_related_graph(query: str, graph: Dict[str, object], risk_types: List[str] | None = None) -> Tuple[str, Dict[str, object]]:
+    # 从图谱中检索与查询相关的三元组并生成文本摘要，供多智能体流程引用。
     if not config.KG_ENABLED:
         return "未启用知识图谱。", {"enabled": False, "matched_relations": [], "matched_nodes": []}
     relations = list(graph.get("relations", graph.get("links", [])))

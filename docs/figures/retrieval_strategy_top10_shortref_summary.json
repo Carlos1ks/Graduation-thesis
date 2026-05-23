@@ -1,0 +1,32 @@
+{
+  "case_count": 10,
+  "summary": {
+    "pure_llm": {
+      "method": "纯LLM",
+      "case_count": 10,
+      "coverage": 0.6978,
+      "f1": 0.5839,
+      "rouge_l": 0.1702,
+      "semantic_similarity": 0.682,
+      "latency_s": 2.2513
+    },
+    "vector_rag": {
+      "method": "纯向量RAG",
+      "case_count": 10,
+      "coverage": 0.6935,
+      "f1": 0.6019,
+      "rouge_l": 0.164,
+      "semantic_similarity": 0.6589,
+      "latency_s": 7.9365
+    },
+    "hybrid_graph": {
+      "method": "混合图检索策略",
+      "case_count": 10,
+      "coverage": 0.6978,
+      "f1": 0.6082,
+      "rouge_l": 0.1656,
+      "semantic_similarity": 0.686,
+      "latency_s": 2.0297
+    }
+  }
+}

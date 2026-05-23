@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Optional, Dict
 
 
+# 从本地 .env.local 文件加载开发环境变量。
 def _load_local_env() -> None:
     candidates = [
         Path(__file__).resolve().parent / ".env.local",
@@ -27,6 +28,7 @@ def _load_local_env() -> None:
 
 _load_local_env()
 
+# 集中定义后端运行时需要的各类配置项。
 class Config:
     """应用配置类"""
     
@@ -123,6 +125,7 @@ class Config:
         "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
     )
 
+    # 根据配置返回 requests 可用的代理设置。
     @classmethod
     def get_proxies(cls) -> Optional[Dict[str, str]]:
         """鑾峰彇浠ｇ悊閰嶇疆"""
@@ -133,18 +136,21 @@ class Config:
             }
         return None
 
+    # 确保 LongCat 模型调用所需的 API Key 已配置。
     @classmethod
     def require_longcat_api_key(cls) -> str:
         if cls.LONGCAT_API_KEY:
             return cls.LONGCAT_API_KEY
         raise RuntimeError("未配置 LONGCAT_API_KEY 环境变量。")
 
+    # 确保视觉模型调用所需的 API Key 已配置。
     @classmethod
     def require_vision_api_key(cls) -> str:
         if cls.VISION_API_KEY:
             return cls.VISION_API_KEY
         raise RuntimeError("未配置 VISION_API_KEY / ONEAIS_API_KEY 环境变量。")
 
+    # 确保 Neo4j 连接参数齐全并返回标准化后的连接信息。
     @classmethod
     def require_neo4j_credentials(cls) -> tuple[str, str, str, str]:
         if cls.NEO4J_URI and cls.NEO4J_USERNAME and cls.NEO4J_PASSWORD:

@@ -1,30 +1,28 @@
-"""会话级传感器数据存储与规范化。"""
+"""会话级传感器数据缓存与标准化。"""
 from __future__ import annotations
-# 会话级传感器缓存。
-# 这个模块负责把推送进来的传感器记录标准化，
-# 并维护当前会话真正需要的轻量内存状态。
 
 from datetime import datetime, timezone
 from threading import RLock
 from typing import Any, Dict, List, Optional
 
-from config import config
 
 _DEFAULT_SESSION_ID = "default"
 _SESSION_SENSOR_STORES: Dict[str, Dict[str, Any]] = {}
-# 传感器状态按会话号隔离，和文档库、图谱、聊天记忆的设计保持一致。
 _STORE_LOCK = RLock()
 
 
+# 规范化 session_id，为空时回退到默认会话。
 def _get_session_id(session_id: Optional[str]) -> str:
     sid = str(session_id or "").strip()
     return sid or _DEFAULT_SESSION_ID
 
 
+# 返回当前 UTC 时间戳字符串。
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# 安全地把任意值转换成浮点数。
 def _to_float(value: Any) -> Optional[float]:
     try:
         if value is None:
@@ -37,8 +35,8 @@ def _to_float(value: Any) -> Optional[float]:
         return None
 
 
+# 把单条传感器记录统一整理成系统内部标准结构。
 def _normalize_sensor_item(item: Dict[str, Any], idx: int = 0, source_type: str = "sensor_push") -> Dict[str, Any]:
-    # 把不同字段风格的传感器输入统一整理成系统内部固定结构。
     sensor_id = str(item.get("sensor_id") or item.get("sensorId") or item.get("id") or f"sensor-{idx + 1}").strip()
     name = str(item.get("name") or item.get("sensor_name") or item.get("sensorName") or sensor_id).strip() or sensor_id
     value = item.get("value")
@@ -73,6 +71,7 @@ def _normalize_sensor_item(item: Dict[str, Any], idx: int = 0, source_type: str 
     return normalized
 
 
+# 把前端上传的传感器 payload 规整成标准记录列表。
 def normalize_sensor_payload(payload: Any) -> List[Dict[str, Any]]:
     if isinstance(payload, list):
         items = payload
@@ -89,8 +88,8 @@ def normalize_sensor_payload(payload: Any) -> List[Dict[str, Any]]:
     return normalized
 
 
+# 把传感器记录写入当前会话的内存缓存。
 def push_session_sensors(session_id: Optional[str], payload: Any) -> Dict[str, Any]:
-    # 更新每个传感器的最新读数，同时保留一小段历史供调试和后续推理使用。
     sid = _get_session_id(session_id)
     records = normalize_sensor_payload(payload)
     if not records:
@@ -120,6 +119,7 @@ def push_session_sensors(session_id: Optional[str], payload: Any) -> Dict[str, A
     }
 
 
+# 列出当前会话最新的传感器状态。
 def list_session_sensors(session_id: Optional[str]) -> List[Dict[str, Any]]:
     sid = _get_session_id(session_id)
     with _STORE_LOCK:
@@ -129,6 +129,7 @@ def list_session_sensors(session_id: Optional[str]) -> List[Dict[str, Any]]:
         return latest
 
 
+# 判断当前会话是否已经缓存过传感器数据。
 def has_session_sensors(session_id: Optional[str]) -> bool:
     sid = _get_session_id(session_id)
     with _STORE_LOCK:
@@ -136,6 +137,7 @@ def has_session_sensors(session_id: Optional[str]) -> bool:
         return bool(store and store.get("latest_by_sensor"))
 
 
+# 清空当前会话的传感器缓存。
 def clear_session_sensors(session_id: Optional[str]) -> bool:
     sid = _get_session_id(session_id)
     with _STORE_LOCK:

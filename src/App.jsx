@@ -2474,10 +2474,10 @@ export default function CoalMineAgent() {
   if (!currentUser) {
     return (
       <div className="light-theme-app" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: UI.appBg, color: UI.text, padding: "1rem" }}>
-        <div style={{ width: "min(420px, 92vw)", background: UI.cardBg, border: `1px solid ${UI.border}`, borderRadius: "18px", boxShadow: UI.shadow, padding: "1.3rem" }}>
+        <div style={{ width: "min(420px, 92vw)", background: UI.cardBg, border: `1px solid ${UI.border}`, borderRadius: "18px", boxShadow: UI.shadow, padding: "1.3rem", textAlign: "center" }}>
           <div style={{ fontSize: "1.05rem", fontWeight: 800 }}>煤矿应急救援知识问答系统</div>
           <div style={{ marginTop: "0.35rem", fontSize: "0.74rem", color: UI.subtle }}>
-            登录后可继续查看之前的文档库、图片库、视频库、传感器库、知识图谱和问答记录。
+            登录并进入个人煤矿知识库空间。
           </div>
           <div style={{ display: "flex", gap: "0.5rem", marginTop: "1rem" }}>
             <button onClick={() => setAuthMode("login")} style={{ flex: 1, padding: "0.6rem 0.8rem", borderRadius: "10px", border: authMode === "login" ? "1px solid #22c55e" : `1px solid ${UI.border}`, background: authMode === "login" ? "rgba(34,197,94,0.12)" : "#fff", cursor: "pointer", fontWeight: 700 }}>登录</button>
@@ -2508,7 +2508,7 @@ export default function CoalMineAgent() {
             ) : null}
             {authError ? <div style={{ color: "#dc2626", fontSize: "0.74rem" }}>{authError}</div> : null}
             <button type="submit" disabled={authSubmitting} style={{ padding: "0.75rem 0.9rem", borderRadius: "10px", border: "none", background: "linear-gradient(135deg,#22c55e,#0ea5e9)", color: "#fff", fontWeight: 800, cursor: authSubmitting ? "not-allowed" : "pointer" }}>
-              {authSubmitting ? "提交中..." : authMode === "login" ? "登录并恢复历史内容" : "注册并创建账号"}
+              {authSubmitting ? "提交中..." : authMode === "login" ? "登录" : "注册并创建账号"}
             </button>
           </form>
         </div>

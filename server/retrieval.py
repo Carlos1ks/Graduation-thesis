@@ -71,11 +71,14 @@ _EXACT_PRIORITY_TERMS = [
 ]
 
 
+# 当真实向量模型不可用时使用的简易哈希向量器。
 class _HashingEmbedder:
     # 当 sentence-transformers 不可用时，退化使用的简易向量器。
+    # 初始化哈希向量器的向量维度。
     def __init__(self, dimension: int = _HASH_EMBEDDING_DIM):
         self.dimension = max(64, int(dimension))
 
+    # 把文本拆成词项和字符 n-gram 作为简易向量输入。
     def _tokenize(self, text: str) -> List[str]:
         normalized = _normalize_text(text)
         if not normalized:
@@ -90,6 +93,7 @@ class _HashingEmbedder:
         words = re.findall(r"[A-Za-z0-9_一-鿿]+", normalized)
         return words + char_ngrams
 
+    # 将一组文本编码为归一化后的稠密向量。
     def encode(self, texts, convert_to_numpy=True, normalize_embeddings=True, show_progress_bar=False):
         np = _np
         vectors = []
@@ -109,11 +113,13 @@ class _HashingEmbedder:
         return np.asarray(vectors, dtype="float32")
 
 
+# 规范化会话编号，为空时回退到默认会话。
 def _get_session_id(session_id: Optional[str]) -> str:
     sid = str(session_id or "").strip()
     return sid or _DEFAULT_SESSION_ID
 
 
+# 延迟加载 numpy、faiss 和向量模型依赖。
 def _ensure_dependencies() -> Tuple[Any, Any, Any]:
     # 只在真正需要时才加载 numpy / faiss / 向量模型，
     # 避免导入阶段过重，也方便缺依赖时优雅降级。
@@ -144,17 +150,23 @@ def _ensure_dependencies() -> Tuple[Any, Any, Any]:
         return _np, _faiss, _embedder
 
 
+# 清洗文本中的多余空白，便于后续处理。
 def _normalize_text(text: str) -> str:
+    # 将多余空白统一替换为单个空格并 strip，标准化文本格式。
     normalized = re.sub(r"\s+", " ", str(text or "")).strip()
     return normalized
 
 
+# 从规程片段中提取条文编号。
 def _extract_article_label(text: str) -> Optional[str]:
+    # 从文本中匹配"第X条"样式的规程条文标签，未匹配返回 None。
     match = _ARTICLE_LABEL_PATTERN.search(str(text or ""))
     return match.group(0) if match else None
 
 
+# 根据用户问题构建扩展检索关键词集合。
 def _build_search_terms(query: str) -> List[str]:
+    # 将用户查询扩展为多组检索词：原句 + 同义别名（如"怎么办"→"如何处置"）+ 场景专属词，按长到短排列。
     text = _normalize_text(query)
     if not text:
         return []
@@ -174,7 +186,9 @@ def _build_search_terms(query: str) -> List[str]:
     )
 
 
+# 计算问题与候选片段之间的关键词重叠得分。
 def _keyword_overlap_score(query: str, record_text: str) -> float:
+    # 计算查询与文档片段的关键词/术语重叠度，用于四路检索排序中的关键词信号。
     search_text = str(record_text or "")
     if not search_text:
         return 0.0
@@ -204,6 +218,7 @@ def _keyword_overlap_score(query: str, record_text: str) -> float:
     return score
 
 
+# 计算候选片段与当前风险画像之间的一致性得分。
 def _risk_alignment_score(
     query: str,
     record_text: str,
@@ -211,6 +226,7 @@ def _risk_alignment_score(
     risk_types: Optional[List[str]] = None,
     risk_signals: Optional[List[Dict[str, str]]] = None,
 ) -> float:
+    # 计算文档片段与当前风险画像（风险类型 + 信号）的对齐程度，用于四路检索排序中的风险信号。
     text = str(record_text or "")
     if not text:
         return 0.0
@@ -246,7 +262,9 @@ def _risk_alignment_score(
     return score
 
 
+# 计算相邻句子的语义相似度。
 def _sentence_similarity(text_a: str, text_b: str) -> float:
+    # 计算两个句子的 Jaccard 相似度，基于字符 n-gram + 词 token 的交集比。
     left = _normalize_text(text_a)
     right = _normalize_text(text_b)
     if not left or not right:
@@ -260,7 +278,9 @@ def _sentence_similarity(text_a: str, text_b: str) -> float:
     return overlap / scale if scale else 0.0
 
 
+# 按语义相似度把句子合并成更完整的检索块。
 def _merge_sentences_by_semantics(sentences: List[str], max_chunk_size: int, overlap: int) -> List[str]:
+    # 将句子列表按语义相似度合并成不超过 max_chunk_size 的片段，相邻片段保留 overlap 字符重叠。
     if not sentences:
         return []
 
@@ -293,6 +313,7 @@ def _merge_sentences_by_semantics(sentences: List[str], max_chunk_size: int, ove
     return chunks
 
 
+# 把规程文本切分成适合向量检索的片段。
 def chunk_text(text: str, chunk_size: Optional[int] = None, chunk_overlap: Optional[int] = None) -> List[Dict[str, str]]:
     # 先优先按规程条文边界切，再把过长条文拆成更平滑的语义块。
     normalized = _normalize_text(text)
@@ -329,7 +350,9 @@ def chunk_text(text: str, chunk_size: Optional[int] = None, chunk_overlap: Optio
     return chunks
 
 
+# 调用向量模型对文本列表编码。
 def _embed_texts(texts: List[str]):
+    # 将文本列表批量向量化，返回归一化后的 float32 矩阵。
     np, _, embedder = _ensure_dependencies()
     vectors = embedder.encode(
         texts,
@@ -340,12 +363,16 @@ def _embed_texts(texts: List[str]):
     return np.asarray(vectors, dtype="float32")
 
 
+# 根据向量维度创建 FAISS 索引。
 def _create_index(dimension: int):
+    # 创建一个指定维度的 FAISS 内积索引（用于余弦相似度检索）。
     _, faiss, _ = _ensure_dependencies()
     return faiss.IndexFlatIP(dimension)
 
 
+# 根据现有片段重新构建会话索引。
 def _rebuild_index_from_chunks(chunks: List[Dict[str, Any]]):
+    # 从已有 chunk 列表中重新构建 FAISS 索引（删除文档后重建）。
     if not chunks:
         return None
     index = _create_index(len(chunks[0]["embedding"]))
@@ -354,13 +381,16 @@ def _rebuild_index_from_chunks(chunks: List[Dict[str, Any]]):
     return index
 
 
+# 判断当前会话是否已有文档入库。
 def has_session_documents(session_id: Optional[str]) -> bool:
+    # 检查指定会话在进程内存中是否已有入库的检索文档。
     sid = _get_session_id(session_id)
     with _STORE_LOCK:
         store = _SESSION_RAG_STORES.get(sid)
         return bool(store and store.get("documents"))
 
 
+# 列出当前会话中的文档元信息。
 def list_session_documents(session_id: Optional[str]) -> List[Dict[str, Any]]:
     sid = _get_session_id(session_id)
     with _STORE_LOCK:
@@ -377,6 +407,7 @@ def list_session_documents(session_id: Optional[str]) -> List[Dict[str, Any]]:
         ]
 
 
+# 列出当前会话中的所有检索片段。
 def list_session_chunks(session_id: Optional[str]) -> List[Dict[str, Any]]:
     sid = _get_session_id(session_id)
     with _STORE_LOCK:
@@ -395,6 +426,7 @@ def list_session_chunks(session_id: Optional[str]) -> List[Dict[str, Any]]:
     ]
 
 
+# 把持久化文档重新灌回会话级检索索引。
 def hydrate_session_documents(session_id: Optional[str], documents: List[Dict[str, Any]]) -> Dict[str, Any]:
     # 把数据库里已经持久化的文档重新灌回会话级检索索引。
     # 这样即使服务重启，只要用户重新登录，旧文档也还能继续参与问答。
@@ -460,6 +492,7 @@ def hydrate_session_documents(session_id: Optional[str], documents: List[Dict[st
     }
 
 
+# 将上传文档切块、向量化并写入当前会话检索库。
 def ingest_document(session_id: Optional[str], file_name: str, text: str) -> Dict[str, Any]:
     # 把单个上传文档切块、向量化，并合并进当前会话的检索库。
     if not config.RAG_ENABLED:
@@ -521,6 +554,7 @@ def ingest_document(session_id: Optional[str], file_name: str, text: str) -> Dic
     }
 
 
+# 从当前会话中删除一个文档及其检索片段。
 def remove_document(session_id: Optional[str], document_id: str) -> bool:
     sid = _get_session_id(session_id)
     target_id = str(document_id or "").strip()
@@ -545,6 +579,7 @@ def remove_document(session_id: Optional[str], document_id: str) -> bool:
         return True
 
 
+# 按混合评分策略为问题召回最相关的规程片段。
 def retrieve_relevant_chunks(
     session_id: Optional[str],
     query: str,

@@ -1,4 +1,4 @@
-"""煤矿应急多源风险融合。"""
+﻿"""煤矿应急多源风险融合。"""
 from __future__ import annotations
 # 这个模块负责把多源证据融合成“可解释的风险画像”。
 # 后面的检索重排、图谱摘要和智能体路由都会复用这里的输出。
@@ -27,6 +27,7 @@ _RISK_WEIGHTS = {
 }
 
 
+# 把问题、历史、文档、图片和传感器整理成统一文本通道。
 def _collect_texts(
     query: str,
     history: List[Dict[str, str]],
@@ -59,10 +60,12 @@ def _collect_texts(
     }
 
 
+# 判断一段文本是否包含任意一个关键词。
 def _contains_any(text: str, keywords: List[str]) -> bool:
     return any(keyword in text for keyword in keywords)
 
 
+# 把传感器或文本中的数值字段安全转换为浮点数。
 def _to_float(value):
     try:
         if value is None:
@@ -75,6 +78,7 @@ def _to_float(value):
         return None
 
 
+# 向风险信号列表中追加一条去重后的信号。
 def _append_signal(signals: List[Dict[str, str]], seen: set, signal_id: str, source: str, keywords: str) -> None:
     key = (signal_id, source)
     if key in seen:
@@ -89,6 +93,7 @@ def _append_signal(signals: List[Dict[str, str]], seen: set, signal_id: str, sou
     })
 
 
+# 根据传感器记录计算风险分值与报警信号。
 def _score_sensor_risks(sensors: Optional[List[Dict[str, object]]]) -> Dict[str, object]:
     # 传感器数据被视为强信号，因为它比纯文本描述更接近实时现场状态。
     hazard_scores = {hazard_id: 0 for hazard_id in HAZARD_DEFINITIONS}
@@ -185,6 +190,7 @@ def _score_sensor_risks(sensors: Optional[List[Dict[str, object]]]) -> Dict[str,
     }
 
 
+# 根据文本证据对各类风险进行规则打分。
 def _score_hazards(texts: Dict[str, str]) -> Dict[str, int]:
     scores = {hazard_id: 0 for hazard_id in HAZARD_DEFINITIONS}
     for source_name, text in texts.items():
@@ -197,6 +203,7 @@ def _score_hazards(texts: Dict[str, str]) -> Dict[str, int]:
     return scores
 
 
+# 从多源文本中识别显式风险信号。
 def _detect_signals(texts: Dict[str, str]) -> List[Dict[str, str]]:
     signals: List[Dict[str, str]] = []
     seen = set()
@@ -220,6 +227,7 @@ def _detect_signals(texts: Dict[str, str]) -> List[Dict[str, str]]:
     return signals
 
 
+# 根据总分和信号数量确定风险等级。
 def _risk_level(total_score: int, signals_count: int) -> str:
     critical = config.RISK_SCORE_THRESHOLDS.get("critical", 12)
     high = config.RISK_SCORE_THRESHOLDS.get("high", 8)
@@ -234,6 +242,7 @@ def _risk_level(total_score: int, signals_count: int) -> str:
     return "低"
 
 
+# 根据高危信号对风险等级施加下限约束。
 def _apply_signal_floor(level: str, signals: List[Dict[str, str]]) -> str:
     floored_level = level
     for signal in signals:
@@ -243,6 +252,7 @@ def _apply_signal_floor(level: str, signals: List[Dict[str, str]]) -> str:
     return floored_level
 
 
+# 根据风险类型生成建议动作种子。
 def _recommended_actions(risk_types: List[str]) -> List[str]:
     recommended: List[str] = []
     for action_id, definition in ACTION_DEFINITIONS.items():
@@ -257,6 +267,7 @@ def _recommended_actions(risk_types: List[str]) -> List[str]:
     return deduped[:6]
 
 
+# 根据风险类型和证据情况推荐应激活的智能体。
 def _recommended_agents(risk_types: List[str], has_documents: bool, has_images: bool, has_sensors: bool = False) -> List[str]:
     agents = ["decision"]
     if risk_types or has_images or has_sensors:
@@ -272,6 +283,7 @@ def _recommended_agents(risk_types: List[str], has_documents: bool, has_images: 
     return ordered
 
 
+# 构建可供检索和问答复用的结构化风险画像。
 def build_risk_profile(
     query: str,
     history: List[Dict[str, str]],

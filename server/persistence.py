@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 from werkzeug.security import check_password_hash, generate_password_hash
 
 
+# 持久化数据目录。所有用户上传的文件和数据库都放在 server/.persist/ 下。
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / ".persist"
 UPLOAD_DIR = DATA_DIR / "uploads"
@@ -21,31 +22,41 @@ DOCUMENT_DIR = UPLOAD_DIR / "documents"
 DB_PATH = DATA_DIR / "app_state.db"
 
 
+# 返回当前 UTC 时间的 ISO 格式字符串。
 def _now_iso() -> str:
+    # 返回当前 UTC 时间的 ISO 格式字符串，统一数据库时间戳格式。
     return datetime.now(timezone.utc).isoformat()
 
 
+# 确保持久化数据库目录和上传文件目录存在。
 def _ensure_dirs() -> None:
+    # 确保所有持久化目录存在，首次启动时自动创建。
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
     VIDEO_DIR.mkdir(parents=True, exist_ok=True)
     DOCUMENT_DIR.mkdir(parents=True, exist_ok=True)
 
 
+# 创建并返回 SQLite 数据库连接。
 def _connect() -> sqlite3.Connection:
+    # 打开 SQLite 连接，设置 row_factory 让查询结果可以用 dict 方式访问。
     _ensure_dirs()
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
 
+# 将上传文件名清洗为适合本地保存的安全文件名。
 def _safe_name(file_name: str) -> str:
+    # 将文件名清洗为文件系统安全的名字：只保留字母数字和 -_.，其余替换为下划线。
     raw = Path(str(file_name or "asset")).name
     cleaned = "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "_" for ch in raw)
     return cleaned or "asset"
 
 
+# 把二进制文件内容写入指定目录并返回相对路径。
 def _write_binary(kind_dir: Path, file_name: str, raw_bytes: bytes) -> str:
+    # 将二进制数据写入磁盘，文件名前缀随机 hex 防碰撞，返回相对于 DATA_DIR 的路径。
     _ensure_dirs()
     safe_name = _safe_name(file_name)
     target = kind_dir / f"{secrets.token_hex(8)}-{safe_name}"
@@ -53,26 +64,36 @@ def _write_binary(kind_dir: Path, file_name: str, raw_bytes: bytes) -> str:
     return str(target.relative_to(DATA_DIR))
 
 
+# 根据相对路径读取已持久化保存的二进制文件。
 def _read_binary(relative_path: str) -> bytes:
+    # 根据相对路径从持久化目录读取二进制文件内容。
     path = DATA_DIR / str(relative_path or "")
     if not path.exists():
         return b""
     return path.read_bytes()
 
 
+# 删除本地持久化目录中的二进制文件。
 def _remove_binary(relative_path: str) -> None:
+    # 从磁盘删除持久化目录中的文件。
     path = DATA_DIR / str(relative_path or "")
     if path.exists():
         path.unlink()
 
 
+# 将 SQLite 单行结果转换为普通字典。
 def _row_to_dict(row: sqlite3.Row | None) -> Dict[str, Any] | None:
+    # 将 sqlite3.Row 转换为普通字典，None 则返回 None。
     if row is None:
         return None
     return {key: row[key] for key in row.keys()}
 
 
+# 初始化 SQLite 表结构和本地持久化目录。
 def init_storage() -> None:
+    # 初始化数据库表结构（首次启动创建，后续启动无影响）。
+    # 包含 users / auth_tokens / documents / images / videos / sensor_records / messages 七张表。
+    # 所有资源表通过 user_id 外键关联用户，级联删除。
     with _connect() as conn:
         conn.executescript(
             """
@@ -155,7 +176,10 @@ def init_storage() -> None:
         )
 
 
+# 为用户生成新的登录 token 并写入数据库。
 def _issue_token(conn: sqlite3.Connection, user_id: int) -> str:
+    # 生成一个 32 字节随机 token 写入 auth_tokens 表，返回 token 字符串。
+    # 每个登录/注册都签发新 token，不做旧 token 清理（可积累，但不影响功能）。
     token = secrets.token_urlsafe(32)
     conn.execute(
         "INSERT INTO auth_tokens (token, user_id, created_at) VALUES (?, ?, ?)",
@@ -164,7 +188,9 @@ def _issue_token(conn: sqlite3.Connection, user_id: int) -> str:
     return token
 
 
+# 注册新用户并创建其固定知识库空间。
 def register_user(username: str, password: str) -> Dict[str, Any]:
+    # 注册新用户：校验用户名≥3位、密码≥6位，生成 library_session_id 和密码哈希，签发登录 token。
     name = str(username or "").strip()
     secret = str(password or "")
     if len(name) < 3:
@@ -199,7 +225,9 @@ def register_user(username: str, password: str) -> Dict[str, Any]:
     }
 
 
+# 校验用户名密码并签发新的登录 token。
 def login_user(username: str, password: str) -> Dict[str, Any]:
+    # 登录：验密成功后签发新 token，并返回用户信息及固定的 library_session_id。
     name = str(username or "").strip()
     secret = str(password or "")
     with _connect() as conn:
@@ -222,7 +250,9 @@ def login_user(username: str, password: str) -> Dict[str, Any]:
     }
 
 
+# 根据 Bearer Token 查找当前登录用户。
 def get_user_by_token(token: str) -> Dict[str, Any] | None:
+    # 根据 Bearer token 查询用户，返回包含 id/username/library_session_id 的字典，token 无效返回 None。
     value = str(token or "").strip()
     if not value:
         return None
@@ -247,7 +277,9 @@ def get_user_by_token(token: str) -> Dict[str, Any] | None:
     }
 
 
+# 删除指定 token，用于退出登录。
 def delete_token(token: str) -> None:
+    # 登出时删除 token，使其立即失效。
     value = str(token or "").strip()
     if not value:
         return
@@ -256,6 +288,7 @@ def delete_token(token: str) -> None:
         conn.commit()
 
 
+# 持久化保存文档文件及其元数据。
 def save_document_asset(
     user_id: int,
     document_id: str,
@@ -265,6 +298,8 @@ def save_document_asset(
     char_count: int,
     chunk_count: int,
 ) -> Dict[str, Any]:
+    # 持久化文档：原始文件写入磁盘，元信息和全文文本写入 SQLite。
+    # 文档上传入库后调用，保证服务重启后可从数据库恢复 RAG 索引。
     stored_path = _write_binary(DOCUMENT_DIR, file_name, raw_bytes)
     now = _now_iso()
     with _connect() as conn:
@@ -298,7 +333,9 @@ def save_document_asset(
     }
 
 
+# 列出某个用户已保存的文档资产。
 def list_document_assets(user_id: int) -> List[Dict[str, Any]]:
+    # 列出某用户所有已持久化的文档元信息（含全文文本 text 字段，用于重灌 RAG 索引）。
     with _connect() as conn:
         rows = conn.execute(
             """
@@ -324,7 +361,9 @@ def list_document_assets(user_id: int) -> List[Dict[str, Any]]:
     ]
 
 
+# 删除某个用户的文档资产及其文件本体。
 def delete_document_asset(user_id: int, document_id: str) -> bool:
+    # 删除持久化文档：数据库记录和磁盘文件同时清除。返回 False 表示未找到。
     with _connect() as conn:
         row = conn.execute(
             "SELECT stored_path FROM documents WHERE user_id = ? AND document_id = ?",
@@ -341,7 +380,9 @@ def delete_document_asset(user_id: int, document_id: str) -> bool:
     return True
 
 
+# 把图片文件读出并转换成可直接显示的 Data URL。
 def _image_data_url(relative_path: str, mime_type: str) -> str:
+    # 将磁盘上的图片文件读取并转为 Data URL（data:image/png;base64,...）供前端直接渲染。
     raw = _read_binary(relative_path)
     if not raw:
         return ""
@@ -349,6 +390,7 @@ def _image_data_url(relative_path: str, mime_type: str) -> str:
     return f"data:{mime_type};base64,{encoded}"
 
 
+# 持久化保存图片及其识别结果。
 def save_image_asset(
     user_id: int,
     file_name: str,
@@ -357,6 +399,7 @@ def save_image_asset(
     summary_text: str,
     evidence: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
+    # 持久化图片：原始文件存磁盘，视觉分析摘要和 evidence 存 SQLite，返回含 Data URL 的对象供前端直接渲染。
     image_id = secrets.token_hex(10)
     stored_path = _write_binary(IMAGE_DIR, file_name, raw_bytes)
     now = _now_iso()
@@ -391,7 +434,9 @@ def save_image_asset(
     }
 
 
+# 列出某个用户已保存的图片资产。
 def list_image_assets(user_id: int) -> List[Dict[str, Any]]:
+    # 列出某用户所有已持久化的图片，每条包含 Data URL、视觉分析摘要和 evidence。
     with _connect() as conn:
         rows = conn.execute(
             """
@@ -417,7 +462,9 @@ def list_image_assets(user_id: int) -> List[Dict[str, Any]]:
     return items
 
 
+# 删除某个用户的图片资产及其文件本体。
 def delete_image_asset(user_id: int, image_id: str) -> bool:
+    # 删除持久化图片：数据库记录和磁盘文件同时清除。返回 False 表示未找到。
     with _connect() as conn:
         row = conn.execute(
             "SELECT stored_path FROM images WHERE user_id = ? AND image_id = ?",
@@ -434,6 +481,7 @@ def delete_image_asset(user_id: int, image_id: str) -> bool:
     return True
 
 
+# 持久化保存视频及其分析结果。
 def save_video_asset(
     user_id: int,
     file_name: str,
@@ -446,6 +494,7 @@ def save_video_asset(
     issue_keywords: List[str],
     evidence: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
+    # 持久化视频：原始文件存磁盘，抽帧分析结果（关键词、摘要、evidence）存 SQLite。
     video_id = secrets.token_hex(10)
     stored_path = _write_binary(VIDEO_DIR, file_name, raw_bytes)
     now = _now_iso()
@@ -487,7 +536,9 @@ def save_video_asset(
     }
 
 
+# 列出某个用户已保存的视频资产。
 def list_video_assets(user_id: int) -> List[Dict[str, Any]]:
+    # 列出某用户所有已持久化的视频，含抽帧统计、关键词和 evidence。
     with _connect() as conn:
         rows = conn.execute(
             """
@@ -517,7 +568,9 @@ def list_video_assets(user_id: int) -> List[Dict[str, Any]]:
     return items
 
 
+# 删除某个用户的视频资产及其文件本体。
 def delete_video_asset(user_id: int, video_id: str) -> bool:
+    # 删除持久化视频：数据库记录和磁盘文件同时清除。返回 False 表示未找到。
     with _connect() as conn:
         row = conn.execute(
             "SELECT stored_path FROM videos WHERE user_id = ? AND video_id = ?",
@@ -534,7 +587,9 @@ def delete_video_asset(user_id: int, video_id: str) -> bool:
     return True
 
 
+# 持久化保存某个用户当前的传感器记录。
 def save_sensor_records(user_id: int, records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    # 持久化传感器记录：按 user_id+sensor_id 去重更新（ON CONFLICT DO UPDATE），返回用户当前全部传感器记录。
     now = _now_iso()
     with _connect() as conn:
         for record in records:
@@ -560,7 +615,9 @@ def save_sensor_records(user_id: int, records: List[Dict[str, Any]]) -> List[Dic
     return list_sensor_records(user_id)
 
 
+# 读取某个用户已经保存的传感器记录。
 def list_sensor_records(user_id: int) -> List[Dict[str, Any]]:
+    # 列出某用户所有已持久化的传感器记录，按更新时间升序排列。
     with _connect() as conn:
         rows = conn.execute(
             """
@@ -582,13 +639,17 @@ def list_sensor_records(user_id: int) -> List[Dict[str, Any]]:
     return items
 
 
+# 清空某个用户的传感器记录。
 def clear_sensor_records(user_id: int) -> None:
+    # 清空某用户所有持久化传感器记录。
     with _connect() as conn:
         conn.execute("DELETE FROM sensor_records WHERE user_id = ?", (int(user_id),))
         conn.commit()
 
 
+# 保存一条问答消息到用户历史记录中。
 def save_message(user_id: int, role: str, content: str) -> None:
+    # 持久化一条聊天消息（user/assistant），用于服务重启后恢复对话记录。
     with _connect() as conn:
         conn.execute(
             "INSERT INTO messages (user_id, role, content, created_at) VALUES (?, ?, ?, ?)",
@@ -597,7 +658,9 @@ def save_message(user_id: int, role: str, content: str) -> None:
         conn.commit()
 
 
+# 按顺序读取某个用户的历史问答消息。
 def list_messages(user_id: int, limit: int = 200) -> List[Dict[str, Any]]:
+    # 列出某用户最近持久化的聊天消息，按发送时间升序，上限 500 条。
     safe_limit = max(1, min(int(limit), 500))
     with _connect() as conn:
         rows = conn.execute(

@@ -1,0 +1,35 @@
+{
+  "pdf_file": "C:\\self\\Draft_py\\煤矿安全规程2025.pdf",
+  "triples_file": "C:\\self\\Draft_py\\coal-mine-agent\\docs\\coal-mine-safety-2025-triples.json",
+  "top_k": 4,
+  "case_count": 10,
+  "summary": {
+    "pure_llm": {
+      "method": "纯LLM",
+      "case_count": 10,
+      "coverage": 0.0695,
+      "f1": 0.0505,
+      "rouge_l": 0.2257,
+      "semantic_similarity": 0.7789,
+      "latency_s": 2.7441
+    },
+    "vector_rag": {
+      "method": "纯向量RAG",
+      "case_count": 10,
+      "coverage": 0.0838,
+      "f1": 0.0683,
+      "rouge_l": 0.3272,
+      "semantic_similarity": 0.8261,
+      "latency_s": 3.5501
+    },
+    "hybrid_graph": {
+      "method": "混合图检索策略",
+      "case_count": 10,
+      "coverage": 0.0838,
+      "f1": 0.0723,
+      "rouge_l": 0.3204,
+      "semantic_similarity": 0.8171,
+      "latency_s": 8.8413
+    }
+  }
+}
