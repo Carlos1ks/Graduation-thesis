@@ -29,6 +29,7 @@ const VIDEO_REMOVE_API_URL = `${BACKEND_BASE_URL}/api/videos/remove`;
 const SENSOR_PUSH_API_URL = `${BACKEND_BASE_URL}/api/sensors/push`;
 const SENSOR_LATEST_API_URL = `${BACKEND_BASE_URL}/api/sensors/latest`;
 const SENSOR_CLEAR_API_URL = `${BACKEND_BASE_URL}/api/sensors/clear`;
+const SENSOR_REMOVE_API_URL = `${BACKEND_BASE_URL}/api/sensors/remove`;
 const KNOWLEDGE_GRAPH_QUERY_API_URL = `${BACKEND_BASE_URL}/api/knowledge-graph/query`;
 const KNOWLEDGE_GRAPH_STATUS_API_URL = `${BACKEND_BASE_URL}/api/knowledge-graph/status`;
 const KNOWLEDGE_GRAPH_REBUILD_API_URL = `${BACKEND_BASE_URL}/api/knowledge-graph/rebuild`;
@@ -285,6 +286,22 @@ async function clearSensorsFromBackend(sessionId) {
   const result = await response.json().catch(() => ({}));
   if (!response.ok || !result.success) {
     throw new Error(result.error || `传感器清空失败：${response.status}`);
+  }
+  return result;
+}
+
+async function removeSensorFromBackend(sensorId, sessionId) {
+  const response = await apiFetch(SENSOR_REMOVE_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sensor_id: sensorId,
+      session_id: sessionId,
+    }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `传感器移除失败：${response.status}`);
   }
   return result;
 }
@@ -726,12 +743,19 @@ function getVideoKeyClips(video) {
     }));
 }
 
+function countSelectedItems(ids, items, getId) {
+  const selectedSet = new Set(ids);
+  return items.reduce((count, item, index) => (
+    selectedSet.has(String(getId(item, index) || "")) ? count + 1 : count
+  ), 0);
+}
+
 export default function CoalMineAgent() {
   // 整个前端应用的根组件。
   // 这里集中管理聊天记录、知识库资源、图谱状态以及各类弹窗/上传流程。
   const [messages, setMessages] = useState([{
     role: "assistant",
-    content: "您好！我是**煤矿应急救援决策知识问答AI智能体**，由中国矿业大学研发。\n\n可为您提供：\n- ⚡ **实时应急决策支持**\n- 🔍 **灾害风险智能识别**\n- 📋 **救援策略精准生成**\n- 🤝 **跨部门协同指挥建议**\n\n💡 左侧已切换为知识库导航。您可以进入文档库、图片库、视频库、传感器数据库和知识图谱库管理当前会话的知识资源，然后回到问答页继续提问。",
+    content: "您好！我是**煤矿应急救援决策知识问答AI智能体**，由中国矿业大学研发。\n\n可为您提供：\n- ⚡ **实时应急决策支持**\n- 🔍 **灾害风险智能识别**\n- 📋 **救援策略精准生成**\n- 🤝 **跨部门协同指挥建议**",
     timestamp: new Date(),
   }]);
   const [input, setInput] = useState("");
@@ -751,6 +775,10 @@ export default function CoalMineAgent() {
   const [images, setImages] = useState([]);
   const [videos, setVideos] = useState([]);
   const [sensors, setSensors] = useState([]);
+  const [selectedDocIds, setSelectedDocIds] = useState([]);
+  const [selectedImageIds, setSelectedImageIds] = useState([]);
+  const [selectedVideoIds, setSelectedVideoIds] = useState([]);
+  const [selectedSensorIds, setSelectedSensorIds] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [imageUploading, setImageUploading] = useState(false);
   const [videoUploading, setVideoUploading] = useState(false);
@@ -781,6 +809,107 @@ export default function CoalMineAgent() {
   const [graphViewportSize, setGraphViewportSize] = useState({ width: 880, height: 620 });
   const graphViewActive = currentView === APP_VIEW_GRAPH;
 
+  const selectedDocumentCount = useMemo(
+    () => countSelectedItems(selectedDocIds, docs, (doc) => doc.document_id),
+    [selectedDocIds, docs]
+  );
+  const selectedImageCount = useMemo(
+    () => countSelectedItems(selectedImageIds, images, (img) => img.image_id),
+    [selectedImageIds, images]
+  );
+  const selectedVideoCount = useMemo(
+    () => countSelectedItems(selectedVideoIds, videos, (video) => video.video_id),
+    [selectedVideoIds, videos]
+  );
+  const selectedSensorCount = useMemo(
+    () => countSelectedItems(selectedSensorIds, sensors, (sensor) => sensor.sensor_id),
+    [selectedSensorIds, sensors]
+  );
+
+  const selectedSummaryText = useMemo(() => {
+    const parts = [];
+    if (selectedDocumentCount > 0) parts.push(`文档 ${selectedDocumentCount} 份`);
+    if (selectedImageCount > 0) parts.push(`图片 ${selectedImageCount} 张`);
+    if (selectedVideoCount > 0) parts.push(`视频 ${selectedVideoCount} 段`);
+    if (selectedSensorCount > 0) parts.push(`传感器 ${selectedSensorCount} 条`);
+    return parts.length > 0 ? `本次已选择：${parts.join("，")}` : "本次未选择任何资料，问答将仅基于当前问题与历史对话。";
+  }, [selectedDocumentCount, selectedImageCount, selectedVideoCount, selectedSensorCount]);
+
+  const syncSelectedIds = (nextItems, setSelectedIds, getId) => {
+    setSelectedIds((prev) => {
+      const available = new Set(nextItems.map((item, index) => String(getId(item, index) || "")));
+      return prev.filter((id) => available.has(String(id)));
+    });
+  };
+
+  const toggleSelection = (id, setSelectedIds) => {
+    const normalizedId = String(id || "");
+    setSelectedIds((prev) => (
+      prev.includes(normalizedId)
+        ? prev.filter((item) => item !== normalizedId)
+        : [...prev, normalizedId]
+    ));
+  };
+
+  const selectAllForView = (viewId) => {
+    if (viewId === APP_VIEW_DOCUMENTS) {
+      setSelectedDocIds(docs.map((doc) => String(doc.document_id || "")));
+      return;
+    }
+    if (viewId === APP_VIEW_IMAGES) {
+      setSelectedImageIds(images.map((img) => String(img.image_id || "")));
+      return;
+    }
+    if (viewId === APP_VIEW_VIDEOS) {
+      setSelectedVideoIds(videos.map((video) => String(video.video_id || "")));
+      return;
+    }
+    if (viewId === APP_VIEW_SENSORS) {
+      setSelectedSensorIds(sensors.map((sensor) => String(sensor.sensor_id || "")));
+    }
+  };
+
+  const clearSelectionForView = (viewId) => {
+    if (viewId === APP_VIEW_DOCUMENTS) {
+      setSelectedDocIds([]);
+      return;
+    }
+    if (viewId === APP_VIEW_IMAGES) {
+      setSelectedImageIds([]);
+      return;
+    }
+    if (viewId === APP_VIEW_VIDEOS) {
+      setSelectedVideoIds([]);
+      return;
+    }
+    if (viewId === APP_VIEW_SENSORS) {
+      setSelectedSensorIds([]);
+    }
+  };
+
+  const buildLibrarySelectionActions = (viewId) => (
+    <>
+      <button
+        onClick={() => selectAllForView(viewId)}
+        disabled={
+          (viewId === APP_VIEW_DOCUMENTS && docs.length === 0) ||
+          (viewId === APP_VIEW_IMAGES && images.length === 0) ||
+          (viewId === APP_VIEW_VIDEOS && videos.length === 0) ||
+          (viewId === APP_VIEW_SENSORS && sensors.length === 0)
+        }
+        style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: `1px solid ${UI.border}`, background: "#ffffff", color: UI.text, cursor: "pointer", fontWeight: 700, fontSize: "0.72rem" }}
+      >
+        全选
+      </button>
+      <button
+        onClick={() => clearSelectionForView(viewId)}
+        style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: `1px solid ${UI.border}`, background: UI.softBg, color: UI.text, cursor: "pointer", fontWeight: 700, fontSize: "0.72rem" }}
+      >
+        清空选择
+      </button>
+    </>
+  );
+
   const navigateToView = (nextView) => {
     // 切换左侧导航页时，同时更新 URL hash 和 React 状态。
     const normalized = LIBRARY_VIEW_SET.has(nextView) ? nextView : APP_VIEW_CHAT;
@@ -801,7 +930,7 @@ export default function CoalMineAgent() {
       fetchMessagesFromBackend(sessionId).catch(() => ({ messages: [] })),
     ]);
 
-    setDocs((docResult.documents || []).map((item) => ({
+    const nextDocs = (docResult.documents || []).map((item) => ({
       document_id: item.document_id,
       name: item.file_name,
       charCount: item.char_count || 0,
@@ -809,11 +938,19 @@ export default function CoalMineAgent() {
       sizeMB: item.size_bytes ? (Number(item.size_bytes) / 1024 / 1024).toFixed(2) : "--",
       graphNodeCount: 0,
       graphRelationCount: 0,
-    })));
-    setImages(Array.isArray(imageResult.images) ? imageResult.images : []);
-    setVideos(Array.isArray(videoResult.videos) ? videoResult.videos : []);
-    setSensors(Array.isArray(sensorResult.records) ? sensorResult.records : []);
+    }));
+    const nextImages = Array.isArray(imageResult.images) ? imageResult.images : [];
+    const nextVideos = Array.isArray(videoResult.videos) ? videoResult.videos : [];
+    const nextSensors = Array.isArray(sensorResult.records) ? sensorResult.records : [];
+    setDocs(nextDocs);
+    setImages(nextImages);
+    setVideos(nextVideos);
+    setSensors(nextSensors);
     setGraphBuildStatus(graphStatusResult.build_status || { state: "idle", message: "" });
+    syncSelectedIds(nextDocs, setSelectedDocIds, (doc) => doc.document_id);
+    syncSelectedIds(nextImages, setSelectedImageIds, (img) => img.image_id);
+    syncSelectedIds(nextVideos, setSelectedVideoIds, (video) => video.video_id);
+    syncSelectedIds(nextSensors, setSelectedSensorIds, (sensor) => sensor.sensor_id);
 
     const persistedMessages = Array.isArray(messageResult.messages) ? messageResult.messages : [];
     if (persistedMessages.length > 0) {
@@ -825,7 +962,7 @@ export default function CoalMineAgent() {
     } else {
       setMessages([{
         role: "assistant",
-        content: "您好！我是**煤矿应急救援决策知识问答AI智能体**，登录后我会继续展示您历史会话中的知识库与问答内容。",
+    content: "您好！我是**煤矿应急救援决策知识问答AI智能体**，由中国矿业大学研发。\n\n可为您提供：\n- ⚡ **实时应急决策支持**\n- 🔍 **灾害风险智能识别**\n- 📋 **救援策略精准生成**\n- 🤝 **跨部门协同指挥建议**",
         timestamp: new Date(),
       }]);
     }
@@ -941,7 +1078,7 @@ export default function CoalMineAgent() {
         if (!active) return;
         setDocs((prev) => {
           const byId = new Map(prev.map((item) => [item.document_id, item]));
-          return (result.documents || []).map((item) => {
+          const nextDocs = (result.documents || []).map((item) => {
             const existing = byId.get(item.document_id) || {};
             return {
               ...existing,
@@ -954,6 +1091,8 @@ export default function CoalMineAgent() {
               graphRelationCount: existing.graphRelationCount || 0,
             };
           });
+          syncSelectedIds(nextDocs, setSelectedDocIds, (doc) => doc.document_id);
+          return nextDocs;
         });
       })
       .catch(() => {});
@@ -967,7 +1106,9 @@ export default function CoalMineAgent() {
     fetchSensorsFromBackend(sessionIdRef.current)
       .then((result) => {
         if (!active) return;
-        setSensors(Array.isArray(result.records) ? result.records : []);
+        const nextSensors = Array.isArray(result.records) ? result.records : [];
+        setSensors(nextSensors);
+        syncSelectedIds(nextSensors, setSelectedSensorIds, (sensor) => sensor.sensor_id);
       })
       .catch(() => {});
     return () => { active = false; };
@@ -1017,6 +1158,7 @@ export default function CoalMineAgent() {
           graphNodeCount: result.knowledge_graph?.node_count || 0,
           graphRelationCount: result.knowledge_graph?.relation_count || 0,
         }]);
+        setSelectedDocIds(prev => (prev.includes(result.document_id) ? prev : [...prev, result.document_id]));
         if (result.knowledge_graph?.build_status) {
           graphQueryCacheRef.current.clear();
           graphLayoutReadyRef.current = false;
@@ -1144,6 +1286,7 @@ export default function CoalMineAgent() {
           ...prev.filter(img => img.image_id !== result.image_id && img.name !== result.name),
           result,
         ]);
+        setSelectedImageIds(prev => (prev.includes(result.image_id) ? prev : [...prev, result.image_id]));
         setMessages(prev => [...prev, {
           role: "assistant",
           content: result.summary_text
@@ -1179,6 +1322,7 @@ export default function CoalMineAgent() {
           ...prev.filter(v => v.video_id !== result.video_id && v.name !== result.name),
           result,
         ]);
+        setSelectedVideoIds(prev => (prev.includes(result.video_id) ? prev : [...prev, result.video_id]));
         setMessages(prev => [...prev, {
           role: "assistant",
           content: result.summary_text || `🎬 已分析视频《**${result.name}**》`,
@@ -1201,6 +1345,13 @@ export default function CoalMineAgent() {
     const result = await pushSensorsToBackend(records, sessionIdRef.current);
     const latestRecords = Array.isArray(result.latest_records) ? result.latest_records : [];
     setSensors(latestRecords);
+    setSelectedSensorIds((prev) => {
+      const previousSet = new Set(prev);
+      const nextIds = latestRecords.map((item) => String(item.sensor_id || ""));
+      const keptIds = nextIds.filter((id) => previousSet.has(id));
+      const addedIds = nextIds.filter((id) => !previousSet.has(id));
+      return [...keptIds, ...addedIds];
+    });
     setMessages(prev => [...prev, {
       role: "assistant",
       content: `📡 已接入 ${latestRecords.length} 条传感器数据。\n\n${latestRecords.slice(0, 4).map(item => `- ${item.name || item.sensor_id}：${item.value_text || item.value || "未知"}${item.unit || ""}（${item.status || "状态未知"}）`).join("\n")}`,
@@ -1255,6 +1406,7 @@ export default function CoalMineAgent() {
     try {
       await clearSensorsFromBackend(sessionIdRef.current);
       setSensors([]);
+      setSelectedSensorIds([]);
       setMessages(prev => [...prev, {
         role: "assistant",
         content: "📡 当前会话的传感器数据已清空。",
@@ -1332,6 +1484,66 @@ export default function CoalMineAgent() {
     }
   };
 
+  const analyzeSelectedImageEvidence = async (selectedImages) => {
+    if (selectedImages.length === 0) return { summaryText: "", evidence: [], usedCached: true };
+
+    try {
+      const cachedSummaries = selectedImages
+        .map((img) => String(img.summary_text || "").trim())
+        .filter(Boolean);
+      const cachedEvidence = selectedImages.flatMap((img) => Array.isArray(img.evidence) ? img.evidence : []);
+      if (cachedSummaries.length > 0 || cachedEvidence.length > 0) {
+        return {
+          summaryText: cachedSummaries.length > 0 ? `📸 现场图片识别：\n${cachedSummaries.join("\n")}` : "",
+          evidence: cachedEvidence,
+          usedCached: true,
+        };
+      }
+
+      let lines = [];
+      let evidence = [];
+      for (const img of selectedImages.slice(0, 6)) {
+        try {
+          const resp = await fetch(`${BACKEND_BASE_URL}/api/image-analyze`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              image_base64: img.base64,
+              image_name: img.name,
+            })
+          });
+
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data.result && data.result.length > 0) {
+              const summary = String(data.summary_text || "").trim();
+              const keywords = Array.isArray(data.keywords)
+                ? data.keywords.filter(Boolean)
+                : data.result.slice(0, 3).map(r => r.keyword || r.class_name).filter(Boolean);
+              const line = summary || `【${img.name}】识别结果：${keywords.join("、")}`;
+              lines.push(line);
+              evidence.push({
+                image_name: img.name,
+                summary: summary || keywords.join("、"),
+                source_type: "image_analysis"
+              });
+            }
+          }
+        } catch (err) {
+          console.warn(`图片${img.name}识别失败:`, err);
+        }
+      }
+      return {
+        summaryText: lines.length > 0 ? `📸 现场图片识别：\n${lines.join("\n")}` : "",
+        evidence,
+        usedCached: false,
+      };
+    } catch (err) {
+      console.warn("图片识别调用失败:", err);
+      return { summaryText: "", evidence: [], usedCached: false };
+    }
+  };
+
   const handleAuthSubmit = async (e) => {
     e?.preventDefault?.();
     setAuthSubmitting(true);
@@ -1373,6 +1585,10 @@ export default function CoalMineAgent() {
     setImages([]);
     setVideos([]);
     setSensors([]);
+    setSelectedDocIds([]);
+    setSelectedImageIds([]);
+    setSelectedVideoIds([]);
+    setSelectedSensorIds([]);
     setGraphData(emptyGraphData());
     setGraphBuildStatus({ state: "idle", message: "" });
     setMessages([{
@@ -1386,6 +1602,7 @@ export default function CoalMineAgent() {
     try {
       await removeImageFromBackend(image.image_id, sessionIdRef.current);
       setImages(prev => prev.filter(item => item.image_id !== image.image_id));
+      setSelectedImageIds(prev => prev.filter(id => id !== image.image_id));
     } catch (err) {
       setMessages(prev => [...prev, {
         role: "assistant",
@@ -1399,6 +1616,7 @@ export default function CoalMineAgent() {
     try {
       await removeVideoFromBackend(video.video_id, sessionIdRef.current);
       setVideos(prev => prev.filter(item => item.video_id !== video.video_id));
+      setSelectedVideoIds(prev => prev.filter(id => id !== video.video_id));
     } catch (err) {
       setMessages(prev => [...prev, {
         role: "assistant",
@@ -1408,6 +1626,31 @@ export default function CoalMineAgent() {
     }
   };
 
+  const removeUploadedSensor = async (sensor) => {
+    try {
+      const result = await removeSensorFromBackend(sensor.sensor_id, sessionIdRef.current);
+      const nextSensors = Array.isArray(result.records) ? result.records : [];
+      setSensors(nextSensors);
+      setSelectedSensorIds(prev => prev.filter(id => id !== sensor.sensor_id));
+    } catch (err) {
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: `⚠️ 传感器《${sensor.name || sensor.sensor_id}》删除失败：${err.message}`,
+        timestamp: new Date(),
+      }]);
+    }
+  };
+
+  const clearCurrentConversation = () => {
+    setMessages([{
+      role: "assistant",
+      content: "您好！我是**煤矿应急救援决策知识问答AI智能体**，由中国矿业大学研发。\n\n可为您提供：\n- ⚡ **实时应急决策支持**\n- 🔍 **灾害风险智能识别**\n- 📋 **救援策略精准生成**\n- 🤝 **跨部门协同指挥建议**",
+      timestamp: new Date(),
+    }]);
+    setInput("");
+    setActiveAgents([]);
+    setAlertLevel(null);
+  };
   const buildConversationHistory = (messageList) => {
     // 从消息列表里提取真正需要发给后端的历史对话，
     // 过滤掉上传提示、分析提示这类不适合当上下文的系统消息。
@@ -1439,17 +1682,25 @@ export default function CoalMineAgent() {
     setLoading(true);
     simulateAgents();
 
+    const selectedDocIdSet = new Set(selectedDocIds.map((id) => String(id)));
+    const selectedImageIdSet = new Set(selectedImageIds.map((id) => String(id)));
+    const selectedVideoIdSet = new Set(selectedVideoIds.map((id) => String(id)));
+    const selectedSensorIdSet = new Set(selectedSensorIds.map((id) => String(id)));
+    const selectedImages = images.filter((img) => selectedImageIdSet.has(String(img.image_id || "")));
+    const selectedVideos = videos.filter((video) => selectedVideoIdSet.has(String(video.video_id || "")));
+    const selectedSensors = sensors.filter((sensor) => selectedSensorIdSet.has(String(sensor.sensor_id || "")));
+
     // 如果有图片，先汇总已缓存的识别结果
     let imageSummaryText = "";
     let imageEvidence = [];
-    if (images.length > 0) {
-      const imageAnalysis = await analyzeImageEvidence();
+    if (selectedImages.length > 0) {
+      const imageAnalysis = await analyzeSelectedImageEvidence(selectedImages);
       imageSummaryText = imageAnalysis.summaryText || "";
       imageEvidence = imageAnalysis.evidence || [];
       if (!imageAnalysis.usedCached) {
         setMessages(prev => [...prev, {
           role: "assistant",
-          content: "📸 正在分析上传的图片...",
+          content: "📸 正在分析本次勾选的图片...",
           timestamp: new Date(),
         }]);
       }
@@ -1462,7 +1713,7 @@ export default function CoalMineAgent() {
       }
     }
 
-    const videoEvidence = videos.flatMap(v => Array.isArray(v.evidence) ? v.evidence : []);
+    const videoEvidence = selectedVideos.flatMap(v => Array.isArray(v.evidence) ? v.evidence : []);
 
     const history = buildConversationHistory(newMessages);
 
@@ -1477,13 +1728,17 @@ export default function CoalMineAgent() {
           query: userText,
           session_id: sessionIdRef.current,
           history,
+          selected_document_ids: docs
+            .filter((doc) => selectedDocIdSet.has(String(doc.document_id || "")))
+            .map((doc) => doc.document_id),
           evidence: {
             images: [...imageEvidence, ...videoEvidence],
-            sensors,
+            sensors: selectedSensors,
           },
           options: {
             use_session_memory: true,
-            use_retrieval_evidence: true,
+            use_retrieval_evidence: selectedDocIdSet.size > 0,
+            use_sensor_evidence: selectedSensors.length > 0,
           },
         }),
         signal: controller.signal
@@ -1535,6 +1790,7 @@ export default function CoalMineAgent() {
       graphLoadedSessionRef.current = "";
       setGraphData(emptyGraphData());
       setDocs(prev => prev.filter(item => item.document_id !== doc.document_id));
+      setSelectedDocIds(prev => prev.filter(id => id !== doc.document_id));
       setMessages(prev => [...prev, {
         role: "assistant",
         content: `🗑️ 已移除文档《**${doc.name}**》及其后端向量索引。`,
@@ -2202,7 +2458,7 @@ export default function CoalMineAgent() {
             <div style={{ width: 32, height: 32, borderRadius: "8px", background: "linear-gradient(135deg,#4ade80,#22d3ee)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.9rem", boxShadow: "0 0 10px rgba(74,222,128,0.3)" }}>⛏</div>
             <div style={{ padding: "0.75rem 0.95rem", background: UI.cardBg, border: `1px solid ${UI.border}`, borderRadius: "4px 14px 14px 14px", fontSize: "0.82rem", color: UI.subtle, boxShadow: UI.shadow }}>
               <span>多智能体协同推理中</span><span className="dots">...</span>
-              {docs.length > 0 && <div style={{ fontSize: "0.63rem", color: "#4ade80", marginTop: "0.2rem" }}>📄 正在检索 {docs.length} 份规程文档</div>}
+              {selectedDocumentCount > 0 && <div style={{ fontSize: "0.63rem", color: "#4ade80", marginTop: "0.2rem" }}>📄 正在检索本次勾选的 {selectedDocumentCount} 份规程文档</div>}
               <div style={{ marginTop: "0.35rem", display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
                 {AGENTS.filter(a => activeAgents.includes(a.id)).map(a => (
                   <span key={a.id} style={{ fontSize: "0.6rem", padding: "0.1rem 0.4rem", background: `${a.color}20`, border: `1px solid ${a.color}`, borderRadius: "4px", color: a.color }}>{a.icon} {a.name}</span>
@@ -2227,28 +2483,12 @@ export default function CoalMineAgent() {
       </div>
 
       <div style={{ padding: "0 1.25rem 1.1rem" }}>
-        {(docs.length > 0 || images.length > 0 || videos.length > 0) && (
+        {(docs.length > 0 || images.length > 0 || videos.length > 0 || sensors.length > 0) && (
           <div style={{ marginBottom: "0.45rem" }}>
-            {docs.length > 0 && (
-              <div style={{ marginBottom: "0.35rem", padding: "0.3rem 0.7rem", background: "rgba(74,222,128,0.07)", border: "1px solid rgba(74,222,128,0.2)", borderRadius: "7px", fontSize: "0.65rem", color: "#4ade80", display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                📄 已加载 {docs.length} 份规程
-              </div>
-            )}
-            {images.length > 0 && (
-              <div style={{ padding: "0.3rem 0.7rem", background: "rgba(59,130,246,0.07)", border: "1px solid rgba(59,130,246,0.2)", borderRadius: "7px", fontSize: "0.65rem", color: "#60a5fa", display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                📸 已上传 {images.length} 张图片（已生成图像摘要）
-              </div>
-            )}
-            {videos.length > 0 && (
-              <div style={{ marginTop: "0.35rem", padding: "0.3rem 0.7rem", background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: "7px", fontSize: "0.65rem", color: "#f59e0b", display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                🎬 已上传 {videos.length} 段视频（将进行抽帧分析）
-              </div>
-            )}
-            {sensors.length > 0 && (
-              <div style={{ marginTop: "0.35rem", padding: "0.3rem 0.7rem", background: "rgba(168,85,247,0.07)", border: "1px solid rgba(168,85,247,0.2)", borderRadius: "7px", fontSize: "0.65rem", color: "#c084fc", display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                📡 已接入 {sensors.length} 条传感器数据
-              </div>
-            )}
+            <div style={{ padding: "0.36rem 0.72rem", background: "rgba(15,23,42,0.04)", border: `1px solid ${UI.border}`, borderRadius: "8px", fontSize: "0.66rem", color: UI.text, display: "flex", alignItems: "center", gap: "0.35rem", flexWrap: "wrap" }}>
+              <span style={{ color: UI.subtle }}>参考范围提示：</span>
+              <span>{selectedSummaryText}</span>
+            </div>
           </div>
         )}
         <div style={{ display: "flex", gap: "0.6rem", background: UI.cardBg, border: `1px solid ${UI.border}`, borderRadius: "13px", padding: "0.4rem 0.4rem 0.4rem 0.85rem", backdropFilter: "blur(20px)", boxShadow: UI.shadow }}>
@@ -2260,6 +2500,7 @@ export default function CoalMineAgent() {
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
             placeholder="描述灾害情况或输入应急问题（Shift+Enter换行）..." rows={2}
             style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: UI.text, fontSize: "0.85rem", lineHeight: "1.6", resize: "none", fontFamily: "inherit" }} />
+          <button onClick={clearCurrentConversation} style={{ padding: "0.5rem 0.9rem", background: "rgba(148,163,184,0.12)", border: "1px solid rgba(148,163,184,0.24)", borderRadius: "9px", color: UI.text, fontWeight: 700, fontSize: "0.76rem", cursor: "pointer", flexShrink: 0, alignSelf: "flex-end" }}>清空对话</button>
           <button onClick={() => sendMessage()} disabled={loading || !input.trim()}
             style={{ padding: "0.5rem 1.1rem", background: loading || !input.trim() ? "rgba(74,222,128,0.12)" : "linear-gradient(135deg,#4ade80,#22d3ee)", border: "none", borderRadius: "9px", color: loading || !input.trim() ? "#4ade8044" : "#0a0f1e", fontWeight: 700, fontSize: "0.8rem", cursor: loading || !input.trim() ? "not-allowed" : "pointer", transition: "all 0.2s", flexShrink: 0, alignSelf: "flex-end", boxShadow: !loading && input.trim() ? "0 0 16px rgba(74,222,128,0.4)" : "none" }}>
             {loading ? "推理中" : "发送 ↑"}
@@ -2291,14 +2532,23 @@ export default function CoalMineAgent() {
 
   const renderDocumentsPage = () => renderPageShell(
     "文档库",
-    "这里存放当前会话已入库的规程文档。上传后会进入向量检索，并参与知识图谱构建。",
-    <button onClick={() => fileInputRef.current?.click()} disabled={uploading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: `1px dashed ${UI.borderStrong}`, background: "rgba(56,189,248,0.10)", color: uploading ? UI.subtle : UI.text, cursor: uploading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{uploading ? "解析中..." : "上传规程文档"}</button>,
+    "这里存放当前会话已入库的规程文档。上传后会进入向量检索，并参与知识图谱构建；只有勾选的文档才会参与本次问答。",
+    <>
+      <button onClick={() => fileInputRef.current?.click()} disabled={uploading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: `1px dashed ${UI.borderStrong}`, background: "rgba(56,189,248,0.10)", color: uploading ? UI.subtle : UI.text, cursor: uploading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{uploading ? "解析中..." : "上传规程文档"}</button>
+      {buildLibrarySelectionActions(APP_VIEW_DOCUMENTS)}
+    </>,
     docs.length === 0
       ? renderLibraryEmpty("当前文档库为空", "上传 PDF、DOCX 或 TXT 后，问答智能体会优先参考这些规程内容。", uploading ? "文档解析中..." : "上传规程文档", () => fileInputRef.current?.click(), uploading)
       : (
         <div style={{ display: "grid", gap: "0.65rem", overflowY: "auto", paddingRight: "0.2rem" }}>
           {docs.map((doc) => (
-            <div key={doc.document_id || doc.name} style={{ padding: "0.9rem 1rem", background: UI.cardBg, border: `1px solid ${UI.border}`, borderRadius: "14px", display: "flex", alignItems: "flex-start", gap: "0.7rem", boxShadow: UI.shadow }}>
+            <div key={doc.document_id || doc.name} style={{ position: "relative", padding: "0.9rem 1rem", paddingRight: "5.8rem", background: UI.cardBg, border: `1px solid ${UI.border}`, borderRadius: "14px", display: "flex", alignItems: "flex-start", gap: "0.7rem", boxShadow: UI.shadow }}>
+              <input
+                type="checkbox"
+                checked={selectedDocIds.includes(String(doc.document_id || ""))}
+                onChange={() => toggleSelection(doc.document_id, setSelectedDocIds)}
+                style={{ position: "absolute", top: 12, right: 80, width: 16, height: 16, accentColor: "#0ea5e9", cursor: "pointer" }}
+              />
               <div style={{ width: 44, height: 44, borderRadius: "12px", background: "#ecfeff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.1rem", flexShrink: 0 }}>{fileIcon(doc.name || "")}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: "0.88rem", fontWeight: 800, color: UI.text, wordBreak: "break-all" }}>{doc.name}</div>
@@ -2307,7 +2557,7 @@ export default function CoalMineAgent() {
                   <div style={{ marginTop: "0.25rem", fontSize: "0.68rem", color: "#67e8f9" }}>图谱节点 {doc.graphNodeCount || 0} · 关系 {doc.graphRelationCount || 0}</div>
                 ) : null}
               </div>
-              <button onClick={() => removeUploadedDocument(doc)} style={{ padding: "0.45rem 0.7rem", borderRadius: "8px", border: "1px solid rgba(248,113,113,0.24)", background: "#fff1f2", color: "#b91c1c", cursor: "pointer", fontSize: "0.72rem" }}>移除</button>
+              <button onClick={() => removeUploadedDocument(doc)} style={{ position: "absolute", top: 10, right: 12, padding: "0.45rem 0.7rem", borderRadius: "8px", border: "1px solid rgba(248,113,113,0.24)", background: "#fff1f2", color: "#b91c1c", cursor: "pointer", fontSize: "0.72rem" }}>移除</button>
             </div>
           ))}
         </div>
@@ -2316,14 +2566,23 @@ export default function CoalMineAgent() {
 
   const renderImagesPage = () => renderPageShell(
     "图片库",
-    "这里保存当前会话上传的现场图片。上传后会立即完成识别，并把摘要结果作为可参与问答的图像证据。",
-    <button onClick={() => imageInputRef.current?.click()} disabled={imageUploading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: `1px dashed ${UI.borderStrong}`, background: "#eff6ff", color: imageUploading ? UI.subtle : UI.text, cursor: imageUploading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{imageUploading ? "上传中..." : "上传现场图片"}</button>,
+    "这里保存当前会话上传的现场图片。上传后会立即完成识别，并把摘要结果作为可参与问答的图像证据；只有勾选的图片会参与本次问答。",
+    <>
+      <button onClick={() => imageInputRef.current?.click()} disabled={imageUploading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: `1px dashed ${UI.borderStrong}`, background: "#eff6ff", color: imageUploading ? UI.subtle : UI.text, cursor: imageUploading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{imageUploading ? "上传中..." : "上传现场图片"}</button>
+      {buildLibrarySelectionActions(APP_VIEW_IMAGES)}
+    </>,
     images.length === 0
       ? renderLibraryEmpty("当前图片库为空", "上传 JPG、PNG 或 WEBP 后，问答链路会在发送前自动补充图片识别结果。", imageUploading ? "上传中..." : "上传现场图片", () => imageInputRef.current?.click(), imageUploading)
       : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: "0.75rem", overflowY: "auto", paddingRight: "0.2rem" }}>
           {images.map((img) => (
-            <div key={img.name} style={{ padding: "0.75rem", background: UI.cardBg, border: `1px solid ${UI.border}`, borderRadius: "16px", boxShadow: UI.shadow }}>
+            <div key={img.image_id || img.name} style={{ position: "relative", padding: "0.75rem", paddingTop: "2.5rem", background: UI.cardBg, border: `1px solid ${UI.border}`, borderRadius: "16px", boxShadow: UI.shadow }}>
+              <input
+                type="checkbox"
+                checked={selectedImageIds.includes(String(img.image_id || ""))}
+                onChange={() => toggleSelection(img.image_id, setSelectedImageIds)}
+                style={{ position: "absolute", top: 12, right: 12, width: 16, height: 16, accentColor: "#2563eb", cursor: "pointer", zIndex: 1 }}
+              />
               <div style={{ height: 150, borderRadius: "12px", background: "#e2e8f0", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <img src={img.dataUrl} alt={img.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               </div>
@@ -2343,15 +2602,30 @@ export default function CoalMineAgent() {
 
   const renderVideosPage = () => renderPageShell(
     "视频库",
-    "这里展示当前会话上传的视频及抽帧分析结果。上传后会自动完成抽帧、识别与摘要生成。",
-    <button onClick={() => videoInputRef.current?.click()} disabled={videoUploading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: "1px dashed rgba(245,158,11,0.45)", background: "linear-gradient(135deg,rgba(245,158,11,0.15),rgba(249,115,22,0.08))", color: videoUploading ? "#f59e0b60" : "#f59e0b", cursor: videoUploading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{videoUploading ? "分析中..." : "上传现场视频"}</button>,
+    "这里展示当前会话上传的视频及抽帧分析结果。上传后会自动完成抽帧、识别与摘要生成；只有勾选的视频会参与本次问答。",
+    <>
+      <button onClick={() => videoInputRef.current?.click()} disabled={videoUploading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: "1px dashed rgba(245,158,11,0.45)", background: "linear-gradient(135deg,rgba(245,158,11,0.15),rgba(249,115,22,0.08))", color: videoUploading ? "#f59e0b60" : "#f59e0b", cursor: videoUploading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{videoUploading ? "分析中..." : "上传现场视频"}</button>
+      {buildLibrarySelectionActions(APP_VIEW_VIDEOS)}
+    </>,
     videos.length === 0
       ? renderLibraryEmpty("当前视频库为空", "上传 MP4、MOV 或 WEBM 后，系统会自动抽帧分析，并把命中帧作为图像证据参与问答。", videoUploading ? "分析中..." : "上传现场视频", () => videoInputRef.current?.click(), videoUploading)
       : (
         <div style={{ display: "grid", gap: "0.75rem", overflowY: "auto", paddingRight: "0.2rem" }}>
           {videos.map((video) => (
-            <div key={video.name} style={{ padding: "0.9rem 1rem", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.18)", borderRadius: "16px", display: "flex", gap: "0.8rem" }}>
-              <div style={{ width: 52, height: 52, borderRadius: "14px", background: "rgba(15,23,42,0.72)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fbbf24", fontSize: "1.2rem", flexShrink: 0 }}>🎞</div>
+            <div key={video.video_id || video.name} style={{ position: "relative", padding: "0.9rem 1rem", paddingRight: "8rem", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.18)", borderRadius: "16px", display: "flex", gap: "0.8rem" }}>
+              <input
+                type="checkbox"
+                checked={selectedVideoIds.includes(String(video.video_id || ""))}
+                onChange={() => toggleSelection(video.video_id, setSelectedVideoIds)}
+                style={{ position: "absolute", top: 12, right: 106, width: 16, height: 16, accentColor: "#d97706", cursor: "pointer" }}
+              />
+              <div style={{ width: 64, height: 64, borderRadius: "14px", background: "rgba(15,23,42,0.12)", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", color: "#fbbf24", fontSize: "1.2rem", flexShrink: 0 }}>
+                {video.posterDataUrl ? (
+                  <img src={video.posterDataUrl} alt={video.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                ) : (
+                  <span>🎞</span>
+                )}
+              </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: "0.86rem", fontWeight: 800, color: "#fde68a", wordBreak: "break-all" }}>{video.name}</div>
                 <div style={{ marginTop: "0.24rem", fontSize: "0.7rem", color: "#94a3b8" }}>{video.sizeMB} MB · {video.frames_extracted || 0} 帧抽取 · {video.frames_matched || 0} 帧命中</div>
@@ -2385,7 +2659,7 @@ export default function CoalMineAgent() {
                   );
                 })()}
               </div>
-              <button onClick={() => removeUploadedVideo(video)} style={{ padding: "0.45rem 0.7rem", borderRadius: "8px", border: "1px solid rgba(148,163,184,0.16)", background: "rgba(255,255,255,0.04)", color: "#cbd5e1", cursor: "pointer", fontSize: "0.72rem", alignSelf: "flex-start" }}>移出视频库</button>
+              <button onClick={() => removeUploadedVideo(video)} style={{ position: "absolute", top: 10, right: 12, padding: "0.45rem 0.7rem", borderRadius: "8px", border: "1px solid rgba(148,163,184,0.16)", background: "rgba(255,255,255,0.04)", color: "#cbd5e1", cursor: "pointer", fontSize: "0.72rem", alignSelf: "flex-start" }}>移出视频库</button>
             </div>
           ))}
         </div>
@@ -2394,21 +2668,29 @@ export default function CoalMineAgent() {
 
   const renderSensorsPage = () => renderPageShell(
     "传感器数据库",
-    "这里管理当前会话的实时传感器数据。支持导入 JSON 文件，也支持继续粘贴数组进行手动接入。",
+    "这里管理当前会话的实时传感器数据。支持导入 JSON 文件，也支持继续粘贴数组进行手动接入；只有勾选的传感器会参与本次问答。",
     <>
       <button onClick={() => sensorFileInputRef.current?.click()} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: "1px dashed rgba(168,85,247,0.45)", background: "linear-gradient(135deg,rgba(168,85,247,0.15),rgba(99,102,241,0.08))", color: "#d8b4fe", cursor: "pointer", fontWeight: 700, fontSize: "0.72rem" }}>导入传感器 JSON</button>
       <button onClick={() => setSensorDialogOpen(true)} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: "1px solid rgba(168,85,247,0.26)", background: "rgba(168,85,247,0.08)", color: "#c084fc", cursor: "pointer", fontWeight: 700, fontSize: "0.72rem" }}>手动录入数据</button>
       <button onClick={handleSensorClear} disabled={sensors.length === 0} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: "1px solid rgba(248,113,113,0.18)", background: sensors.length === 0 ? "rgba(239,68,68,0.04)" : "rgba(239,68,68,0.08)", color: sensors.length === 0 ? "#fca5a560" : "#fca5a5", cursor: sensors.length === 0 ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>清空数据</button>
+      {buildLibrarySelectionActions(APP_VIEW_SENSORS)}
     </>,
     sensors.length === 0
       ? renderLibraryEmpty("当前传感器数据库为空", "导入监测 JSON 后，传感器数据会自动参与风险识别、角色路由和问答推理。", "导入传感器 JSON", () => sensorFileInputRef.current?.click())
       : (
         <div style={{ display: "grid", gap: "0.65rem", overflowY: "auto", paddingRight: "0.2rem" }}>
           {sensors.map((sensor, idx) => (
-            <div key={`${sensor.sensor_id || sensor.name}-${idx}`} style={{ padding: "0.85rem 0.95rem", background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.18)", borderRadius: "15px", display: "grid", gap: "0.18rem" }}>
+            <div key={`${sensor.sensor_id || sensor.name}-${idx}`} style={{ position: "relative", padding: "0.85rem 0.95rem", paddingRight: "8rem", background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.18)", borderRadius: "15px", display: "grid", gap: "0.18rem" }}>
+              <input
+                type="checkbox"
+                checked={selectedSensorIds.includes(String(sensor.sensor_id || ""))}
+                onChange={() => toggleSelection(sensor.sensor_id, setSelectedSensorIds)}
+                style={{ position: "absolute", top: 12, right: 80, width: 16, height: 16, accentColor: "#9333ea", cursor: "pointer" }}
+              />
               <div style={{ fontSize: "0.84rem", fontWeight: 800, color: "#e9d5ff" }}>{sensor.name || sensor.sensor_id}</div>
               <div style={{ fontSize: "0.7rem", color: "#cbd5e1" }}>{(sensor.value_text || sensor.value || "未知")}{sensor.unit || ""} · 阈值 {sensor.threshold ?? "未知"} · {sensor.status || "状态未知"}</div>
               <div style={{ fontSize: "0.66rem", color: "#94a3b8" }}>{sensor.location || "未知位置"} · {sensor.timestamp || "无时间戳"} · 编号 {sensor.sensor_id || "未知"}</div>
+              <button onClick={() => removeUploadedSensor(sensor)} style={{ position: "absolute", top: 10, right: 12, padding: "0.45rem 0.7rem", borderRadius: "8px", border: "1px solid rgba(248,113,113,0.18)", background: "rgba(255,241,242,0.92)", color: "#9f1239", cursor: "pointer", fontSize: "0.72rem" }}>移除</button>
             </div>
           ))}
         </div>
@@ -2646,4 +2928,6 @@ export default function CoalMineAgent() {
     </div>
   );
 }
+
+
 

@@ -54,7 +54,7 @@ class Config:
     VISION_READ_TIMEOUT = int(os.environ.get("VISION_READ_TIMEOUT", "120"))
     VISION_MAX_TOKENS = int(os.environ.get("VISION_MAX_TOKENS", "300"))
     
-    # LongCat LLM 閰嶇疆
+    # LongCat LLM 
     LONGCAT_API_KEY = os.environ.get("LONGCAT_API_KEY")
     LONGCAT_BASE_URL = os.environ.get("LONGCAT_BASE_URL", "https://api.longcat.chat/openai")
     LONGCAT_CHAT_PROXY_URL = os.environ.get("LONGCAT_CHAT_PROXY_URL", "https://api.longcat.chat/anthropic/v1/messages")
@@ -63,12 +63,12 @@ class Config:
     LONGCAT_RETRIES = int(os.environ.get("LONGCAT_RETRIES", "1"))
     LONGCAT_MAX_TOKENS = int(os.environ.get("LONGCAT_MAX_TOKENS", "800"))
     
-    # 浠ｇ悊閰嶇疆
+
     USE_PROXY = os.environ.get("USE_PROXY", "0") == "1"
     HTTP_PROXY = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
     HTTPS_PROXY = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
     
-    # Agent 閰嶇疆
+
     AGENT_SYSTEM_PROMPT = "你是煤矿应急救援智能体，回答必须专业、可执行，并给出清晰步骤。"
     AGENT_MAX_ITERATIONS = int(os.environ.get("AGENT_MAX_ITERATIONS", "5"))
     MULTI_AGENT_ENABLED = os.environ.get("MULTI_AGENT_ENABLED", "1") == "1"
@@ -80,7 +80,7 @@ class Config:
     AGENT_MAX_EVIDENCE_IMAGES = int(os.environ.get("AGENT_MAX_EVIDENCE_IMAGES", "6"))
     AGENT_MAX_EVIDENCE_SENSORS = int(os.environ.get("AGENT_MAX_EVIDENCE_SENSORS", "12"))
 
-    # 杞婚噺鐭ヨ瘑鍥捐氨閰嶇疆
+
     KG_ENABLED = os.environ.get("KG_ENABLED", "1") == "1"
     KG_MAX_TRIPLES_PER_DOC = int(os.environ.get("KG_MAX_TRIPLES_PER_DOC", "6"))
     KG_MAX_RELATED_TRIPLES = int(os.environ.get("KG_MAX_RELATED_TRIPLES", "6"))
@@ -94,7 +94,7 @@ class Config:
     # 0 means no artificial article cap; set a positive value for quick debug builds.
     KG_MAX_ARTICLES_PER_BUILD = int(os.environ.get("KG_MAX_ARTICLES_PER_BUILD", "20"))
 
-    # 澶氭簮椋庨櫓璇嗗埆閰嶇疆
+
     RISK_RULES_ENABLED = os.environ.get("RISK_RULES_ENABLED", "1") == "1"
     RISK_SCORE_THRESHOLDS = {
         "medium": int(os.environ.get("RISK_SCORE_MEDIUM", "4")),
@@ -103,13 +103,13 @@ class Config:
     }
     FORCE_KNOWLEDGE_ON_DECISION = os.environ.get("FORCE_KNOWLEDGE_ON_DECISION", "1") == "1"
 
-    # 瑙嗛鍒嗘瀽閰嶇疆
+
     VIDEO_MAX_FRAMES = int(os.environ.get("VIDEO_MAX_FRAMES", "8"))
     VIDEO_SAMPLE_SECONDS = float(os.environ.get("VIDEO_SAMPLE_SECONDS", "1.5"))
     VIDEO_FRAME_MAX_WIDTH = int(os.environ.get("VIDEO_FRAME_MAX_WIDTH", "960"))
     VIDEO_JPEG_QUALITY = int(os.environ.get("VIDEO_JPEG_QUALITY", "85"))
 
-    # 鍚庣鍚戦噺 RAG 閰嶇疆
+
     RAG_ENABLED = os.environ.get("RAG_ENABLED", "1") == "1"
     RAG_TOP_K = int(os.environ.get("RAG_TOP_K", "4"))
     RAG_CHUNK_SIZE = int(os.environ.get("RAG_CHUNK_SIZE", "700"))

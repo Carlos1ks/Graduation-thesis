@@ -587,6 +587,7 @@ def retrieve_relevant_chunks(
     *,
     risk_types: Optional[List[str]] = None,
     risk_signals: Optional[List[Dict[str, str]]] = None,
+    allowed_document_ids: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     # 问答前最核心的证据召回入口。
     # 排序不是只看向量相似度，还会综合图谱、关键词和风险一致性信号。
@@ -605,10 +606,16 @@ def retrieve_relevant_chunks(
         chunks = list(store["chunks"])
         index = store["index"]
 
+    allowed_document_id_set = {
+        str(item or "").strip()
+        for item in (allowed_document_ids or [])
+        if str(item or "").strip()
+    }
+
     search_k = max(1, int(top_k or config.RAG_TOP_K))
-    candidate_k = min(len(chunks), max(search_k * 8, search_k + 8))
+    candidate_k = len(chunks) if allowed_document_id_set else min(len(chunks), max(search_k * 8, search_k + 8))
     query_vector = _embed_texts([search_query])
-    scores, indices = index.search(query_vector, candidate_k)
+    scores, indices = index.search(query_vector, candidate_k)#scores 是浮点数矩阵，indices 是整数矩阵，FAISS 全库内积搜索
 
     weight_vector = float(config.RAG_WEIGHT_VECTOR)
     weight_graph = float(config.RAG_WEIGHT_GRAPH)
@@ -635,6 +642,8 @@ def retrieve_relevant_chunks(
         if idx < 0 or idx >= len(chunks):
             continue
         record = chunks[idx]
+        if allowed_document_id_set and str(record.get("document_id") or "") not in allowed_document_id_set:
+            continue
         key = (record.get("document_id"), record.get("chunk_id"))
         if key in seen:
             continue

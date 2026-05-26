@@ -28,7 +28,7 @@ from retrieval import (
     list_session_documents,
     list_session_chunks,
 )
-from sensor_store import push_session_sensors, list_session_sensors, has_session_sensors, clear_session_sensors
+from sensor_store import push_session_sensors, list_session_sensors, has_session_sensors, clear_session_sensors, remove_session_sensor
 from knowledge_graph import (
     build_and_store_session_graph,
     get_session_graph,
@@ -60,6 +60,7 @@ from persistence import (
     save_sensor_records,
     list_sensor_records,
     clear_sensor_records,
+    delete_sensor_record,
     save_message,
     list_messages,
 )
@@ -358,6 +359,11 @@ def _normalize_agent_chat_request(data):
         "query": str(payload.get("query", "")).strip(),
         "session_id": str(payload.get("session_id", "")).strip() or None,
         "history": _normalize_history(payload.get("history")),
+        "selected_document_ids": [
+            str(item or "").strip()
+            for item in payload.get("selected_document_ids", [])
+            if str(item or "").strip()
+        ] if isinstance(payload.get("selected_document_ids"), list) else [],
         "evidence_documents": _normalize_document_evidence(evidence.get("documents")),
         "evidence_images": _normalize_image_evidence(evidence.get("images")),
         "evidence_sensors": _normalize_sensor_evidence(evidence.get("sensors")),
@@ -654,6 +660,51 @@ def _format_video_timestamp(seconds):
     if hour > 0:
         return f"{hour:02d}:{minute:02d}:{second:02d}"
     return f"{minute:02d}:{second:02d}"
+
+
+def _video_frame_data_url(image_base64):
+    text = str(image_base64 or "").strip()
+    if not text:
+        return ""
+    return f"data:image/jpeg;base64,{text}"
+
+
+def _select_video_poster_data_url(extracted, frame_reports):
+    frames = list(extracted.get("frames") or [])
+    if not frames:
+        return ""
+    frame_by_index = {
+        int(item.get("frame_index") or 0): item
+        for item in frames
+    }
+    if frame_reports:
+        preferred = frame_by_index.get(int(frame_reports[0].get("frame_index") or 0))
+        if preferred:
+            return _video_frame_data_url(preferred.get("image_base64"))
+    return _video_frame_data_url(frames[0].get("image_base64"))
+
+
+def _extract_video_poster(video_path):
+    cv2 = _load_cv2()
+    capture = cv2.VideoCapture(str(video_path))
+    if not capture.isOpened():
+        return ""
+
+    try:
+        ok, frame = capture.read()
+        if not ok or frame is None:
+            return ""
+        frame = _resize_video_frame(frame, cv2)
+        ok, buffer = cv2.imencode(
+            ".jpg",
+            frame,
+            [int(cv2.IMWRITE_JPEG_QUALITY), int(config.VIDEO_JPEG_QUALITY)],
+        )
+        if not ok:
+            return ""
+        return _video_frame_data_url(base64.b64encode(buffer.tobytes()).decode("utf-8"))
+    finally:
+        capture.release()
 
 
 # 从视频中抽取关键帧并转为 base64。
@@ -1233,6 +1284,35 @@ def clear_sensor_data():
         "cleared": cleared,
     })
 
+
+@app.route('/api/sensors/remove', methods=['POST'])
+def remove_sensor_data():
+    payload = request.get_json(silent=True) or {}
+    sensor_id = str(payload.get("sensor_id") or "").strip()
+    if not sensor_id:
+        return jsonify({"error": "sensor_id不能为空"}), 400
+    try:
+        user, session_id, _token = _resolve_user_session(payload.get('session_id'))
+    except PermissionError as e:
+        return jsonify({'error': str(e)}), 401
+
+    removed_runtime = remove_session_sensor(session_id, sensor_id)
+    removed_persisted = delete_sensor_record(int(user["id"]), sensor_id)
+    if not removed_runtime and not removed_persisted:
+        return jsonify({"error": "未找到对应传感器"}), 404
+
+    latest_records = list_session_sensors(session_id)
+    if not latest_records:
+        persisted_records = list_sensor_records(int(user["id"]))
+        if persisted_records:
+            push_session_sensors(session_id=session_id, payload=persisted_records)
+            latest_records = list_session_sensors(session_id)
+    return jsonify({
+        "success": True,
+        "sensor_id": sensor_id,
+        "records": latest_records,
+    })
+
 # 上传图片并持久化保存到用户图片库。
 @app.route('/api/images/upload', methods=['POST'])
 def upload_persistent_image():
@@ -1360,6 +1440,7 @@ def upload_persistent_video():
             file_name=file_name,
             raw_bytes=raw_bytes,
             mime_type=_guess_upload_mime(file_name, "video/mp4"),
+            poster_data_url=_select_video_poster_data_url(extracted, frame_reports),
             duration_s=float(payload.get("duration_s") or 0.0),
             frames_extracted=int(payload.get("frames_extracted") or 0),
             frames_matched=int(payload.get("frames_matched") or 0),
@@ -1580,6 +1661,7 @@ def agent_chat():
                 top_k=config.RAG_TOP_K,
                 risk_types=list(provisional_risk_profile.get("risk_types", [])),
                 risk_signals=list(provisional_risk_profile.get("signals_detected", [])),
+                allowed_document_ids=normalized["selected_document_ids"],
             )
 
         if use_sensor_evidence and not sensor_records and has_session_sensors(session_id):

@@ -142,3 +142,24 @@ def clear_session_sensors(session_id: Optional[str]) -> bool:
     sid = _get_session_id(session_id)
     with _STORE_LOCK:
         return _SESSION_SENSOR_STORES.pop(sid, None) is not None
+
+
+def remove_session_sensor(session_id: Optional[str], sensor_id: str) -> bool:
+    sid = _get_session_id(session_id)
+    target_id = str(sensor_id or "").strip()
+    if not target_id:
+        return False
+    with _STORE_LOCK:
+        store = _SESSION_SENSOR_STORES.get(sid)
+        if not store:
+            return False
+        latest_by_sensor = store.get("latest_by_sensor") or {}
+        if target_id not in latest_by_sensor:
+            return False
+        latest_by_sensor.pop(target_id, None)
+        history = list(store.get("history") or [])
+        store["history"] = [item for item in history if str(item.get("sensor_id") or "") != target_id]
+        store["updated_at"] = _now_iso()
+        if not latest_by_sensor:
+            _SESSION_SENSOR_STORES.pop(sid, None)
+        return True

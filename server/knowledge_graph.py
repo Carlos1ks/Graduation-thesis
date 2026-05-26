@@ -463,6 +463,7 @@ def _sanitize_relation(
         return None
     source_type = str(rel.get("source_type") or "").strip().lower()
     target_type = str(rel.get("target_type") or "").strip().lower()
+    #解析头尾节点在已累积的全局 node 池中的 uid
     raw_source_id = str(rel.get("source_id") or "").strip()
     raw_target_id = str(rel.get("target_id") or "").strip()
     if not source_type or not target_type or not raw_source_id or not raw_target_id:
@@ -497,7 +498,9 @@ def _sanitize_relation(
 def _build_graph_documents(documents: List[Dict[str, object]]) -> Dict[str, object]:
     normalized_documents = _normalize_documents(documents)
     nodes_by_uid: Dict[str, Dict[str, object]] = {}
+     # 全局节点池，key 是 uid
     relations_by_id: Dict[str, Dict[str, object]] = {}
+    # 全局关系池，key 是关系 id
     article_budget = _article_limit()
     article_count = 0
 
@@ -515,7 +518,7 @@ def _build_graph_documents(documents: List[Dict[str, object]]) -> Dict[str, obje
             "sources": [doc_name],
         })
 
-        articles = _split_articles(str(doc["text"]), str(doc["chunk_id"]))
+        articles = _split_articles(str(Zc["text"]), str(doc["chunk_id"]))
         batch_size = max(1, int(config.KG_LLM_BATCH_SIZE))
         for start in range(0, len(articles), batch_size):
             for article in articles[start:start + batch_size]:
