@@ -306,11 +306,13 @@ async function removeSensorFromBackend(sensorId, sessionId) {
   return result;
 }
 
-async function fetchKnowledgeGraph(sessionId, keyword = "") {
+async function fetchKnowledgeGraph(sessionId, keyword = "", options = {}) {
   const text = keyword.trim();
   if (!text) {
     const params = new URLSearchParams({ session_id: sessionId, limit: "1000" });
-    const response = await apiFetch(`${BACKEND_BASE_URL}/api/knowledge-graph?${params.toString()}`);
+    const response = await apiFetch(`${BACKEND_BASE_URL}/api/knowledge-graph?${params.toString()}`, {
+      signal: options.signal,
+    });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.success) {
       throw new Error(result.error || `知识图谱加载失败：${response.status}`);
@@ -327,6 +329,7 @@ async function fetchKnowledgeGraph(sessionId, keyword = "") {
       limit: 160,
       depth: 1,
     }),
+    signal: options.signal,
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok || !result.success) {
@@ -579,14 +582,27 @@ function focusGraphLocally(data, keyword, layoutByUid = new Map()) {
     .map(node => ({ uid: String(node.uid || ""), score: graphNodeMatchScore(node, text) }))
     .filter(item => item.uid && item.score < 99)
     .sort((a, b) => a.score - b.score || a.uid.localeCompare(b.uid));
-  const matchedUids = new Set(nodeScores.map(item => item.uid));
-  if (!matchedUids.size) return null;
-
-  const relatedUids = new Set(matchedUids);
+  const degreeByUid = new Map();
   for (const link of links) {
     const source = graphLinkEndpointUid(link.source);
     const target = graphLinkEndpointUid(link.target);
-    if (matchedUids.has(source) || matchedUids.has(target)) {
+    if (source) degreeByUid.set(source, (degreeByUid.get(source) || 0) + 1);
+    if (target) degreeByUid.set(target, (degreeByUid.get(target) || 0) + 1);
+  }
+  const centerUid = (
+    nodeScores
+      .map(item => ({ ...item, degree: degreeByUid.get(item.uid) || 0 }))
+      .sort((a, b) => b.degree - a.degree || a.score - b.score || a.uid.localeCompare(b.uid))[0]
+      ?.uid
+  ) || "";
+  if (!centerUid) return null;
+
+  const matchedUids = new Set([centerUid]);
+  const relatedUids = new Set([centerUid]);
+  for (const link of links) {
+    const source = graphLinkEndpointUid(link.source);
+    const target = graphLinkEndpointUid(link.target);
+    if (source === centerUid || target === centerUid) {
       if (source) relatedUids.add(source);
       if (target) relatedUids.add(target);
     }
@@ -594,10 +610,9 @@ function focusGraphLocally(data, keyword, layoutByUid = new Map()) {
   const focusedLinks = links.filter(link => {
     const source = graphLinkEndpointUid(link.source);
     const target = graphLinkEndpointUid(link.target);
-    return matchedUids.has(source) || matchedUids.has(target);
+    return source === centerUid || target === centerUid;
   });
 
-  const centerUid = nodeScores[0]?.uid || Array.from(matchedUids)[0] || "";
   return {
     ...data,
     nodes: nodes
@@ -613,12 +628,12 @@ function focusGraphLocally(data, keyword, layoutByUid = new Map()) {
           ...(Number.isFinite(layout.vx) ? { vx: layout.vx } : {}),
           ...(Number.isFinite(layout.vy) ? { vy: layout.vy } : {}),
           isCenter: uid === centerUid,
-          isMatched: matchedUids.has(uid),
+          isMatched: uid === centerUid,
         };
       }),
     links: focusedLinks,
     centerUid,
-    matchedUids: Array.from(matchedUids),
+    matchedUids: [centerUid],
     query: keyword,
     localFocus: true,
     stats: {
@@ -800,6 +815,9 @@ export default function CoalMineAgent() {
   const graphQueryCacheRef = useRef(new Map());
   const graphLayoutReadyRef = useRef(false);
   const graphLoadedSessionRef = useRef("");
+  const graphAbortControllerRef = useRef(null);
+  const graphPreviousViewRef = useRef(null);
+  const graphLoadingStoppedRef = useRef(false);
   const fileInputRef = useRef(null);
   const triplesInputRef = useRef(null);
   const imageInputRef = useRef(null);
@@ -1055,7 +1073,9 @@ export default function CoalMineAgent() {
           graphQueryCacheRef.current.clear();
           graphLayoutReadyRef.current = false;
           graphLoadedSessionRef.current = "";
-          setGraphData(emptyGraphData());
+          if (!graphLoadingStoppedRef.current) {
+            setGraphData(emptyGraphData());
+          }
           setGraphLoading(false);
           setGraphFocusedKey(v => v + 1);
         }
@@ -1865,12 +1885,18 @@ export default function CoalMineAgent() {
   };
 
   const loadKnowledgeGraph = async (keyword = graphKeyword) => {
+    graphLoadingStoppedRef.current = false;
     const normalizedKeyword = keyword.trim();
     const cacheKey = `${sessionIdRef.current}::${normalizedKeyword}`;
     const fullCacheKey = `${sessionIdRef.current}::`;
     const layoutByUid = currentGraphLayout();
-    if (graphData.nodes.length > 0 && graphLoadedSessionRef.current === sessionIdRef.current) {
-      const localView = focusGraphLocally(graphData, normalizedKeyword, layoutByUid);
+    const cachedFull = graphQueryCacheRef.current.get(fullCacheKey);
+    const focusBaseGraph = (
+      cachedFull
+      || ((!graphData.localFocus && graphData.nodes.length > 0 && graphLoadedSessionRef.current === sessionIdRef.current) ? graphData : null)
+    );
+    if (normalizedKeyword && focusBaseGraph) {
+      const localView = focusGraphLocally(focusBaseGraph, normalizedKeyword, layoutByUid);
       if (localView) {
         const nextGraphData = {
           ...localView,
@@ -1903,14 +1929,34 @@ export default function CoalMineAgent() {
       setGraphFocusedKey(v => v + 1);
       return;
     }
+
+    if (!normalizedKeyword) {
+      if (cachedFull) {
+        setGraphData(cachedFull);
+        setSelectedGraphNode(null);
+        setGraphLoading(false);
+        setGraphError("");
+        setGraphFocusedKey(v => v + 1);
+        return;
+      }
+    }
+    graphPreviousViewRef.current = {
+      graphData,
+      graphKeyword,
+      selectedGraphNode,
+      graphError,
+    };
+    graphAbortControllerRef.current?.abort?.();
+    const controller = new AbortController();
+    graphAbortControllerRef.current = controller;
     setGraphLoading(true);
     setGraphError("");
     try {
-      const data = await fetchKnowledgeGraph(sessionIdRef.current, normalizedKeyword);
+      const data = await fetchKnowledgeGraph(sessionIdRef.current, normalizedKeyword, { signal: controller.signal });
       const fetchedGraphData = graphPayloadForView(data, { scope: normalizedKeyword ? "query" : "full" });
       let nextGraphData = fetchedGraphData;
-      if (normalizedKeyword && graphData.nodes.length > 0 && graphLoadedSessionRef.current === sessionIdRef.current) {
-        const merged = mergeGraphData(graphData, fetchedGraphData);
+      if (normalizedKeyword && focusBaseGraph) {
+        const merged = mergeGraphData(focusBaseGraph, fetchedGraphData);
         nextGraphData = focusGraphLocally(merged, normalizedKeyword, layoutByUid) || fetchedGraphData;
       } else if (!normalizedKeyword) {
         graphLoadedSessionRef.current = sessionIdRef.current;
@@ -1921,6 +1967,9 @@ export default function CoalMineAgent() {
       setSelectedGraphNode(null);
       setGraphFocusedKey(v => v + 1);
     } catch (err) {
+      if (err?.name === "AbortError") {
+        return;
+      }
       setGraphData(emptyGraphData());
       setSelectedGraphNode(null);
       setGraphError(err.message);
@@ -1930,11 +1979,15 @@ export default function CoalMineAgent() {
         timestamp: new Date(),
       }]);
     } finally {
+      if (graphAbortControllerRef.current === controller) {
+        graphAbortControllerRef.current = null;
+      }
       setGraphLoading(false);
     }
   };
 
   const openKnowledgeGraph = async () => {
+    graphLoadingStoppedRef.current = false;
     navigateToView(APP_VIEW_GRAPH);
     if (graphData.nodes.length > 0 || graphData.links.length > 0 || graphError) {
       return;
@@ -1953,7 +2006,30 @@ export default function CoalMineAgent() {
     await loadKnowledgeGraph(graphKeyword);
   };
 
+  const resetKnowledgeGraphView = async () => {
+    graphLoadingStoppedRef.current = false;
+    setGraphKeyword("");
+    await loadKnowledgeGraph("");
+  };
+
+  const stopKnowledgeGraphLoading = () => {
+    graphLoadingStoppedRef.current = true;
+    graphAbortControllerRef.current?.abort?.();
+    graphAbortControllerRef.current = null;
+    const previous = graphPreviousViewRef.current;
+    if (previous) {
+      setGraphData(previous.graphData || emptyGraphData());
+      setGraphKeyword(previous.graphKeyword || "");
+      setSelectedGraphNode(previous.selectedGraphNode || null);
+      setGraphError(previous.graphError || "");
+      setGraphFocusedKey(v => v + 1);
+    }
+    setGraphLoading(false);
+  };
+
   const closeKnowledgeGraph = () => {
+    graphAbortControllerRef.current?.abort?.();
+    graphAbortControllerRef.current = null;
     navigateToView(APP_VIEW_CHAT);
     setGraphLoading(false);
     setSelectedGraphNode(null);
@@ -1962,6 +2038,7 @@ export default function CoalMineAgent() {
 
   useEffect(() => {
     if (!graphViewActive) return;
+    if (graphLoadingStoppedRef.current) return;
     if (graphLoading) return;
     if (graphData.nodes.length > 0 || graphData.links.length > 0 || graphError) return;
     openKnowledgeGraph().catch(() => {});
@@ -2105,7 +2182,7 @@ export default function CoalMineAgent() {
                 {(stats.node_count || stats.relation_count) ? `（后端保留溯源节点 ${stats.node_count || 0} 个、关系 ${stats.relation_count || 0} 条）` : ""}
               </div>
             </div>
-            <div style={{ display: "flex", gap: "0.45rem", alignItems: "center", flex: "0 1 440px" }}>
+            <div style={{ display: "flex", gap: "0.45rem", alignItems: "center", flex: "0 1 520px" }}>
               <input
                 value={graphKeyword}
                 onChange={e => setGraphKeyword(e.target.value)}
@@ -2113,7 +2190,9 @@ export default function CoalMineAgent() {
                 placeholder="搜索节点或关键词，例如 瓦斯 / 透水 / 救护队"
                 style={{ flex: 1, minWidth: 180, background: "#ffffff", border: `1px solid ${UI.border}`, borderRadius: "8px", color: UI.text, padding: "0.48rem 0.65rem", outline: "none", fontSize: "0.75rem" }}
               />
-              <button onClick={() => loadKnowledgeGraph(graphKeyword)} disabled={graphLoading} style={{ padding: "0.48rem 0.78rem", borderRadius: "8px", border: `1px solid ${UI.borderStrong}`, background: "rgba(14,165,233,0.12)", color: UI.text, cursor: graphLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{graphLoading ? "加载中" : "检索"}</button>
+              <button onClick={() => loadKnowledgeGraph(graphKeyword)} disabled={graphLoading} style={{ minWidth: 62, padding: "0.48rem 0.78rem", borderRadius: "8px", border: `1px solid ${UI.borderStrong}`, background: "rgba(14,165,233,0.12)", color: UI.text, cursor: graphLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem", whiteSpace: "nowrap", lineHeight: 1.1, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{graphLoading ? "加载中" : "检索"}</button>
+              <button onClick={stopKnowledgeGraphLoading} disabled={!graphLoading} style={{ minWidth: 84, padding: "0.48rem 0.78rem", borderRadius: "8px", border: `1px solid ${UI.border}`, background: graphLoading ? "#fff7ed" : "#ffffff", color: graphLoading ? "#9a3412" : UI.subtle, cursor: graphLoading ? "pointer" : "not-allowed", fontWeight: 700, fontSize: "0.72rem", whiteSpace: "nowrap", lineHeight: 1.1, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>停止加载</button>
+              <button onClick={() => resetKnowledgeGraphView()} disabled={graphLoading || (!graphKeyword.trim() && !graphData.localFocus)} style={{ minWidth: 84, padding: "0.48rem 0.78rem", borderRadius: "8px", border: `1px solid ${UI.border}`, background: "#ffffff", color: (graphLoading || (!graphKeyword.trim() && !graphData.localFocus)) ? UI.subtle : UI.text, cursor: (graphLoading || (!graphKeyword.trim() && !graphData.localFocus)) ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem", whiteSpace: "nowrap", lineHeight: 1.1, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>返回全图</button>
               {!embedded ? (
                 <button onClick={closeKnowledgeGraph} style={{ background: "none", border: "none", color: UI.subtle, cursor: "pointer", fontSize: "1.2rem", lineHeight: 1 }}>×</button>
               ) : null}
@@ -2122,7 +2201,7 @@ export default function CoalMineAgent() {
 
           <div style={{ padding: "0.55rem 1rem", borderBottom: `1px solid ${UI.border}`, display: "flex", gap: "0.6rem", alignItems: "center", flexWrap: "wrap" }}>
             <div style={{ fontSize: "0.68rem", color: UI.muted }}>
-              搜索框为空时展示完整图谱；输入关键词后聚焦相关子图，点击节点只查看详情。
+              搜索框为空时展示完整图谱；输入关键词后只展示中心节点及其一跳邻居，点击节点只查看详情。
             </div>
           </div>
 

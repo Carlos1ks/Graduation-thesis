@@ -198,10 +198,12 @@ def _keyword_overlap_score(query: str, record_text: str) -> float:
     query_text = _normalize_text(query)
 
     for term in search_terms:
+        #用户问题扩展后的检索词跟文档片段重合度，长词重合得分更高。
         if term in search_text:
             score += 1.8 if len(term) >= 4 else 0.8
 
-    for term in _EXACT_PRIORITY_TERMS:
+    for term in _EXACT_PRIORITY_TERMS: 
+        #预设的 16 个高优先级应急术语
         if term in query_text and term in search_text:
             score += 2.4
 
@@ -209,7 +211,7 @@ def _keyword_overlap_score(query: str, record_text: str) -> float:
         article_label = _extract_article_label(query_text)
         if article_label and article_label in search_text:
             score += 4.5
-
+    #用户明确要查某一条文，精确命中直接拉满
     if any(term in query_text for term in ["怎么办", "怎么处理", "应急", "处置", "处理流程", "步骤"]):
         for action_term in ["停止作业", "撤离", "撤出人员", "切断电源", "加强通风", "汇报调度室", "自救器", "安全出口", "避灾路线"]:
             if action_term in search_text:

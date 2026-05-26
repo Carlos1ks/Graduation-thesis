@@ -1674,6 +1674,7 @@ def query_centered_graph(session_id: str | None, keyword: str = "", limit: int =
             WHERE n.label = $keyword OR n.id = $keyword
                OR n.label CONTAINS $keyword OR n.id CONTAINS $keyword
                OR n.type_label CONTAINS $keyword
+            OPTIONAL MATCH (n)-[r:KG_REL {session_id: $session_id}]-()
             WITH n,
                  CASE
                    WHEN n.label = $keyword THEN 0
@@ -1681,9 +1682,10 @@ def query_centered_graph(session_id: str | None, keyword: str = "", limit: int =
                    WHEN n.label CONTAINS $keyword THEN 2
                    WHEN n.id CONTAINS $keyword THEN 3
                    ELSE 4
-                 END AS score
-            RETURN n.uid AS uid, score
-            ORDER BY score ASC, size(coalesce(n.label, '')) ASC
+                 END AS score,
+                 count(r) AS degree
+            RETURN n.uid AS uid, score, degree
+            ORDER BY degree DESC, score ASC, size(coalesce(n.label, '')) ASC
             LIMIT 6
             """,
             session_id=sid,
@@ -1699,19 +1701,27 @@ def query_centered_graph(session_id: str | None, keyword: str = "", limit: int =
                    OR r.relation_label CONTAINS $keyword
                    OR r.condition CONTAINS $keyword
                    OR r.evidence CONTAINS $keyword
-                RETURN a.uid AS source_uid, b.uid AS target_uid
+                OPTIONAL MATCH (a)-[ra:KG_REL {session_id: $session_id}]-()
+                OPTIONAL MATCH (b)-[rb:KG_REL {session_id: $session_id}]-()
+                RETURN a.uid AS source_uid, b.uid AS target_uid, count(DISTINCT ra) AS source_degree, count(DISTINCT rb) AS target_degree
                 LIMIT 6
                 """,
                 session_id=sid,
                 keyword=keyword_text,
             )
-            matched_uids = []
+            ranked_uids = []
             for row in center_rows:
                 if row.get("source_uid"):
-                    matched_uids.append(str(row["source_uid"]))
+                    ranked_uids.append((str(row["source_uid"]), int(row.get("source_degree") or 0)))
                 if row.get("target_uid"):
-                    matched_uids.append(str(row["target_uid"]))
-            matched_uids = list(dict.fromkeys(matched_uids))[:6]
+                    ranked_uids.append((str(row["target_uid"]), int(row.get("target_degree") or 0)))
+            deduped = {}
+            for uid, degree in ranked_uids:
+                if uid not in deduped or degree > deduped[uid]:
+                    deduped[uid] = degree
+            matched_uids = [
+                uid for uid, _degree in sorted(deduped.items(), key=lambda item: (-item[1], item[0]))
+            ][:1]
     else:
         center_rows = _execute_read(
             """
@@ -1730,6 +1740,8 @@ def query_centered_graph(session_id: str | None, keyword: str = "", limit: int =
     if not matched_uids:
         result = _finalize_graph_response([], stats=_stats_for_session(sid), query=keyword_text, limit=safe_limit)
         return _cache_set(cache_key, result)
+
+    matched_uids = matched_uids[:1]
 
     records = _execute_read(
         """
