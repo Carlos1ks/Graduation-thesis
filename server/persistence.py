@@ -674,3 +674,13 @@ def list_messages(user_id: int, limit: int = 200) -> List[Dict[str, Any]]:
         }
         for row in rows
     ]
+
+
+def clear_messages(user_id: int) -> int:
+    with _connect() as conn:
+        cursor = conn.execute(
+            "DELETE FROM messages WHERE user_id = ?",
+            (int(user_id),),
+        )
+        conn.commit()
+    return int(cursor.rowcount or 0)

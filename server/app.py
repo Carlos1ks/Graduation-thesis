@@ -63,10 +63,11 @@ from persistence import (
     delete_sensor_record,
     save_message,
     list_messages,
+    clear_messages,
 )
 
 # LangChain Agent
-from agent import multi_agent_ask
+from agent import multi_agent_ask, clear_session_memory
 
 # 创建整个后端共用的 Flask 应用实例。
 app = Flask(__name__)
@@ -900,6 +901,23 @@ def list_chat_messages():
         return jsonify({
             "success": True,
             "messages": records,
+        })
+    except PermissionError as exc:
+        return jsonify({"error": str(exc)}), 401
+
+
+# 清空当前用户持久化保存的聊天消息。
+@app.route('/api/messages/clear', methods=['POST'])
+def clear_chat_messages():
+    # 同时清除数据库历史和当前服务进程内的多智能体会话记忆。
+    try:
+        payload = request.get_json(silent=True) or {}
+        user, session_id, _token = _resolve_user_session(payload.get("session_id"))
+        deleted_count = clear_messages(int(user["id"]))
+        clear_session_memory(session_id)
+        return jsonify({
+            "success": True,
+            "deleted_count": deleted_count,
         })
     except PermissionError as exc:
         return jsonify({"error": str(exc)}), 401

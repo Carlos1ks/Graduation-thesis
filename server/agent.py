@@ -266,6 +266,11 @@ def _save_session_history(session_id: Optional[str], history: List[Dict[str, str
     _SESSION_CHAT_HISTORY[sid] = trimmed[-_MAX_HISTORY_MESSAGES:]
 
 
+def clear_session_memory(session_id: Optional[str]) -> None:
+    # 清空当前服务进程内的会话记忆，配合持久化聊天记录删除使用。
+    _SESSION_CHAT_HISTORY.pop(_get_session_id(session_id), None)
+
+
 # 向当前会话追加一轮用户与助手对话。
 def _append_session_turn(session_id: Optional[str], user_query: str, reply: str) -> List[Dict[str, str]]:
     # 向会话历史追加本轮问答 pair，返回更新后的完整历史。
@@ -395,7 +400,7 @@ def _build_shared_context(
         f"图片证据（作为现场补充观察）：\n{image_text}\n\n"
         f"传感器数据（作为实时监测补充）：\n{sensor_text}\n\n"
         f"多源风险识别结果：\n{risk_text}\n\n"
-        f"知识图谱摘要：\n{kg_text}"
+        f"知识图谱摘要（仅用于参考关系结构，不要逐条复述）：\n{kg_text}"
     )
 
 

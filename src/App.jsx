@@ -16,6 +16,7 @@ const AUTH_ME_API_URL = `${BACKEND_BASE_URL}/api/auth/me`;
 const AUTH_LOGOUT_API_URL = `${BACKEND_BASE_URL}/api/auth/logout`;
 const CHAT_API_URL = `${BACKEND_BASE_URL}/api/agent-chat`;
 const MESSAGE_LIST_API_URL = `${BACKEND_BASE_URL}/api/messages/list`;
+const MESSAGE_CLEAR_API_URL = `${BACKEND_BASE_URL}/api/messages/clear`;
 const DOCUMENT_LIST_API_URL = `${BACKEND_BASE_URL}/api/documents/list`;
 const DOCUMENT_UPLOAD_API_URL = `${BACKEND_BASE_URL}/api/documents/upload`;
 const DOCUMENT_REMOVE_API_URL = `${BACKEND_BASE_URL}/api/documents/remove`;
@@ -416,6 +417,19 @@ async function fetchMessagesFromBackend(sessionId) {
   return result;
 }
 
+async function clearMessagesFromBackend(sessionId) {
+  const response = await apiFetch(MESSAGE_CLEAR_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `清空聊天记录失败：${response.status}`);
+  }
+  return result;
+}
+
 async function uploadImageToBackend(file, sessionId) {
   const formData = new FormData();
   formData.append("file", file);
@@ -589,20 +603,19 @@ function focusGraphLocally(data, keyword, layoutByUid = new Map()) {
     if (source) degreeByUid.set(source, (degreeByUid.get(source) || 0) + 1);
     if (target) degreeByUid.set(target, (degreeByUid.get(target) || 0) + 1);
   }
-  const centerUid = (
-    nodeScores
-      .map(item => ({ ...item, degree: degreeByUid.get(item.uid) || 0 }))
-      .sort((a, b) => b.degree - a.degree || a.score - b.score || a.uid.localeCompare(b.uid))[0]
-      ?.uid
-  ) || "";
+  const centerCandidates = nodeScores
+    .map(item => ({ ...item, degree: degreeByUid.get(item.uid) || 0 }))
+    .sort((a, b) => b.degree - a.degree || a.score - b.score || a.uid.localeCompare(b.uid))
+    .slice(0, 6);
+  const centerUid = centerCandidates[0]?.uid || "";
   if (!centerUid) return null;
 
-  const matchedUids = new Set([centerUid]);
-  const relatedUids = new Set([centerUid]);
+  const centerUidSet = new Set(centerCandidates.map(item => item.uid));
+  const relatedUids = new Set(centerUidSet);
   for (const link of links) {
     const source = graphLinkEndpointUid(link.source);
     const target = graphLinkEndpointUid(link.target);
-    if (source === centerUid || target === centerUid) {
+    if (centerUidSet.has(source) || centerUidSet.has(target)) {
       if (source) relatedUids.add(source);
       if (target) relatedUids.add(target);
     }
@@ -610,7 +623,7 @@ function focusGraphLocally(data, keyword, layoutByUid = new Map()) {
   const focusedLinks = links.filter(link => {
     const source = graphLinkEndpointUid(link.source);
     const target = graphLinkEndpointUid(link.target);
-    return source === centerUid || target === centerUid;
+    return centerUidSet.has(source) || centerUidSet.has(target);
   });
 
   return {
@@ -628,12 +641,12 @@ function focusGraphLocally(data, keyword, layoutByUid = new Map()) {
           ...(Number.isFinite(layout.vx) ? { vx: layout.vx } : {}),
           ...(Number.isFinite(layout.vy) ? { vy: layout.vy } : {}),
           isCenter: uid === centerUid,
-          isMatched: uid === centerUid,
+          isMatched: centerUidSet.has(uid),
         };
       }),
     links: focusedLinks,
     centerUid,
-    matchedUids: [centerUid],
+    matchedUids: centerCandidates.map(item => item.uid),
     query: keyword,
     localFocus: true,
     stats: {
@@ -795,6 +808,7 @@ export default function CoalMineAgent() {
   const [selectedVideoIds, setSelectedVideoIds] = useState([]);
   const [selectedSensorIds, setSelectedSensorIds] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [triplesUploading, setTriplesUploading] = useState(false);
   const [imageUploading, setImageUploading] = useState(false);
   const [videoUploading, setVideoUploading] = useState(false);
   const [graphGenerating, setGraphGenerating] = useState(false);
@@ -1137,6 +1151,7 @@ export default function CoalMineAgent() {
   useEffect(() => {
     // 图谱页第一次打开且图谱已构建完成时，自动加载图谱数据。
     if (!graphViewActive) return;
+    if (graphLoadingStoppedRef.current) return;
     if (graphBuildStatus.state !== "completed") return;
     if (graphLoading) return;
     if (graphData.nodes.length > 0 || graphData.links.length > 0) return;
@@ -1214,44 +1229,47 @@ export default function CoalMineAgent() {
     // 处理三元组 JSON 上传，直接补充知识图谱。
     const files = Array.from(e.target.files);
     if (!files.length) return;
-    setUploading(true);
-    for (const file of files) {
-      try {
-        const result = await uploadTriplesToBackend(file, sessionIdRef.current);
-        graphQueryCacheRef.current.clear();
-        graphLayoutReadyRef.current = false;
-        graphLoadedSessionRef.current = "";
-        setGraphData(emptyGraphData());
-        setSelectedGraphNode(null);
-        setGraphError("");
-        setGraphBuildStatus(result.knowledge_graph?.build_status || {
-          state: "completed",
-          progress_percent: 100,
-          node_count: result.node_count || 0,
-          relation_count: result.relation_count || 0,
-        });
-        setGraphOpen(true);
-        const data = await fetchKnowledgeGraph(sessionIdRef.current, "");
-        const nextGraphData = graphPayloadForView(data, { scope: "full" });
-        setGraphData(nextGraphData);
-        graphQueryCacheRef.current.set(`${sessionIdRef.current}::`, nextGraphData);
-        graphLoadedSessionRef.current = sessionIdRef.current;
-        setGraphFocusedKey(v => v + 1);
-        setMessages(prev => [...prev, {
-          role: "assistant",
-          content: `已导入三元组文件 **${result.file_name || file.name}**，写入 ${result.node_count || 0} 个节点、${result.relation_count || 0} 条关系。`,
-          timestamp: new Date(),
-        }]);
-      } catch (err) {
-        setMessages(prev => [...prev, {
-          role: "assistant",
-          content: `三元组文件 **${file.name}** 导入失败：${err.message}`,
-          timestamp: new Date(),
-        }]);
+    setTriplesUploading(true);
+    try {
+      for (const file of files) {
+        try {
+          const result = await uploadTriplesToBackend(file, sessionIdRef.current);
+          graphQueryCacheRef.current.clear();
+          graphLayoutReadyRef.current = false;
+          graphLoadedSessionRef.current = "";
+          setGraphData(emptyGraphData());
+          setSelectedGraphNode(null);
+          setGraphError("");
+          setGraphBuildStatus(result.knowledge_graph?.build_status || {
+            state: "completed",
+            progress_percent: 100,
+            node_count: result.node_count || 0,
+            relation_count: result.relation_count || 0,
+          });
+          setGraphOpen(true);
+          const data = await fetchKnowledgeGraph(sessionIdRef.current, "");
+          const nextGraphData = graphPayloadForView(data, { scope: "full" });
+          setGraphData(nextGraphData);
+          graphQueryCacheRef.current.set(`${sessionIdRef.current}::`, nextGraphData);
+          graphLoadedSessionRef.current = sessionIdRef.current;
+          setGraphFocusedKey(v => v + 1);
+          setMessages(prev => [...prev, {
+            role: "assistant",
+            content: `已导入三元组文件 **${result.file_name || file.name}**，写入 ${result.node_count || 0} 个节点、${result.relation_count || 0} 条关系。`,
+            timestamp: new Date(),
+          }]);
+        } catch (err) {
+          setMessages(prev => [...prev, {
+            role: "assistant",
+            content: `三元组文件 **${file.name}** 导入失败：${err.message}`,
+            timestamp: new Date(),
+          }]);
+        }
       }
+    } finally {
+      setTriplesUploading(false);
+      e.target.value = "";
     }
-    setUploading(false);
-    e.target.value = "";
   };
 
   const handleGenerateKnowledgeGraph = async () => {
@@ -1661,7 +1679,19 @@ export default function CoalMineAgent() {
     }
   };
 
-  const clearCurrentConversation = () => {
+  const clearCurrentConversation = async () => {
+    try {
+      if (sessionIdRef.current) {
+        await clearMessagesFromBackend(sessionIdRef.current);
+      }
+    } catch (err) {
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: `⚠️ 聊天记录清空失败：${err.message}`,
+        timestamp: new Date(),
+      }]);
+      return;
+    }
     setMessages([{
       role: "assistant",
       content: "您好！我是**煤矿应急救援决策知识问答AI智能体**，由中国矿业大学研发。\n\n可为您提供：\n- ⚡ **实时应急决策支持**\n- 🔍 **灾害风险智能识别**\n- 📋 **救援策略精准生成**\n- 🤝 **跨部门协同指挥建议**",
@@ -2486,7 +2516,7 @@ export default function CoalMineAgent() {
               <span style={{ color: "#0f172a" }}>风险摘要：</span>{risk.summary}
             </div>
           )}
-          {kgUsed.summary && (
+          {kgUsed.summary && matchedRelations.length === 0 && (
             <div style={{ whiteSpace: "pre-wrap", color: "#475569" }}>
               <span style={{ color: "#0f172a" }}>图谱摘要：</span>{kgUsed.summary}
             </div>
@@ -2781,7 +2811,7 @@ export default function CoalMineAgent() {
     "当前知识图谱按 session 合并构建。这里可以手动生成文档库对应图谱、上传三元组测试文件，并直接检索当前会话的图谱结果。",
     <>
       <button onClick={handleGenerateKnowledgeGraph} disabled={docs.length === 0 || graphGenerating || graphBuildStatus.state === "running" || graphBuildStatus.state === "queued"} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: `1px dashed ${UI.borderStrong}`, background: "#ecfeff", color: (docs.length === 0 || graphGenerating || graphBuildStatus.state === "running" || graphBuildStatus.state === "queued") ? UI.subtle : UI.text, cursor: (docs.length === 0 || graphGenerating || graphBuildStatus.state === "running" || graphBuildStatus.state === "queued") ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{graphGenerating ? "提交中..." : "生成知识图谱"}</button>
-      <button onClick={() => triplesInputRef.current?.click()} disabled={uploading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: `1px dashed ${UI.borderStrong}`, background: "#f8fafc", color: uploading ? UI.subtle : UI.text, cursor: uploading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{uploading ? "导入中..." : "上传三元组 JSON"}</button>
+      <button onClick={() => triplesInputRef.current?.click()} disabled={triplesUploading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: `1px dashed ${UI.borderStrong}`, background: "#f8fafc", color: triplesUploading ? UI.subtle : UI.text, cursor: triplesUploading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{triplesUploading ? "导入中..." : "上传三元组 JSON"}</button>
       <button onClick={() => loadKnowledgeGraph(graphKeyword)} disabled={graphLoading} style={{ padding: "0.55rem 0.95rem", borderRadius: "10px", border: `1px solid ${UI.borderStrong}`, background: "#ffffff", color: graphLoading ? UI.subtle : UI.text, cursor: graphLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "0.72rem" }}>{graphLoading ? "加载中..." : "刷新图谱"}</button>
     </>,
     <div style={{ flex: 1, minHeight: 0, height: "100%", display: "flex", flexDirection: "column", gap: "0.8rem" }}>

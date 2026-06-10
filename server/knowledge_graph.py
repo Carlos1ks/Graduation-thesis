@@ -1721,7 +1721,7 @@ def query_centered_graph(session_id: str | None, keyword: str = "", limit: int =
                     deduped[uid] = degree
             matched_uids = [
                 uid for uid, _degree in sorted(deduped.items(), key=lambda item: (-item[1], item[0]))
-            ][:1]
+            ][:6]
     else:
         center_rows = _execute_read(
             """
@@ -1741,14 +1741,15 @@ def query_centered_graph(session_id: str | None, keyword: str = "", limit: int =
         result = _finalize_graph_response([], stats=_stats_for_session(sid), query=keyword_text, limit=safe_limit)
         return _cache_set(cache_key, result)
 
-    matched_uids = matched_uids[:1]
+    matched_uids = matched_uids[:6]
+
+    per_center_limit = max(6, safe_limit // max(1, len(matched_uids)))
 
     records = _execute_read(
         """
-        MATCH (center:KGNode {session_id: $session_id})
-        WHERE center.uid IN $uids
-        MATCH (center)-[r:KG_REL {session_id: $session_id}]-(neighbor:KGNode {session_id: $session_id})
-        WITH center, r, neighbor,
+        UNWIND range(0, size($uids) - 1) AS idx
+        MATCH (center:KGNode {session_id: $session_id, uid: $uids[idx]})-[r:KG_REL {session_id: $session_id}]-(neighbor:KGNode {session_id: $session_id})
+        WITH idx, center, r, neighbor,
              CASE coalesce(r.relation, '')
                WHEN 'APPLIES_TO' THEN 1
                WHEN 'REQUIRES' THEN 2
@@ -1759,15 +1760,16 @@ def query_centered_graph(session_id: str | None, keyword: str = "", limit: int =
                WHEN 'CONTAINS' THEN 9
                ELSE 50
              END AS rel_order
-        ORDER BY center.uid, rel_order ASC, coalesce(r.relation_label, '') ASC, coalesce(neighbor.label, '') ASC
-        WITH collect({source_node: properties(startNode(r)), rel: properties(r), target_node: properties(endNode(r))}) AS rows
-        WITH rows, size(rows) AS total
-        UNWIND rows[..$limit] AS row
+        ORDER BY idx ASC, rel_order ASC, coalesce(r.relation_label, '') ASC, coalesce(neighbor.label, '') ASC
+        WITH idx, collect({source_node: properties(startNode(r)), rel: properties(r), target_node: properties(endNode(r))}) AS center_rows
+        WITH collect(center_rows) AS grouped_rows, sum(size(center_rows)) AS total
+        UNWIND grouped_rows AS center_rows
+        UNWIND center_rows[..$per_center_limit] AS row
         RETURN row.source_node AS source_node, row.rel AS rel, row.target_node AS target_node, total
         """,
         session_id=sid,
         uids=matched_uids,
-        limit=safe_limit,
+        per_center_limit=per_center_limit,
     )
     total_relations = int(records[0].get("total") or len(records)) if records else 0
     result = _finalize_graph_response(
